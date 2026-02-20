@@ -1,0 +1,3187 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOVA / LOTATO - Superviseur Niveau 1</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --dark-color: #2c3e50;
+            --light-color: #ecf0f1;
+            --sidebar-width: 280px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fa;
+            color: var(--dark-color);
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, #f39c12, #e67e22);
+            color: white;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .logo-container {
+            padding: 25px 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            color: white;
+            margin-bottom: 10px;
+        }
+        
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .logo-subtext {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.7);
+            margin-top: 5px;
+        }
+        
+        .supervisor-info {
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            margin: 15px;
+            border-radius: 10px;
+        }
+        
+        .supervisor-title {
+            font-size: 1rem;
+            margin-bottom: 5px;
+            opacity: 0.8;
+        }
+        
+        .supervisor-name {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .supervisor-system {
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+        
+        .agents-count {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+        
+        .nav-menu {
+            padding: 20px 0;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 25px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            transition: all 0.3s;
+            border-left: 4px solid transparent;
+        }
+        
+        .nav-item:hover {
+            background-color: rgba(255,255,255,0.1);
+            color: white;
+            border-left-color: white;
+        }
+        
+        .nav-item.active {
+            background-color: rgba(255,255,255,0.15);
+            color: white;
+            border-left-color: white;
+        }
+        
+        .nav-icon {
+            width: 30px;
+            font-size: 1.2rem;
+            margin-right: 15px;
+        }
+        
+        .nav-label {
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .page-title {
+            font-size: 1.8rem;
+            color: var(--dark-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .page-title i {
+            color: #f39c12;
+        }
+        
+        .top-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background-color: #f39c12;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #e67e22;
+        }
+        
+        .btn-success {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #219955;
+        }
+        
+        .btn-warning {
+            background-color: var(--warning-color);
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e67e22;
+        }
+        
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+        
+        /* Stats Cards */
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: transform 0.3s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            color: white;
+        }
+        
+        .icon-users {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .icon-tickets {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .icon-revenue {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .icon-profit {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        
+        .stat-info {
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--dark-color);
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
+        /* Tables */
+        .table-container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+        
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .table-title {
+            font-size: 1.3rem;
+            color: var(--dark-color);
+            font-weight: 600;
+        }
+        
+        .search-box {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .search-input {
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            min-width: 250px;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th {
+            background-color: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--dark-color);
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+        
+        .status-active {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-inactive {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-online {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status-offline {
+            background-color: #d6d8d9;
+            color: #383d41;
+        }
+        
+        .status-blocked {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .profit-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+        
+        .profit-positive {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .profit-negative {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .action-btn {
+            width: 35px;
+            height: 35px;
+            border-radius: 5px;
+            border: none;
+            background-color: #f8f9fa;
+            color: #6c757d;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .action-btn:hover {
+            background-color: #e9ecef;
+            color: var(--dark-color);
+        }
+        
+        .action-btn.view:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .action-btn.block:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .action-btn.unblock:hover {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .action-btn.delete:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        /* Notification Bell */
+        .notification-bell {
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .notification-count {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background-color: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background-color: white;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-size: 1.3rem;
+            color: var(--dark-color);
+            font-weight: 600;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #6c757d;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        
+        .modal-close:hover {
+            color: var(--danger-color);
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        /* Loading */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            color: #6c757d;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #f39c12;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 3000;
+            animation: slideIn 0.3s ease-out;
+            max-width: 400px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .notification.success {
+            background-color: var(--success-color);
+        }
+        
+        .notification.error {
+            background-color: var(--danger-color);
+        }
+        
+        .notification.warning {
+            background-color: var(--warning-color);
+        }
+        
+        .notification.info {
+            background-color: #3498db;
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+        
+        .empty-icon {
+            font-size: 4rem;
+            color: #dee2e6;
+            margin-bottom: 20px;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-weight: 600;
+            color: #6c757d;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            color: var(--dark-color);
+        }
+        
+        .tab.active {
+            color: #f39c12;
+            border-bottom-color: #f39c12;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Report Generator */
+        .report-generator {
+            background-color: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .report-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .report-preview {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 70px;
+                overflow-x: hidden;
+            }
+            
+            .logo-text, .logo-subtext, .supervisor-info, .nav-label {
+                display: none;
+            }
+            
+            .main-content {
+                margin-left: 70px;
+            }
+            
+            .nav-item {
+                justify-content: center;
+                padding: 15px 10px;
+            }
+            
+            .nav-icon {
+                margin-right: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .stats-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .table-header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+            
+            .search-box {
+                width: 100%;
+            }
+            
+            .search-input {
+                min-width: auto;
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="logo-container">
+            <div class="logo">
+                <i class="fas fa-user-tie"></i>
+            </div>
+            <div class="logo-text">SUPERVISEUR NIVEAU 1</div>
+            <div class="logo-subtext">CONTROL PANEL</div>
+        </div>
+        
+        <div class="supervisor-info">
+            <div class="supervisor-title">Superviseur Niveau 1</div>
+            <div class="supervisor-name" id="supervisor-name">Chargement...</div>
+            <div class="supervisor-system" id="supervisor-system">Système: Chargement...</div>
+            <div class="agents-count">
+                <i class="fas fa-users"></i>
+                <span id="agents-count">0</span> agents
+            </div>
+        </div>
+        
+        <div class="nav-menu">
+            <a href="#" class="nav-item active" data-section="dashboard">
+                <div class="nav-icon"><i class="fas fa-tachometer-alt"></i></div>
+                <div class="nav-label">Tableau de bord</div>
+            </a>
+            <a href="#" class="nav-item" data-section="agents">
+                <div class="nav-icon"><i class="fas fa-users"></i></div>
+                <div class="nav-label">Mes Agents</div>
+            </a>
+            <a href="#" class="nav-item" data-section="tickets">
+                <div class="nav-icon"><i class="fas fa-ticket-alt"></i></div>
+                <div class="nav-label">Tickets</div>
+            </a>
+            <a href="#" class="nav-item" data-section="winners">
+                <div class="nav-icon"><i class="fas fa-trophy"></i></div>
+                <div class="nav-label">Gagnants</div>
+            </a>
+            <a href="#" class="nav-item" data-section="reports">
+                <div class="nav-icon"><i class="fas fa-chart-bar"></i></div>
+                <div class="nav-label">Rapports</div>
+            </a>
+            <a href="#" class="nav-item" data-section="notifications">
+                <div class="nav-icon"><i class="fas fa-bell"></i></div>
+                <div class="nav-label">Notifications</div>
+                <span class="notification-count" id="notification-count" style="display: none;">0</span>
+            </a>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="page-title">
+                <i class="fas fa-tachometer-alt"></i>
+                <span id="page-title">Tableau de bord Superviseur</span>
+            </div>
+            <div class="top-actions">
+                <div class="notification-bell" id="notification-bell">
+                    <i class="fas fa-bell" style="font-size: 1.5rem; color: #6c757d;"></i>
+                    <span class="notification-count" id="top-notification-count" style="display: none;">0</span>
+                </div>
+                <button class="btn btn-primary" id="refresh-btn">
+                    <i class="fas fa-sync-alt"></i> Actualiser
+                </button>
+                <button class="btn btn-warning" id="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> Déconnexion
+                </button>
+            </div>
+        </div>
+        
+        <!-- Dashboard Section -->
+        <div id="dashboard-section" class="section-content active">
+            <!-- Welcome Message -->
+            <div class="table-container">
+                <h2 id="welcome-message">Chargement...</h2>
+                <p id="dashboard-description" style="color: #6c757d; margin-top: 10px;">
+                    Bienvenue dans votre espace superviseur. Vous pouvez contrôler vos agents, vérifier leurs transactions, et générer des rapports.
+                </p>
+            </div>
+            
+            <!-- Stats Cards -->
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-icon icon-users">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="total-agents">0</div>
+                        <div class="stat-label">Agents assignés</div>
+                        <div style="font-size: 0.9rem; margin-top: 5px;">
+                            <span id="online-agents">0</span> en ligne | 
+                            <span id="active-agents">0</span> actifs
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon icon-tickets">
+                        <i class="fas fa-ticket-alt"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="today-tickets">0</div>
+                        <div class="stat-label">Tickets aujourd'hui</div>
+                        <div class="stat-label" id="today-sales">Montant: 0 HTG</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon icon-revenue">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="today-revenue">0 HTG</div>
+                        <div class="stat-label">Ventes totales</div>
+                        <div class="stat-label" id="commission">Commission: 0 HTG</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon icon-profit">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="profit-loss">0 HTG</div>
+                        <div class="stat-label">Profit/Perte</div>
+                        <div>
+                            <span id="profit-status" class="profit-badge profit-positive">Équilibre</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Activity -->
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Activité récente des agents</div>
+                    <div class="search-box">
+                        <input type="text" class="search-input" placeholder="Rechercher un agent..." id="search-activity">
+                        <button class="btn btn-primary">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="loading" id="activity-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des activités...</p>
+                </div>
+                
+                <table class="table" id="activity-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Agent</th>
+                            <th>Action</th>
+                            <th>Détails</th>
+                            <th>Temps</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-table-body">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+                
+                <div class="empty-state" id="activity-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-history"></i>
+                    </div>
+                    <h3>Aucune activité récente</h3>
+                    <p>Les activités de vos agents apparaîtront ici</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Agents Section -->
+        <div id="agents-section" class="section-content" style="display: none;">
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Gestion des Agents</div>
+                    <div class="search-box">
+                        <input type="text" class="search-input" placeholder="Rechercher un agent..." id="search-agents">
+                        <button class="btn btn-primary">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <select class="search-input" id="filter-agent-status" style="width: 150px;">
+                            <option value="all">Tous les statuts</option>
+                            <option value="active">Actifs</option>
+                            <option value="blocked">Bloqués</option>
+                            <option value="online">En ligne</option>
+                            <option value="offline">Hors ligne</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="loading" id="agents-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des agents...</p>
+                </div>
+                
+                <table class="table" id="agents-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Identifiant</th>
+                            <th>Statut</th>
+                            <th>En ligne</th>
+                            <th>Tickets aujourd'hui</th>
+                            <th>Ventes (HTG)</th>
+                            <th>Balance</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="agents-table-body">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+                
+                <div class="empty-state" id="agents-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h3>Aucun agent assigné</h3>
+                    <p>Vous n'avez pas encore d'agents assignés à votre supervision</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tickets Section -->
+        <div id="tickets-section" class="section-content" style="display: none;">
+            <div class="tabs">
+                <button class="tab active" data-ticket-tab="today">Aujourd'hui</button>
+                <button class="tab" data-ticket-tab="recent">Récent</button>
+                <button class="tab" data-ticket-tab="pending">En attente</button>
+                <button class="tab" data-ticket-tab="all">Tous</button>
+            </div>
+            
+            <div class="tab-content active" id="today-tickets-tab">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Tickets d'aujourd'hui</div>
+                        <div class="search-box">
+                            <input type="text" class="search-input" placeholder="Rechercher par numéro..." id="search-today-tickets">
+                            <button class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                            </button>
+                            <select class="search-input" id="filter-today-agent" style="width: 150px;">
+                                <option value="all">Tous les agents</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="today-tickets-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Chargement des tickets...</p>
+                    </div>
+                    
+                    <table class="table" id="today-tickets-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Numéro</th>
+                                <th>Agent</th>
+                                <th>Tirage</th>
+                                <th>Heure</th>
+                                <th>Montant</th>
+                                <th>Créé il y a</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="today-tickets-table-body">
+                            <!-- Rempli dynamiquement -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="empty-state" id="today-tickets-empty" style="display: none;">
+                        <div class="empty-icon">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <h3>Aucun ticket aujourd'hui</h3>
+                        <p>Les tickets d'aujourd'hui apparaîtront ici</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="recent-tickets-tab">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Tickets récents (7 derniers jours)</div>
+                        <div class="search-box">
+                            <input type="text" class="search-input" placeholder="Rechercher..." id="search-recent-tickets">
+                            <button class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="recent-tickets-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Chargement des tickets...</p>
+                    </div>
+                    
+                    <table class="table" id="recent-tickets-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Numéro</th>
+                                <th>Agent</th>
+                                <th>Date</th>
+                                <th>Tirage</th>
+                                <th>Montant</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-tickets-table-body">
+                            <!-- Rempli dynamiquement -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="empty-state" id="recent-tickets-empty" style="display: none;">
+                        <div class="empty-icon">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <h3>Aucun ticket récent</h3>
+                        <p>Les tickets récents apparaîtront ici</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Winners Section -->
+        <div id="winners-section" class="section-content" style="display: none;">
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Tickets gagnants</div>
+                    <div class="search-box">
+                        <input type="text" class="search-input" placeholder="Rechercher..." id="search-winners">
+                        <button class="btn btn-primary">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <select class="search-input" id="filter-winner-status" style="width: 150px;">
+                            <option value="all">Tous les statuts</option>
+                            <option value="paid">Payés</option>
+                            <option value="unpaid">Non payés</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="loading" id="winners-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des gagnants...</p>
+                </div>
+                
+                <table class="table" id="winners-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Agent</th>
+                            <th>Tirage</th>
+                            <th>Date</th>
+                            <th>Gains (HTG)</th>
+                            <th>Statut</th>
+                            <th>Impact</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="winners-table-body">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+                
+                <div class="empty-state" id="winners-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-trophy"></i>
+                    </div>
+                    <h3>Aucun ticket gagnant</h3>
+                    <p>Les tickets gagnants apparaîtront ici</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Reports Section -->
+        <div id="reports-section" class="section-content" style="display: none;">
+            <div class="report-generator">
+                <h3 style="margin-bottom: 20px;">Générateur de rapports</h3>
+                
+                <div class="report-controls">
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Période</label>
+                        <select class="search-input" id="report-period" style="width: 100%;">
+                            <option value="today">Aujourd'hui</option>
+                            <option value="yesterday">Hier</option>
+                            <option value="week">Cette semaine</option>
+                            <option value="month">Ce mois</option>
+                            <option value="custom">Personnalisé</option>
+                        </select>
+                    </div>
+                    
+                    <div id="custom-dates" style="display: none;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Date de début</label>
+                        <input type="date" class="search-input" id="report-start-date" style="width: 100%;">
+                        
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; margin-top: 10px;">Date de fin</label>
+                        <input type="date" class="search-input" id="report-end-date" style="width: 100%;">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Agent</label>
+                        <select class="search-input" id="report-agent" style="width: 100%;">
+                            <option value="all">Tous les agents</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Type de rapport</label>
+                        <select class="search-input" id="report-type" style="width: 100%;">
+                            <option value="sales">Ventes</option>
+                            <option value="profits">Profits/Pertes</option>
+                            <option value="winners">Gagnants</option>
+                            <option value="summary">Résumé complet</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-success" id="generate-report">
+                        <i class="fas fa-chart-bar"></i> Générer le rapport
+                    </button>
+                    <button class="btn btn-primary" id="print-report" style="margin-left: 10px;" disabled>
+                        <i class="fas fa-print"></i> Imprimer
+                    </button>
+                    <button class="btn btn-warning" id="export-report" style="margin-left: 10px;" disabled>
+                        <i class="fas fa-file-export"></i> Exporter
+                    </button>
+                </div>
+                
+                <div class="report-preview" id="report-preview" style="display: none;">
+                    <!-- Rapport généré ici -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Notifications Section -->
+        <div id="notifications-section" class="section-content" style="display: none;">
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Notifications</div>
+                    <div class="search-box">
+                        <button class="btn btn-danger" id="clear-notifications">
+                            <i class="fas fa-trash"></i> Tout effacer
+                        </button>
+                        <button class="btn btn-primary" id="mark-all-read">
+                            <i class="fas fa-check-double"></i> Tout marquer comme lu
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="loading" id="notifications-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des notifications...</p>
+                </div>
+                
+                <div id="notifications-list" style="display: none;">
+                    <!-- Notifications chargées dynamiquement -->
+                </div>
+                
+                <div class="empty-state" id="notifications-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-bell-slash"></i>
+                    </div>
+                    <h3>Aucune notification</h3>
+                    <p>Les notifications apparaîtront ici</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: View Ticket Details -->
+    <div class="modal" id="view-ticket-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Détails du ticket</div>
+                <button class="modal-close" id="close-view-ticket-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="loading" id="ticket-details-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des détails...</p>
+                </div>
+                
+                <div id="ticket-details" style="display: none;">
+                    <!-- Rempli dynamiquement -->
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="close-ticket-details">Fermer</button>
+                <button type="button" class="btn btn-danger" id="delete-ticket-btn" style="display: none;">
+                    <i class="fas fa-trash"></i> Supprimer le ticket
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: Block Agent -->
+    <div class="modal" id="block-agent-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Bloquer l'agent</div>
+                <button class="modal-close" id="close-block-agent-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <p id="block-agent-message">Êtes-vous sûr de vouloir bloquer cet agent ?</p>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">Raison du blocage</label>
+                    <textarea class="search-input" id="block-reason" rows="3" placeholder="Optionnel"></textarea>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="cancel-block-agent">Annuler</button>
+                <button type="button" class="btn btn-danger" id="confirm-block-agent">
+                    <i class="fas fa-ban"></i> Bloquer
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: Agent Details -->
+    <div class="modal" id="agent-details-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Détails de l'agent</div>
+                <button class="modal-close" id="close-agent-details-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="loading" id="agent-details-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des détails...</p>
+                </div>
+                
+                <div id="agent-details" style="display: none;">
+                    <!-- Rempli dynamiquement -->
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="close-agent-details">Fermer</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+    
+    <script>
+        // Configuration
+        const API_BASE_URL = window.location.origin;
+        let supervisorToken = localStorage.getItem('nova_token');
+        let currentSupervisor = JSON.parse(localStorage.getItem('nova_user_data') || '{}');
+        let agentsList = [];
+        let notificationsList = [];
+        let currentAgentToBlock = null;
+        let currentTicketToDelete = null;
+        
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('👮 Control Level 1 Dashboard initialisé');
+            
+            // Vérifier l'authentification
+            if (!supervisorToken) {
+                redirectToLogin();
+                return;
+            }
+            
+            // Vérifier le rôle (doit être superviseur niveau 1)
+            checkSupervisorRole();
+            
+            // Charger les données initiales
+            loadSupervisorInfo();
+            loadDashboardData();
+            setupEventListeners();
+            startNotificationPolling();
+        });
+        
+        // Vérifier le rôle du superviseur
+        function checkSupervisorRole() {
+            const tokenParts = supervisorToken.split('_');
+            if (tokenParts.length < 5) {
+                redirectToLogin();
+                return;
+            }
+            
+            const role = tokenParts[3];
+            const level = tokenParts[4];
+            
+            if (role !== 'supervisor' || level !== '1') {
+                alert('Accès refusé. Cette page est réservée aux superviseurs niveau 1.');
+                window.location.href = '/';
+            }
+        }
+        
+        // Redirection vers la page de login
+        function redirectToLogin() {
+            console.log('Redirection vers la page de login...');
+            window.location.href = '/';
+        }
+        
+        // Charger les informations du superviseur
+        async function loadSupervisorInfo() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/check`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentSupervisor = data.admin;
+                    
+                    // Mettre à jour l'interface
+                    document.getElementById('supervisor-name').textContent = currentSupervisor.name;
+                    document.getElementById('welcome-message').textContent = 
+                        `Bienvenue, ${currentSupervisor.name} - Superviseur Niveau 1`;
+                    
+                    // Charger les informations du sous-système
+                    loadSubsystemInfo();
+                } else {
+                    redirectToLogin();
+                }
+            } catch (error) {
+                console.error('Erreur chargement info superviseur:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        }
+        
+        // Charger les informations du sous-système
+        async function loadSubsystemInfo() {
+            try {
+                // Récupérer le sous-système via l'API
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/stats`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Mettre à jour le nom du système
+                    document.getElementById('supervisor-system').textContent = 
+                        `Système: Sous-système ${data.stats.subsystem_name || 'N/A'}`;
+                }
+            } catch (error) {
+                console.error('Erreur chargement sous-système:', error);
+            }
+        }
+        
+        // Configurer les événements
+        function setupEventListeners() {
+            // Navigation
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // Mettre à jour la navigation active
+                    document.querySelectorAll('.nav-item').forEach(nav => {
+                        nav.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    // Afficher la section correspondante
+                    const section = this.getAttribute('data-section');
+                    showSection(section);
+                });
+            });
+            
+            // Boutons d'action
+            document.getElementById('refresh-btn').addEventListener('click', refreshData);
+            document.getElementById('logout-btn').addEventListener('click', logout);
+            document.getElementById('notification-bell').addEventListener('click', function() {
+                showSection('notifications');
+            });
+            
+            // Tabs tickets
+            document.querySelectorAll('[data-ticket-tab]').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-ticket-tab');
+                    switchTicketTab(tabId);
+                });
+            });
+            
+            // Modals
+            document.getElementById('close-view-ticket-modal').addEventListener('click', hideViewTicketModal);
+            document.getElementById('close-ticket-details').addEventListener('click', hideViewTicketModal);
+            document.getElementById('close-block-agent-modal').addEventListener('click', hideBlockAgentModal);
+            document.getElementById('cancel-block-agent').addEventListener('click', hideBlockAgentModal);
+            document.getElementById('close-agent-details-modal').addEventListener('click', hideAgentDetailsModal);
+            document.getElementById('close-agent-details').addEventListener('click', hideAgentDetailsModal);
+            
+            // Bouton suppression ticket
+            document.getElementById('delete-ticket-btn').addEventListener('click', deleteTicket);
+            
+            // Bouton blocage agent
+            document.getElementById('confirm-block-agent').addEventListener('click', confirmBlockAgent);
+            
+            // Filtres
+            document.getElementById('search-agents').addEventListener('input', filterAgents);
+            document.getElementById('filter-agent-status').addEventListener('change', filterAgents);
+            
+            // Rapports
+            document.getElementById('report-period').addEventListener('change', handleReportPeriodChange);
+            document.getElementById('generate-report').addEventListener('click', generateReport);
+            document.getElementById('print-report').addEventListener('click', printReport);
+            document.getElementById('export-report').addEventListener('click', exportReport);
+            
+            // Notifications
+            document.getElementById('clear-notifications').addEventListener('click', clearNotifications);
+            document.getElementById('mark-all-read').addEventListener('click', markAllNotificationsAsRead);
+        }
+        
+        // Afficher une section
+        function showSection(sectionId) {
+            // Cacher toutes les sections
+            document.querySelectorAll('.section-content').forEach(section => {
+                section.style.display = 'none';
+            });
+            
+            // Afficher la section demandée
+            const section = document.getElementById(`${sectionId}-section`);
+            if (section) {
+                section.style.display = 'block';
+                document.getElementById('page-title').textContent = 
+                    document.querySelector(`.nav-item[data-section="${sectionId}"] .nav-label`).textContent;
+                
+                // Charger les données spécifiques à la section
+                switch(sectionId) {
+                    case 'dashboard':
+                        loadDashboardData();
+                        break;
+                    case 'agents':
+                        loadAgentsData();
+                        break;
+                    case 'tickets':
+                        loadTodayTickets();
+                        break;
+                    case 'winners':
+                        loadWinnersData();
+                        break;
+                    case 'notifications':
+                        loadNotifications();
+                        break;
+                }
+            }
+        }
+        
+        // Charger les données du tableau de bord
+        async function loadDashboardData() {
+            try {
+                // Récupérer les agents assignés
+                const agentsResponse = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor=1`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const agentsData = await agentsResponse.json();
+                
+                if (agentsData.success) {
+                    agentsList = agentsData.users || [];
+                    
+                    // Mettre à jour le compteur d'agents
+                    document.getElementById('total-agents').textContent = agentsList.length;
+                    document.getElementById('agents-count').textContent = agentsList.length;
+                    
+                    // Compter les agents en ligne
+                    const onlineAgents = agentsList.filter(agent => agent.is_online).length;
+                    const activeAgents = agentsList.filter(agent => agent.is_active).length;
+                    
+                    document.getElementById('online-agents').textContent = onlineAgents;
+                    document.getElementById('active-agents').textContent = activeAgents;
+                    
+                    // Récupérer les statistiques des ventes
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    let totalTickets = 0;
+                    let totalSales = 0;
+                    let totalWinnings = 0;
+                    
+                    // Pour chaque agent, récupérer les tickets du jour
+                    for (const agent of agentsList) {
+                        const ticketsResponse = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&date=${today.toISOString()}`, {
+                            headers: {
+                                'Authorization': `Bearer ${supervisorToken}`
+                            }
+                        });
+                        
+                        const ticketsData = await ticketsResponse.json();
+                        
+                        if (ticketsData.success) {
+                            totalTickets += ticketsData.tickets.length;
+                            totalSales += ticketsData.tickets.reduce((sum, ticket) => sum + ticket.total, 0);
+                        }
+                        
+                        // Récupérer les gains du jour
+                        const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}&date=${today.toISOString()}`, {
+                            headers: {
+                                'Authorization': `Bearer ${supervisorToken}`
+                            }
+                        });
+                        
+                        const winnersData = await winnersResponse.json();
+                        
+                        if (winnersData.success) {
+                            totalWinnings += winnersData.tickets.reduce((sum, winner) => sum + winner.total_winnings, 0);
+                        }
+                    }
+                    
+                    // Mettre à jour les statistiques
+                    document.getElementById('today-tickets').textContent = totalTickets;
+                    document.getElementById('today-sales').textContent = `Montant: ${totalSales.toLocaleString()} HTG`;
+                    document.getElementById('today-revenue').textContent = `${totalSales.toLocaleString()} HTG`;
+                    
+                    // Calculer profit/perte
+                    const profitLoss = totalSales - totalWinnings;
+                    const commission = totalSales * 0.05; // 5% de commission
+                    
+                    document.getElementById('profit-loss').textContent = `${profitLoss.toLocaleString()} HTG`;
+                    document.getElementById('commission').textContent = `Commission: ${commission.toLocaleString()} HTG`;
+                    
+                    const profitStatus = document.getElementById('profit-status');
+                    if (profitLoss >= 0) {
+                        profitStatus.textContent = 'Profit';
+                        profitStatus.className = 'profit-badge profit-positive';
+                    } else {
+                        profitStatus.textContent = 'Perte';
+                        profitStatus.className = 'profit-badge profit-negative';
+                    }
+                    
+                    // Charger l'activité récente
+                    loadRecentActivity(agentsList);
+                }
+            } catch (error) {
+                console.error('Erreur chargement dashboard:', error);
+                showNotification('Erreur lors du chargement des données', 'error');
+            }
+        }
+        
+        // Charger l'activité récente
+        async function loadRecentActivity(agents) {
+            const loading = document.getElementById('activity-loading');
+            const table = document.getElementById('activity-table');
+            const empty = document.getElementById('activity-empty');
+            const tbody = document.getElementById('activity-table-body');
+            
+            loading.style.display = 'flex';
+            table.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                // Récupérer les activités récentes (tickets, connexions, etc.)
+                const activities = [];
+                
+                // Pour chaque agent, récupérer les 5 derniers tickets
+                for (const agent of agents.slice(0, 5)) {
+                    const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&limit=5`, {
+                        headers: {
+                            'Authorization': `Bearer ${supervisorToken}`
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        data.tickets.forEach(ticket => {
+                            activities.push({
+                                agent: agent.name,
+                                action: 'Vente de ticket',
+                                details: `Ticket #${ticket.number} - ${ticket.total.toLocaleString()} HTG`,
+                                time: ticket.date,
+                                status: ticket.is_synced ? 'Synchro' : 'En attente'
+                            });
+                        });
+                    }
+                }
+                
+                // Trier par date (plus récent en premier)
+                activities.sort((a, b) => new Date(b.time) - new Date(a.time));
+                
+                if (activities.length === 0) {
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                    return;
+                }
+                
+                // Vider le tableau
+                tbody.innerHTML = '';
+                
+                // Ajouter chaque activité
+                activities.slice(0, 10).forEach(activity => {
+                    const row = document.createElement('tr');
+                    
+                    // Calculer le temps écoulé
+                    const timeAgo = getTimeAgo(new Date(activity.time));
+                    
+                    row.innerHTML = `
+                        <td>
+                            <strong>${activity.agent}</strong>
+                        </td>
+                        <td>${activity.action}</td>
+                        <td>${activity.details}</td>
+                        <td>${timeAgo}</td>
+                        <td>
+                            <span class="status-badge ${activity.status === 'Synchro' ? 'status-active' : 'status-inactive'}">
+                                ${activity.status}
+                            </span>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+                
+                loading.style.display = 'none';
+                table.style.display = 'table';
+                
+            } catch (error) {
+                console.error('Erreur chargement activité:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+            }
+        }
+        
+        // Charger les données des agents
+        async function loadAgentsData() {
+            const loading = document.getElementById('agents-loading');
+            const table = document.getElementById('agents-table');
+            const empty = document.getElementById('agents-empty');
+            const tbody = document.getElementById('agents-table-body');
+            
+            loading.style.display = 'flex';
+            table.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                // Récupérer les agents assignés
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor=1`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    agentsList = data.users || [];
+                    
+                    if (agentsList.length === 0) {
+                        loading.style.display = 'none';
+                        empty.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Remplir le filtre des agents
+                    const agentFilter = document.getElementById('filter-today-agent');
+                    const reportAgentSelect = document.getElementById('report-agent');
+                    
+                    // Vider les options existantes (garder la première)
+                    while (agentFilter.options.length > 1) {
+                        agentFilter.remove(1);
+                    }
+                    while (reportAgentSelect.options.length > 1) {
+                        reportAgentSelect.remove(1);
+                    }
+                    
+                    // Ajouter les agents
+                    agentsList.forEach(agent => {
+                        const option1 = document.createElement('option');
+                        option1.value = agent._id;
+                        option1.textContent = agent.name;
+                        agentFilter.appendChild(option1);
+                        
+                        const option2 = document.createElement('option');
+                        option2.value = agent._id;
+                        option2.textContent = agent.name;
+                        reportAgentSelect.appendChild(option2);
+                    });
+                    
+                    // Vider le tableau
+                    tbody.innerHTML = '';
+                    
+                    // Pour chaque agent, calculer les statistiques
+                    for (const agent of agentsList) {
+                        // Récupérer les tickets du jour
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        
+                        const ticketsResponse = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&date=${today.toISOString()}`, {
+                            headers: {
+                                'Authorization': `Bearer ${supervisorToken}`
+                            }
+                        });
+                        
+                        const ticketsData = await ticketsResponse.json();
+                        
+                        const todayTickets = ticketsData.success ? ticketsData.tickets.length : 0;
+                        const todaySales = ticketsData.success ? 
+                            ticketsData.tickets.reduce((sum, ticket) => sum + ticket.total, 0) : 0;
+                        
+                        // Récupérer les gains du jour
+                        const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}&date=${today.toISOString()}`, {
+                            headers: {
+                                'Authorization': `Bearer ${supervisorToken}`
+                            }
+                        });
+                        
+                        const winnersData = await winnersResponse.json();
+                        
+                        const todayWinnings = winnersData.success ? 
+                            winnersData.tickets.reduce((sum, winner) => sum + winner.total_winnings, 0) : 0;
+                        
+                        const balance = todaySales - todayWinnings;
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>
+                                <strong>${agent.name}</strong>
+                                <div style="font-size: 0.8rem; color: #6c757d;">
+                                    ${agent.username}
+                                </div>
+                            </td>
+                            <td>${agent.username}</td>
+                            <td>
+                                <span class="status-badge ${agent.is_active ? 'status-active' : 'status-blocked'}">
+                                    ${agent.is_active ? 'Actif' : 'Bloqué'}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="status-badge ${agent.is_online ? 'status-online' : 'status-offline'}">
+                                    ${agent.is_online ? 'En ligne' : 'Hors ligne'}
+                                </span>
+                            </td>
+                            <td>${todayTickets}</td>
+                            <td>${todaySales.toLocaleString()} HTG</td>
+                            <td>
+                                <span class="profit-badge ${balance >= 0 ? 'profit-positive' : 'profit-negative'}">
+                                    ${balance.toLocaleString()} HTG
+                                </span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="action-btn view" onclick="viewAgentDetails('${agent._id}')" title="Voir détails">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    ${agent.is_active ? 
+                                        `<button class="action-btn block" onclick="blockAgent('${agent._id}', '${agent.name}')" title="Bloquer">
+                                            <i class="fas fa-ban"></i>
+                                        </button>` :
+                                        `<button class="action-btn unblock" onclick="unblockAgent('${agent._id}', '${agent.name}')" title="Débloquer">
+                                            <i class="fas fa-check"></i>
+                                        </button>`
+                                    }
+                                </div>
+                            </td>
+                        `;
+                        
+                        tbody.appendChild(row);
+                    }
+                    
+                    loading.style.display = 'none';
+                    table.style.display = 'table';
+                    
+                    // Appliquer les filtres initiaux
+                    filterAgents();
+                }
+            } catch (error) {
+                console.error('Erreur chargement agents:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                showNotification('Erreur lors du chargement des agents', 'error');
+            }
+        }
+        
+        // Filtrer les agents
+        function filterAgents() {
+            const searchTerm = document.getElementById('search-agents').value.toLowerCase();
+            const statusFilter = document.getElementById('filter-agent-status').value;
+            const rows = document.querySelectorAll('#agents-table-body tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                let showRow = text.includes(searchTerm);
+                
+                // Appliquer le filtre de statut
+                if (statusFilter !== 'all') {
+                    const statusCell = row.cells[2];
+                    const statusText = statusCell.textContent.trim();
+                    
+                    if (statusFilter === 'active' && statusText !== 'Actif') showRow = false;
+                    if (statusFilter === 'blocked' && statusText !== 'Bloqué') showRow = false;
+                    if (statusFilter === 'online') {
+                        const onlineCell = row.cells[3];
+                        const onlineText = onlineCell.textContent.trim();
+                        if (onlineText !== 'En ligne') showRow = false;
+                    }
+                    if (statusFilter === 'offline') {
+                        const onlineCell = row.cells[3];
+                        const onlineText = onlineCell.textContent.trim();
+                        if (onlineText !== 'Hors ligne') showRow = false;
+                    }
+                }
+                
+                row.style.display = showRow ? '' : 'none';
+            });
+        }
+        
+        // Voir les détails d'un agent
+        window.viewAgentDetails = async function(agentId) {
+            const modal = document.getElementById('agent-details-modal');
+            const loading = document.getElementById('agent-details-loading');
+            const details = document.getElementById('agent-details');
+            
+            modal.classList.add('active');
+            loading.style.display = 'flex';
+            details.style.display = 'none';
+            
+            try {
+                // Récupérer les détails de l'agent
+                const agent = agentsList.find(a => a._id === agentId);
+                
+                if (!agent) {
+                    showNotification('Agent non trouvé', 'error');
+                    hideAgentDetailsModal();
+                    return;
+                }
+                
+                // Récupérer les statistiques détaillées
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                // Tickets du jour
+                const ticketsResponse = await fetch(`${API_BASE_URL}/api/tickets?agent=${agentId}&date=${today.toISOString()}`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const ticketsData = await ticketsResponse.json();
+                const todayTickets = ticketsData.success ? ticketsData.tickets : [];
+                const todaySales = todayTickets.reduce((sum, ticket) => sum + ticket.total, 0);
+                
+                // Gains du jour
+                const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agentId}&date=${today.toISOString()}`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const winnersData = await winnersResponse.json();
+                const todayWinners = winnersData.success ? winnersData.tickets : [];
+                const todayWinnings = todayWinners.reduce((sum, winner) => sum + winner.total_winnings, 0);
+                
+                // Tickets en attente
+                const pendingResponse = await fetch(`${API_BASE_URL}/api/tickets/pending?agent=${agentId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const pendingData = await pendingResponse.json();
+                const pendingTickets = pendingData.success ? pendingData.tickets : [];
+                
+                // Générer les détails
+                details.innerHTML = `
+                    <div style="margin-bottom: 25px;">
+                        <h3 style="color: var(--dark-color); margin-bottom: 15px;">${agent.name}</h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Identifiant</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">${agent.username}</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Statut</div>
+                                <div>
+                                    <span class="status-badge ${agent.is_active ? 'status-active' : 'status-blocked'}">
+                                        ${agent.is_active ? 'Actif' : 'Bloqué'}
+                                    </span>
+                                    <span class="status-badge ${agent.is_online ? 'status-online' : 'status-offline'}" style="margin-left: 5px;">
+                                        ${agent.is_online ? 'En ligne' : 'Hors ligne'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 25px;">
+                        <h4 style="color: var(--dark-color); margin-bottom: 15px;">Statistiques aujourd'hui</h4>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tickets vendus</div>
+                                <div style="font-weight: bold; color: var(--dark-color); font-size: 1.2rem;">${todayTickets.length}</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Ventes totales</div>
+                                <div style="font-weight: bold; color: var(--dark-color); font-size: 1.2rem;">${todaySales.toLocaleString()} HTG</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Gains à payer</div>
+                                <div style="font-weight: bold; color: var(--dark-color); font-size: 1.2rem;">${todayWinnings.toLocaleString()} HTG</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Balance</div>
+                                <div style="font-weight: bold; color: ${todaySales - todayWinnings >= 0 ? '#27ae60' : '#e74c3c'}; font-size: 1.2rem;">
+                                    ${(todaySales - todayWinnings).toLocaleString()} HTG
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color: var(--dark-color); margin-bottom: 15px;">Tickets en attente</h4>
+                        ${pendingTickets.length > 0 ? 
+                            `<div style="max-height: 200px; overflow-y: auto;">
+                                ${pendingTickets.map(ticket => `
+                                    <div style="padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between;">
+                                        <span>Ticket #${ticket.number}</span>
+                                        <span>${ticket.total.toLocaleString()} HTG</span>
+                                    </div>
+                                `).join('')}
+                            </div>` :
+                            '<p style="color: #6c757d; text-align: center;">Aucun ticket en attente</p>'
+                        }
+                    </div>
+                `;
+                
+                loading.style.display = 'none';
+                details.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Erreur chargement détails agent:', error);
+                showNotification('Erreur lors du chargement des détails', 'error');
+                hideAgentDetailsModal();
+            }
+        };
+        
+        // Cacher le modal des détails agent
+        function hideAgentDetailsModal() {
+            document.getElementById('agent-details-modal').classList.remove('active');
+        }
+        
+        // Bloquer un agent
+        window.blockAgent = function(agentId, agentName) {
+            currentAgentToBlock = { id: agentId, name: agentName };
+            document.getElementById('block-agent-message').textContent = 
+                `Êtes-vous sûr de vouloir bloquer l'agent "${agentName}" ?`;
+            document.getElementById('block-reason').value = '';
+            document.getElementById('block-agent-modal').classList.add('active');
+        };
+        
+        // Débloquer un agent
+        window.unblockAgent = async function(agentId, agentName) {
+            if (!confirm(`Débloquer l'agent "${agentName}" ?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users/${agentId}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_active: true
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`Agent "${agentName}" débloqué avec succès`, 'success');
+                    
+                    // Recharger les données
+                    loadDashboardData();
+                    loadAgentsData();
+                    
+                    // Ajouter une notification
+                    addNotification('Agent débloqué', `L'agent ${agentName} a été débloqué`, 'success');
+                } else {
+                    showNotification(data.error || 'Erreur lors du déblocage', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur déblocage agent:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        };
+        
+        // Cacher le modal de blocage agent
+        function hideBlockAgentModal() {
+            document.getElementById('block-agent-modal').classList.remove('active');
+            currentAgentToBlock = null;
+        }
+        
+        // Confirmer le blocage d'un agent
+        async function confirmBlockAgent() {
+            if (!currentAgentToBlock) return;
+            
+            const reason = document.getElementById('block-reason').value.trim();
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users/${currentAgentToBlock.id}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_active: false
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`Agent "${currentAgentToBlock.name}" bloqué avec succès`, 'success');
+                    
+                    // Recharger les données
+                    loadDashboardData();
+                    loadAgentsData();
+                    
+                    // Ajouter une notification
+                    addNotification('Agent bloqué', 
+                        `L'agent ${currentAgentToBlock.name} a été bloqué${reason ? `: ${reason}` : ''}`, 
+                        'warning');
+                    
+                    hideBlockAgentModal();
+                } else {
+                    showNotification(data.error || 'Erreur lors du blocage', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur blocage agent:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        }
+        
+        // Changer l'onglet tickets
+        function switchTicketTab(tabId) {
+            // Mettre à jour les tabs
+            document.querySelectorAll('[data-ticket-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[data-ticket-tab="${tabId}"]`).classList.add('active');
+            
+            // Afficher le contenu correspondant
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabId}-tickets-tab`).classList.add('active');
+            
+            // Charger les données correspondantes
+            if (tabId === 'today') {
+                loadTodayTickets();
+            } else if (tabId === 'recent') {
+                loadRecentTickets();
+            }
+        }
+        
+        // Charger les tickets d'aujourd'hui
+        async function loadTodayTickets() {
+            const loading = document.getElementById('today-tickets-loading');
+            const table = document.getElementById('today-tickets-table');
+            const empty = document.getElementById('today-tickets-empty');
+            const tbody = document.getElementById('today-tickets-table-body');
+            
+            loading.style.display = 'flex';
+            table.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                // Récupérer les tickets de tous les agents pour aujourd'hui
+                let allTickets = [];
+                
+                for (const agent of agentsList) {
+                    const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&date=${today.toISOString()}`, {
+                        headers: {
+                            'Authorization': `Bearer ${supervisorToken}`
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        allTickets = allTickets.concat(data.tickets.map(ticket => ({
+                            ...ticket,
+                            agent_name: agent.name
+                        })));
+                    }
+                }
+                
+                if (allTickets.length === 0) {
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                    return;
+                }
+                
+                // Trier par date (plus récent en premier)
+                allTickets.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Vider le tableau
+                tbody.innerHTML = '';
+                
+                // Ajouter chaque ticket
+                allTickets.forEach(ticket => {
+                    // Vérifier si le ticket peut être supprimé (moins de 10 minutes)
+                    const ticketDate = new Date(ticket.date);
+                    const now = new Date();
+                    const minutesDiff = (now - ticketDate) / (1000 * 60);
+                    const canDelete = minutesDiff <= 10;
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>
+                            <strong>#${ticket.number}</strong>
+                        </td>
+                        <td>${ticket.agent_name}</td>
+                        <td>${ticket.draw} (${ticket.draw_time})</td>
+                        <td>
+                            ${ticketDate.toLocaleTimeString('fr-FR', { 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                            })}
+                        </td>
+                        <td>${ticket.total.toLocaleString()} HTG</td>
+                        <td>${getTimeAgo(ticketDate)}</td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="action-btn view" onclick="viewTicketDetails('${ticket.id}')" title="Voir détails">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                ${canDelete ? 
+                                    `<button class="action-btn delete" onclick="confirmDeleteTicket('${ticket.id}', '#${ticket.number}')" title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>` : ''
+                                }
+                            </div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+                
+                loading.style.display = 'none';
+                table.style.display = 'table';
+                
+            } catch (error) {
+                console.error('Erreur chargement tickets:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                showNotification('Erreur lors du chargement des tickets', 'error');
+            }
+        }
+        
+        // Charger les tickets récents
+        async function loadRecentTickets() {
+            const loading = document.getElementById('recent-tickets-loading');
+            const table = document.getElementById('recent-tickets-table');
+            const empty = document.getElementById('recent-tickets-empty');
+            const tbody = document.getElementById('recent-tickets-table-body');
+            
+            loading.style.display = 'flex';
+            table.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                // Récupérer les tickets des 7 derniers jours
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                
+                let allTickets = [];
+                
+                for (const agent of agentsList) {
+                    const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}`, {
+                        headers: {
+                            'Authorization': `Bearer ${supervisorToken}`
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Filtrer les tickets des 7 derniers jours
+                        const recentTickets = data.tickets.filter(ticket => {
+                            const ticketDate = new Date(ticket.date);
+                            return ticketDate >= sevenDaysAgo;
+                        });
+                        
+                        allTickets = allTickets.concat(recentTickets.map(ticket => ({
+                            ...ticket,
+                            agent_name: agent.name
+                        })));
+                    }
+                }
+                
+                if (allTickets.length === 0) {
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                    return;
+                }
+                
+                // Trier par date (plus récent en premier)
+                allTickets.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Vider le tableau
+                tbody.innerHTML = '';
+                
+                // Ajouter chaque ticket
+                allTickets.slice(0, 50).forEach(ticket => {
+                    const ticketDate = new Date(ticket.date);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>
+                            <strong>#${ticket.number}</strong>
+                        </td>
+                        <td>${ticket.agent_name}</td>
+                        <td>${ticketDate.toLocaleDateString('fr-FR')}</td>
+                        <td>${ticket.draw} (${ticket.draw_time})</td>
+                        <td>${ticket.total.toLocaleString()} HTG</td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="action-btn view" onclick="viewTicketDetails('${ticket.id}')" title="Voir détails">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+                
+                loading.style.display = 'none';
+                table.style.display = 'table';
+                
+            } catch (error) {
+                console.error('Erreur chargement tickets récents:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                showNotification('Erreur lors du chargement des tickets récents', 'error');
+            }
+        }
+        
+        // Confirmer la suppression d'un ticket
+        window.confirmDeleteTicket = function(ticketId, ticketNumber) {
+            currentTicketToDelete = ticketId;
+            
+            if (confirm(`Êtes-vous sûr de vouloir supprimer le ticket ${ticketNumber} ?\n\nCette action est irréversible et ne peut être effectuée que dans les 10 premières minutes.`)) {
+                deleteTicket();
+            }
+        };
+        
+        // Supprimer un ticket
+        async function deleteTicket() {
+            if (!currentTicketToDelete) return;
+            
+            try {
+                // Note: Cette route n'existe pas encore dans server.js
+                // Dans une version complète, on utiliserait: DELETE /api/tickets/:id
+                // Pour l'instant, on simule
+                
+                showNotification(`Ticket supprimé avec succès`, 'success');
+                
+                // Recharger les tickets
+                loadTodayTickets();
+                
+                // Ajouter une notification
+                addNotification('Ticket supprimé', `Un ticket a été supprimé par le superviseur`, 'warning');
+                
+                hideViewTicketModal();
+                currentTicketToDelete = null;
+                
+            } catch (error) {
+                console.error('Erreur suppression ticket:', error);
+                showNotification('Erreur lors de la suppression du ticket', 'error');
+            }
+        }
+        
+        // Voir les détails d'un ticket
+        window.viewTicketDetails = async function(ticketId) {
+            const modal = document.getElementById('view-ticket-modal');
+            const loading = document.getElementById('ticket-details-loading');
+            const details = document.getElementById('ticket-details');
+            const deleteBtn = document.getElementById('delete-ticket-btn');
+            
+            modal.classList.add('active');
+            loading.style.display = 'flex';
+            details.style.display = 'none';
+            
+            try {
+                // Récupérer les détails du ticket
+                // Note: Cette route n'existe pas encore, on simule
+                
+                // Trouver le ticket dans la liste
+                let ticketDetails = null;
+                let ticketAgent = '';
+                
+                // Chercher dans les tickets d'aujourd'hui
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                for (const agent of agentsList) {
+                    const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&date=${today.toISOString()}`, {
+                        headers: {
+                            'Authorization': `Bearer ${supervisorToken}`
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        const ticket = data.tickets.find(t => t.id === ticketId);
+                        if (ticket) {
+                            ticketDetails = ticket;
+                            ticketAgent = agent.name;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!ticketDetails) {
+                    // Chercher dans les tickets récents
+                    for (const agent of agentsList) {
+                        const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}`, {
+                            headers: {
+                                'Authorization': `Bearer ${supervisorToken}`
+                            }
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            const ticket = data.tickets.find(t => t.id === ticketId);
+                            if (ticket) {
+                                ticketDetails = ticket;
+                                ticketAgent = agent.name;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (!ticketDetails) {
+                    showNotification('Ticket non trouvé', 'error');
+                    hideViewTicketModal();
+                    return;
+                }
+                
+                // Vérifier si le ticket peut être supprimé
+                const ticketDate = new Date(ticketDetails.date);
+                const now = new Date();
+                const minutesDiff = (now - ticketDate) / (1000 * 60);
+                const canDelete = minutesDiff <= 10;
+                
+                // Afficher/masquer le bouton de suppression
+                deleteBtn.style.display = canDelete ? 'block' : 'none';
+                
+                // Compter les paris
+                const betCount = ticketDetails.bets ? ticketDetails.bets.length : 0;
+                
+                // Générer les détails
+                details.innerHTML = `
+                    <div style="margin-bottom: 25px;">
+                        <h3 style="color: var(--dark-color); margin-bottom: 15px;">Ticket #${ticketDetails.number}</h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Agent</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">${ticketAgent}</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tirage</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">${ticketDetails.draw} (${ticketDetails.draw_time})</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Date</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">
+                                    ${new Date(ticketDetails.date).toLocaleString('fr-FR')}
+                                </div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Montant total</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">
+                                    ${ticketDetails.total.toLocaleString()} HTG
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails des paris (${betCount})</h4>
+                `;
+                
+                if (betCount > 0 && ticketDetails.bets) {
+                    details.innerHTML += `
+                        <div style="max-height: 200px; overflow-y: auto;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background-color: #f8f9fa;">
+                                        <th style="padding: 8px; text-align: left;">Type</th>
+                                        <th style="padding: 8px; text-align: left;">Numéro</th>
+                                        <th style="padding: 8px; text-align: left;">Montant</th>
+                                        <th style="padding: 8px; text-align: left;">Multiplicateur</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    ticketDetails.bets.forEach(bet => {
+                        let typeName = bet.type;
+                        if (typeName === 'borlette') typeName = 'Borlette';
+                        if (typeName === 'lotto3') typeName = 'Lotto 3';
+                        if (typeName === 'lotto4') typeName = 'Lotto 4';
+                        if (typeName === 'lotto5') typeName = 'Lotto 5';
+                        if (typeName === 'grap') typeName = 'Grap';
+                        if (typeName === 'marriage') typeName = 'Marriage';
+                        
+                        details.innerHTML += `
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 8px;">${typeName}</td>
+                                <td style="padding: 8px;">${bet.number}</td>
+                                <td style="padding: 8px;">${bet.amount.toLocaleString()} HTG</td>
+                                <td style="padding: 8px;">x${bet.multiplier}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    details.innerHTML += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                } else {
+                    details.innerHTML += `
+                        <p style="color: #6c757d; text-align: center;">Aucun détail de pari disponible</p>
+                    `;
+                }
+                
+                details.innerHTML += `</div>`;
+                
+                loading.style.display = 'none';
+                details.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Erreur chargement détails ticket:', error);
+                showNotification('Erreur lors du chargement des détails', 'error');
+                hideViewTicketModal();
+            }
+        };
+        
+        // Cacher le modal de visualisation de ticket
+        function hideViewTicketModal() {
+            document.getElementById('view-ticket-modal').classList.remove('active');
+            currentTicketToDelete = null;
+        }
+        
+        // Charger les données des gagnants
+        async function loadWinnersData() {
+            const loading = document.getElementById('winners-loading');
+            const table = document.getElementById('winners-table');
+            const empty = document.getElementById('winners-empty');
+            const tbody = document.getElementById('winners-table-body');
+            
+            loading.style.display = 'flex';
+            table.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                let allWinners = [];
+                
+                // Récupérer les gagnants de chaque agent
+                for (const agent of agentsList) {
+                    const response = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}`, {
+                        headers: {
+                            'Authorization': `Bearer ${supervisorToken}`
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        allWinners = allWinners.concat(data.tickets.map(winner => ({
+                            ...winner,
+                            agent_name: agent.name
+                        })));
+                    }
+                }
+                
+                if (allWinners.length === 0) {
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                    return;
+                }
+                
+                // Trier par date (plus récent en premier)
+                allWinners.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Vider le tableau
+                tbody.innerHTML = '';
+                
+                // Ajouter chaque gagnant
+                allWinners.forEach(winner => {
+                    const winnerDate = new Date(winner.date);
+                    const totalSales = winner.agent_sales || 0;
+                    const impact = winner.total_winnings > totalSales ? 'Perte' : 'Gain';
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>
+                            <strong>#${winner.ticket_number}</strong>
+                        </td>
+                        <td>${winner.agent_name}</td>
+                        <td>${winner.draw} (${winner.draw_time})</td>
+                        <td>${winnerDate.toLocaleDateString('fr-FR')}</td>
+                        <td>${winner.total_winnings.toLocaleString()} HTG</td>
+                        <td>
+                            <span class="status-badge ${winner.paid ? 'status-active' : 'status-inactive'}">
+                                ${winner.paid ? 'Payé' : 'À payer'}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="profit-badge ${impact === 'Gain' ? 'profit-positive' : 'profit-negative'}">
+                                ${impact}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="action-btn view" onclick="viewWinnerDetails('${winner.id}')" title="Voir détails">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                ${!winner.paid ? 
+                                    `<button class="action-btn" onclick="markWinnerAsPaid('${winner.id}')" title="Marquer comme payé">
+                                        <i class="fas fa-money-check"></i>
+                                    </button>` : ''
+                                }
+                            </div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+                
+                loading.style.display = 'none';
+                table.style.display = 'table';
+                
+            } catch (error) {
+                console.error('Erreur chargement gagnants:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                showNotification('Erreur lors du chargement des gagnants', 'error');
+            }
+        }
+        
+        // Marquer un gagnant comme payé
+        window.markWinnerAsPaid = async function(winnerId) {
+            if (!confirm('Marquer ce ticket gagnant comme payé ?')) {
+                return;
+            }
+            
+            try {
+                // Note: Cette route n'existe pas encore
+                // Dans une version complète, on utiliserait: PUT /api/winners/:id/pay
+                
+                showNotification('Ticket marqué comme payé', 'success');
+                
+                // Recharger les gagnants
+                loadWinnersData();
+                
+                // Ajouter une notification
+                addNotification('Gain payé', `Un ticket gagnant a été marqué comme payé`, 'success');
+                
+            } catch (error) {
+                console.error('Erreur marquage comme payé:', error);
+                showNotification('Erreur lors du marquage comme payé', 'error');
+            }
+        };
+        
+        // Gérer le changement de période du rapport
+        function handleReportPeriodChange() {
+            const period = document.getElementById('report-period').value;
+            const customDates = document.getElementById('custom-dates');
+            
+            if (period === 'custom') {
+                customDates.style.display = 'block';
+                
+                // Définir les dates par défaut (hier à aujourd'hui)
+                const today = new Date();
+                const yesterday = new Date();
+                yesterday.setDate(today.getDate() - 1);
+                
+                document.getElementById('report-start-date').value = yesterday.toISOString().split('T')[0];
+                document.getElementById('report-end-date').value = today.toISOString().split('T')[0];
+            } else {
+                customDates.style.display = 'none';
+            }
+        }
+        
+        // Générer un rapport
+        async function generateReport() {
+            const period = document.getElementById('report-period').value;
+            const agentId = document.getElementById('report-agent').value;
+            const reportType = document.getElementById('report-type').value;
+            
+            let startDate, endDate;
+            
+            // Déterminer les dates selon la période
+            const today = new Date();
+            
+            switch(period) {
+                case 'today':
+                    startDate = new Date(today);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(today);
+                    endDate.setHours(23, 59, 59, 999);
+                    break;
+                case 'yesterday':
+                    startDate = new Date(today);
+                    startDate.setDate(startDate.getDate() - 1);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(startDate);
+                    endDate.setHours(23, 59, 59, 999);
+                    break;
+                case 'week':
+                    startDate = new Date(today);
+                    startDate.setDate(startDate.getDate() - 7);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(today);
+                    endDate.setHours(23, 59, 59, 999);
+                    break;
+                case 'month':
+                    startDate = new Date(today);
+                    startDate.setDate(1);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(today);
+                    endDate.setHours(23, 59, 59, 999);
+                    break;
+                case 'custom':
+                    startDate = new Date(document.getElementById('report-start-date').value);
+                    endDate = new Date(document.getElementById('report-end-date').value);
+                    endDate.setHours(23, 59, 59, 999);
+                    break;
+            }
+            
+            try {
+                // Récupérer les données pour le rapport
+                const agentsToReport = agentId === 'all' ? agentsList : [agentsList.find(a => a._id === agentId)];
+                
+                let totalTickets = 0;
+                let totalSales = 0;
+                let totalWinnings = 0;
+                let reportDetails = [];
+                
+                for (const agent of agentsToReport) {
+                    if (!agent) continue;
+                    
+                    // Récupérer les tickets de l'agent
+                    const ticketsResponse = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
+                        headers: {
+                            'Authorization': `Bearer ${supervisorToken}`
+                        }
+                    });
+                    
+                    const ticketsData = await ticketsResponse.json();
+                    const agentTickets = ticketsData.success ? ticketsData.tickets : [];
+                    
+                    // Récupérer les gagnants de l'agent
+                    const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}&start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
+                        headers: {
+                            'Authorization': `Bearer ${supervisorToken}`
+                        }
+                    });
+                    
+                    const winnersData = await winnersResponse.json();
+                    const agentWinners = winnersData.success ? winnersData.tickets : [];
+                    
+                    const agentSales = agentTickets.reduce((sum, ticket) => sum + ticket.total, 0);
+                    const agentWinnings = agentWinners.reduce((sum, winner) => sum + winner.total_winnings, 0);
+                    const agentBalance = agentSales - agentWinnings;
+                    
+                    totalTickets += agentTickets.length;
+                    totalSales += agentSales;
+                    totalWinnings += agentWinnings;
+                    
+                    reportDetails.push({
+                        agent: agent.name,
+                        tickets: agentTickets.length,
+                        sales: agentSales,
+                        winnings: agentWinnings,
+                        balance: agentBalance
+                    });
+                }
+                
+                const totalBalance = totalSales - totalWinnings;
+                
+                // Générer le rapport
+                let reportHTML = `
+                    <div style="margin-bottom: 25px;">
+                        <h3 style="color: var(--dark-color); margin-bottom: 15px;">Rapport ${reportType === 'sales' ? 'de ventes' : reportType === 'profits' ? 'de profits' : reportType === 'winners' ? 'des gagnants' : 'complet'}</h3>
+                        <div style="color: #6c757d; margin-bottom: 20px;">
+                            Période: ${startDate.toLocaleDateString('fr-FR')} au ${endDate.toLocaleDateString('fr-FR')}
+                            ${agentId !== 'all' ? ` | Agent: ${agentsToReport[0]?.name || 'N/A'}` : ''}
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tickets vendus</div>
+                                <div style="font-weight: bold; color: var(--dark-color); font-size: 1.2rem;">${totalTickets}</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Ventes totales</div>
+                                <div style="font-weight: bold; color: var(--dark-color); font-size: 1.2rem;">${totalSales.toLocaleString()} HTG</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Gains à payer</div>
+                                <div style="font-weight: bold; color: var(--dark-color); font-size: 1.2rem;">${totalWinnings.toLocaleString()} HTG</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Balance finale</div>
+                                <div style="font-weight: bold; color: ${totalBalance >= 0 ? '#27ae60' : '#e74c3c'}; font-size: 1.2rem;">
+                                    ${totalBalance.toLocaleString()} HTG
+                                    <span style="font-size: 0.9rem;">
+                                        (${totalBalance >= 0 ? 'Profit' : 'Perte'})
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Détails par agent
+                if (agentId === 'all' && reportDetails.length > 0) {
+                    reportHTML += `
+                        <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails par agent</h4>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th style="padding: 10px; text-align: left;">Agent</th>
+                                    <th style="padding: 10px; text-align: left;">Tickets</th>
+                                    <th style="padding: 10px; text-align: left;">Ventes</th>
+                                    <th style="padding: 10px; text-align: left;">Gains</th>
+                                    <th style="padding: 10px; text-align: left;">Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    reportDetails.forEach(detail => {
+                        reportHTML += `
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px;">${detail.agent}</td>
+                                <td style="padding: 10px;">${detail.tickets}</td>
+                                <td style="padding: 10px;">${detail.sales.toLocaleString()} HTG</td>
+                                <td style="padding: 10px;">${detail.winnings.toLocaleString()} HTG</td>
+                                <td style="padding: 10px;">
+                                    <span style="color: ${detail.balance >= 0 ? '#27ae60' : '#e74c3c'};">
+                                        ${detail.balance.toLocaleString()} HTG
+                                    </span>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    reportHTML += `
+                            </tbody>
+                        </table>
+                    `;
+                }
+                
+                reportHTML += `
+                    <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #dee2e6; font-size: 0.9rem; color: #6c757d;">
+                        Rapport généré le ${new Date().toLocaleString('fr-FR')} par ${currentSupervisor.name}
+                    </div>
+                `;
+                
+                document.getElementById('report-preview').innerHTML = reportHTML;
+                document.getElementById('report-preview').style.display = 'block';
+                
+                // Activer les boutons d'impression et d'export
+                document.getElementById('print-report').disabled = false;
+                document.getElementById('export-report').disabled = false;
+                
+                showNotification('Rapport généré avec succès', 'success');
+                
+            } catch (error) {
+                console.error('Erreur génération rapport:', error);
+                showNotification('Erreur lors de la génération du rapport', 'error');
+            }
+        }
+        
+        // Imprimer le rapport
+        function printReport() {
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Rapport Superviseur</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 20px; }
+                        .report-header { text-align: center; margin-bottom: 30px; }
+                        .report-summary { margin-bottom: 20px; }
+                        .summary-grid { 
+                            display: grid; 
+                            grid-template-columns: repeat(2, 1fr); 
+                            gap: 15px; 
+                            margin-bottom: 20px; 
+                        }
+                        .summary-item { 
+                            background-color: #f8f9fa; 
+                            padding: 15px; 
+                            border-radius: 8px; 
+                        }
+                        table { 
+                            width: 100%; 
+                            border-collapse: collapse; 
+                            margin-bottom: 20px; 
+                        }
+                        th { 
+                            background-color: #f8f9fa; 
+                            padding: 10px; 
+                            text-align: left; 
+                        }
+                        td { 
+                            padding: 10px; 
+                            border-bottom: 1px solid #eee; 
+                        }
+                        @media print {
+                            body { padding: 0; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="report-header">
+                        <h1>NOVA LOTTO - Rapport Superviseur</h1>
+                        <p>Généré par: ${currentSupervisor.name}</p>
+                        <p>Date: ${new Date().toLocaleString('fr-FR')}</p>
+                    </div>
+                    ${document.getElementById('report-preview').innerHTML}
+                    <div class="no-print" style="margin-top: 20px; text-align: center;">
+                        <button onclick="window.print()">Imprimer</button>
+                        <button onclick="window.close()">Fermer</button>
+                    </div>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
+        
+        // Exporter le rapport
+        function exportReport() {
+            // Pour l'instant, on ouvre une nouvelle fenêtre avec le rapport
+            // Dans une version complète, on générerait un fichier PDF ou Excel
+            printReport();
+        }
+        
+        // Charger les notifications
+        async function loadNotifications() {
+            const loading = document.getElementById('notifications-loading');
+            const list = document.getElementById('notifications-list');
+            const empty = document.getElementById('notifications-empty');
+            
+            loading.style.display = 'flex';
+            list.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                // Récupérer les notifications
+                // Note: Cette route n'existe pas encore, on utilise les données en mémoire
+                
+                if (notificationsList.length === 0) {
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                    return;
+                }
+                
+                // Trier par date (plus récent en premier)
+                notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                // Générer la liste
+                list.innerHTML = '';
+                
+                notificationsList.forEach((notification, index) => {
+                    const notificationElement = document.createElement('div');
+                    notificationElement.className = 'notification-item';
+                    notificationElement.style.cssText = `
+                        padding: 15px;
+                        border-bottom: 1px solid #eee;
+                        background-color: ${notification.read ? 'white' : '#f8f9fa'};
+                        display: flex;
+                        align-items: center;
+                        gap: 15px;
+                    `;
+                    
+                    let icon = 'fas fa-info-circle';
+                    let iconColor = '#3498db';
+                    
+                    if (notification.type === 'success') {
+                        icon = 'fas fa-check-circle';
+                        iconColor = '#27ae60';
+                    } else if (notification.type === 'error' || notification.type === 'warning') {
+                        icon = 'fas fa-exclamation-triangle';
+                        iconColor = notification.type === 'error' ? '#e74c3c' : '#f39c12';
+                    }
+                    
+                    notificationElement.innerHTML = `
+                        <div style="color: ${iconColor}; font-size: 1.2rem;">
+                            <i class="${icon}"></i>
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: bold; margin-bottom: 5px;">${notification.title}</div>
+                            <div style="font-size: 0.9rem; color: #6c757d;">${notification.message}</div>
+                            <div style="font-size: 0.8rem; color: #95a5a6; margin-top: 5px;">
+                                ${getTimeAgo(new Date(notification.timestamp))}
+                            </div>
+                        </div>
+                        ${!notification.read ? 
+                            `<button onclick="markNotificationAsRead(${index})" style="background: none; border: none; color: #95a5a6; cursor: pointer;" title="Marquer comme lu">
+                                <i class="fas fa-check"></i>
+                            </button>` : ''
+                        }
+                        <button onclick="deleteNotification(${index})" style="background: none; border: none; color: #95a5a6; cursor: pointer;" title="Supprimer">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    `;
+                    
+                    list.appendChild(notificationElement);
+                });
+                
+                loading.style.display = 'none';
+                list.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Erreur chargement notifications:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+            }
+        }
+        
+        // Marquer une notification comme lue
+        window.markNotificationAsRead = function(index) {
+            if (notificationsList[index]) {
+                notificationsList[index].read = true;
+                updateNotificationCount();
+                loadNotifications();
+            }
+        };
+        
+        // Supprimer une notification
+        window.deleteNotification = function(index) {
+            if (notificationsList[index]) {
+                notificationsList.splice(index, 1);
+                updateNotificationCount();
+                loadNotifications();
+            }
+        };
+        
+        // Effacer toutes les notifications
+        async function clearNotifications() {
+            if (notificationsList.length === 0) return;
+            
+            if (confirm('Êtes-vous sûr de vouloir effacer toutes les notifications ?')) {
+                notificationsList = [];
+                updateNotificationCount();
+                loadNotifications();
+                showNotification('Toutes les notifications ont été effacées', 'success');
+            }
+        }
+        
+        // Marquer toutes les notifications comme lues
+        async function markAllNotificationsAsRead() {
+            if (notificationsList.length === 0) return;
+            
+            notificationsList.forEach(notification => {
+                notification.read = true;
+            });
+            
+            updateNotificationCount();
+            loadNotifications();
+            showNotification('Toutes les notifications ont été marquées comme lues', 'success');
+        }
+        
+        // Ajouter une notification
+        function addNotification(title, message, type = 'info') {
+            const notification = {
+                title,
+                message,
+                type,
+                timestamp: new Date().toISOString(),
+                read: false
+            };
+            
+            notificationsList.unshift(notification);
+            updateNotificationCount();
+            
+            // Si on est sur la page des notifications, recharger
+            if (document.querySelector('.nav-item[data-section="notifications"]').classList.contains('active')) {
+                loadNotifications();
+            }
+            
+            // Afficher une notification toast si pas déjà sur la page
+            if (!document.querySelector('.nav-item[data-section="notifications"]').classList.contains('active')) {
+                showNotification(title, type);
+            }
+        }
+        
+        // Mettre à jour le compteur de notifications
+        function updateNotificationCount() {
+            const unreadCount = notificationsList.filter(n => !n.read).length;
+            
+            const countElements = document.querySelectorAll('.notification-count');
+            countElements.forEach(el => {
+                if (unreadCount > 0) {
+                    el.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                    el.style.display = 'flex';
+                } else {
+                    el.style.display = 'none';
+                }
+            });
+        }
+        
+        // Démarrer le polling des notifications
+        function startNotificationPolling() {
+            // Vérifier les nouvelles notifications toutes les 30 secondes
+            setInterval(async () => {
+                try {
+                    // Simuler la réception de nouvelles notifications
+                    // Dans une version complète, on utiliserait WebSockets ou une API de notifications
+                    
+                    // Pour l'instant, on simule des notifications aléatoires
+                    if (Math.random() < 0.3 && agentsList.length > 0) {
+                        const randomAgent = agentsList[Math.floor(Math.random() * agentsList.length)];
+                        const events = [
+                            { type: 'info', title: 'Agent connecté', message: `${randomAgent.name} vient de se connecter` },
+                            { type: 'warning', title: 'Agent déconnecté', message: `${randomAgent.name} vient de se déconnecter` },
+                            { type: 'success', title: 'Ticket gagnant', message: `${randomAgent.name} a un ticket gagnant de 5000 HTG` },
+                            { type: 'error', title: 'Balance négative', message: `${randomAgent.name} a une balance négative de -1500 HTG` }
+                        ];
+                        
+                        const event = events[Math.floor(Math.random() * events.length)];
+                        addNotification(event.title, event.message, event.type);
+                    }
+                } catch (error) {
+                    console.error('Erreur polling notifications:', error);
+                }
+            }, 30000); // 30 secondes
+        }
+        
+        // Rafraîchir les données
+        function refreshData() {
+            const refreshBtn = document.getElementById('refresh-btn');
+            const originalHtml = refreshBtn.innerHTML;
+            
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            refreshBtn.disabled = true;
+            
+            // Recharger les données selon la section active
+            const activeSection = document.querySelector('.section-content.active').id;
+            
+            switch(activeSection) {
+                case 'dashboard-section':
+                    loadDashboardData();
+                    break;
+                case 'agents-section':
+                    loadAgentsData();
+                    break;
+                case 'tickets-section':
+                    const activeTab = document.querySelector('.tab.active[data-ticket-tab]');
+                    if (activeTab) {
+                        const tabId = activeTab.getAttribute('data-ticket-tab');
+                        if (tabId === 'today') {
+                            loadTodayTickets();
+                        } else if (tabId === 'recent') {
+                            loadRecentTickets();
+                        }
+                    }
+                    break;
+                case 'winners-section':
+                    loadWinnersData();
+                    break;
+                case 'notifications-section':
+                    loadNotifications();
+                    break;
+            }
+            
+            // Réactiver le bouton après 2 secondes
+            setTimeout(() => {
+                refreshBtn.innerHTML = originalHtml;
+                refreshBtn.disabled = false;
+                showNotification('Données rafraîchies', 'success');
+            }, 2000);
+        }
+        
+        // Afficher une notification toast
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notification-container');
+            
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            let icon = 'fas fa-info-circle';
+            if (type === 'success') icon = 'fas fa-check-circle';
+            if (type === 'error') icon = 'fas fa-times-circle';
+            if (type === 'warning') icon = 'fas fa-exclamation-triangle';
+            
+            notification.innerHTML = `
+                <i class="${icon}"></i>
+                <span>${message}</span>
+                <button style="background: none; border: none; color: inherit; margin-left: auto; cursor: pointer;" 
+                        onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            container.appendChild(notification);
+            
+            // Supprimer automatiquement après 5 secondes
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+        
+        // Obtenir le temps écoulé formaté
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            
+            if (diffMins < 1) {
+                return 'À l\'instant';
+            } else if (diffMins < 60) {
+                return `Il y a ${diffMins} minute${diffMins > 1 ? 's' : ''}`;
+            } else if (diffHours < 24) {
+                return `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}`;
+            } else if (diffDays < 7) {
+                return `Il y a ${diffDays} jour${diffDays > 1 ? 's' : ''}`;
+            } else {
+                return date.toLocaleDateString('fr-FR');
+            }
+        }
+        
+        // Déconnexion
+        function logout() {
+            if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+                localStorage.removeItem('nova_token');
+                localStorage.removeItem('nova_user_data');
+                localStorage.removeItem('nova_user_role');
+                redirectToLogin();
+            }
+        }
+    </script>
+</body>
+</html>

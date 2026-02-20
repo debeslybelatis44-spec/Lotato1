@@ -1,0 +1,1827 @@
+:root {
+    --primary-color: #ad00f1;
+    --secondary-color: #3498db;
+    --accent-color: #05790d;
+    --success-color: #f08c00;
+    --warning-color: #1cf100;
+    --light-color: #ecf0f1;
+    --dark-color: #0004ff;
+    --miami-color: #e74c3c;
+    --georgia-color: #031a8e;
+    --newyork-color: #e99700;
+    --texas-color: #5d0b2a;
+    --tunisia-color: #1abc9c;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background-color: #f5f7fa;
+    color: var(--dark-color);
+    line-height: 1.6;
+    max-width: 500px;
+    margin: 0 auto;
+    position: relative;
+    min-height: 100vh;
+}
+
+.container {
+    padding: 15px;
+    padding-bottom: 80px;
+}
+
+header {
+    background: linear-gradient(135deg, var(--primary-color), #1a2530);
+    color: white;
+    padding: 15px;
+    text-align: center;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    position: relative;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.logo-image {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--warning-color);
+}
+
+.logo {
+    font-size: 2.5rem;
+    color: var(--warning-color);
+}
+
+.header-text h1 {
+    font-size: 1.8rem;
+    margin-bottom: 5px;
+}
+
+.header-text p {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.time-display {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 8px 15px;
+    border-radius: 20px;
+    margin-top: 10px;
+    font-size: 0.9rem;
+}
+
+.draws-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.draw-card {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    text-align: center;
+    transition: transform 0.3s, box-shadow 0.3s;
+    cursor: pointer;
+}
+
+.draw-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.draw-card.miami {
+    border-top: 5px solid var(--miami-color);
+}
+
+.draw-card.georgia {
+    border-top: 5px solid var(--georgia-color);
+}
+
+.draw-card.newyork {
+    border-top: 5px solid var(--newyork-color);
+}
+
+.draw-card.texas {
+    border-top: 5px solid var(--texas-color);
+}
+
+.draw-card.tunisia {
+    border-top: 5px solid var(--tunisia-color);
+}
+
+.draw-icon {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+}
+
+.miami .draw-icon {
+    color: var(--miami-color);
+}
+
+.georgia .draw-icon {
+    color: var(--georgia-color);
+}
+
+.newyork .draw-icon {
+    color: var(--newyork-color);
+}
+
+.texas .draw-icon {
+    color: var(--texas-color);
+}
+
+.tunisia .draw-icon {
+    color: var(--tunisia-color);
+}
+
+.draw-card h3 {
+    font-size: 1.2rem;
+    margin-bottom: 5px;
+}
+
+.draw-buttons {
+    display: flex;
+    gap: 5px;
+    margin-top: 10px;
+}
+
+.draw-btn {
+    flex: 1;
+    padding: 6px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    background-color: var(--light-color);
+    transition: background-color 0.3s;
+}
+
+.draw-btn:hover {
+    background-color: #dde4e6;
+}
+
+.draw-btn.active {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.draw-btn.morning {
+    background-color: #f39c12;
+    color: white;
+}
+
+.draw-btn.evening {
+    background-color: #2c3e50;
+    color: white;
+}
+
+.results-section {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--light-color);
+}
+
+.section-title i {
+    margin-right: 10px;
+    color: var(--secondary-color);
+}
+
+.section-title h2 {
+    font-size: 1.2rem;
+    color: var(--primary-color);
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.result-card {
+    background-color: var(--light-color);
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.result-card h4 {
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+    color: var(--primary-color);
+}
+
+.result-number {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--accent-color);
+}
+
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: white;
+    display: flex;
+    justify-content: space-around;
+    padding: 15px;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    max-width: 500px;
+    margin: 0 auto;
+    z-index: 1000;
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #7f8c8d;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.nav-item.active {
+    color: var(--secondary-color);
+}
+
+.nav-icon {
+    font-size: 1.5rem;
+    margin-bottom: 5px;
+}
+
+/* Panneau multi-tirages */
+.multi-draw-panel {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.multi-draw-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.multi-draw-title {
+    font-size: 1.2rem;
+    color: var(--primary-color);
+}
+
+.multi-draw-toggle {
+    background: none;
+    border: none;
+    color: var(--secondary-color);
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
+.multi-draw-content {
+    display: none;
+}
+
+.multi-draw-content.expanded {
+    display: block;
+}
+
+.multi-draw-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.multi-draw-option {
+    background-color: var(--light-color);
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.multi-draw-option:hover {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.multi-draw-option.selected {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.multi-draw-form {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+/* Styles pour les écrans de paris */
+.betting-screen {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: white;
+    z-index: 100;
+    padding: 20px;
+    overflow-y: auto;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.betting-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--light-color);
+}
+
+.back-button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    margin-right: 15px;
+    cursor: pointer;
+}
+
+.betting-title {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+.bet-types-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.bet-type-card {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    text-align: center;
+    transition: transform 0.3s;
+    cursor: pointer;
+}
+
+.bet-type-card:hover {
+    transform: scale(1.05);
+}
+
+.bet-icon {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    color: var(--secondary-color);
+}
+
+.bet-type-card h3 {
+    font-size: 1rem;
+    margin-bottom: 5px;
+}
+
+.bet-multiplier {
+    font-size: 0.9rem;
+    color: var(--success-color);
+    font-weight: bold;
+}
+
+.bet-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.bet-option {
+    background-color: var(--light-color);
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.bet-option:hover {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.bet-option-icon {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+}
+
+.bet-option h3 {
+    font-size: 1.2rem;
+}
+
+.bet-form {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+input, select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+.number-inputs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.number-inputs input {
+    text-align: center;
+    font-size: 1.2rem;
+}
+
+.bet-actions {
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.btn-primary {
+    background-color: var(--secondary-color);
+    color: white;
+    flex: 2;
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+}
+
+.btn-secondary {
+    background-color: var(--light-color);
+    color: var(--dark-color);
+    flex: 1;
+}
+
+.btn-secondary:hover {
+    background-color: #dde4e6;
+}
+
+.active-bets {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.bet-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--light-color);
+}
+
+.bet-item:last-child {
+    border-bottom: none;
+}
+
+.bet-details {
+    flex: 2;
+}
+
+.bet-amount {
+    flex: 1;
+    text-align: right;
+    font-weight: bold;
+}
+
+.bet-remove {
+    color: var(--accent-color);
+    margin-left: 10px;
+    cursor: pointer;
+}
+
+.bet-total {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 2px solid var(--light-color);
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.submit-bet {
+    background-color: var(--success-color);
+    color: white;
+    width: 100%;
+    padding: 15px;
+    margin-top: 20px;
+    font-size: 1.1rem;
+}
+
+.submit-bet:hover {
+    background-color: #219955;
+}
+
+/* Styles pour les options Lotto 5 */
+.lotto-options {
+    margin-bottom: 15px;
+}
+
+.option-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.option-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+/* Styles pour les boules terminant par N */
+.n-balls-container {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.n-ball {
+    background-color: var(--light-color);
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.n-ball:hover {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+/* Styles pour l'interface optimisée */
+.quick-bet-form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.quick-number-input {
+    flex: 2;
+}
+
+.quick-amount-input {
+    flex: 1;
+}
+
+/* Styles pour les autres écrans */
+.screen {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: white;
+    z-index: 100;
+    padding: 20px;
+    overflow-y: auto;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.screen-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--light-color);
+}
+
+.screen-title {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+/* Animation pour l'affichage des écrans */
+@keyframes slideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+.slide-in {
+    animation: slideIn 0.3s forwards;
+}
+
+@keyframes slideOut {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+}
+
+.slide-out {
+    animation: slideOut 0.3s forwards;
+}
+
+/* Styles pour l'impression */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .print-ticket, .print-ticket * {
+        visibility: visible;
+    }
+    .print-ticket {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+    
+    .ticket-logo {
+        max-width: 80px;
+        height: auto;
+    }
+}
+
+/* Styles pour la configuration */
+.config-section {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.config-status {
+    padding: 10px;
+    border-radius: 8px;
+    margin-top: 10px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.status-connected {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-disconnected {
+    background-color: #f8d7da;
+    color: #e400b2;
+}
+
+.draw-info {
+    background-color: var(--light-color);
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.draw-info h4 {
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+
+.draw-info p {
+    margin-bottom: 5px;
+}
+
+/* Nouveaux styles pour les boutons BO */
+.bo-ball {
+    background-color: var(--warning-color);
+    color: white;
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    font-weight: bold;
+}
+
+.bo-ball:hover {
+    background-color: #e67e22;
+}
+
+/* Styles pour les options multiples */
+.multi-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.multi-option:hover {
+    background-color: #f5f5f5;
+}
+
+.multi-option.selected {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.multi-option input {
+    width: auto;
+}
+
+/* Nouveaux styles pour les boutons d'impression */
+.ticket-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.ticket-action-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.save-ticket {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.save-ticket:hover {
+    background-color: #2300a0;
+}
+
+.print-ticket-btn {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.print-ticket-btn:hover {
+    background-color: #219955;
+}
+
+/* Styles pour l'historique */
+.history-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.stat-card {
+    background-color: var(--light-color);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.history-item {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    margin-bottom: 10px;
+    position: relative;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--light-color);
+}
+
+.history-draw {
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.history-date {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.history-bets {
+    margin-bottom: 10px;
+}
+
+.history-bet {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 0.9rem;
+}
+
+.history-total {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid var(--light-color);
+    font-weight: bold;
+}
+
+/* Nouveaux styles pour les boutons enregistrer et imprimer */
+.ticket-footer {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 2px solid var(--light-color);
+}
+
+.ticket-footer-btn {
+    flex: 1;
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.search-history {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.search-input {
+    flex: 2;
+}
+
+.search-btn {
+    flex: 1;
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.search-btn:hover {
+    background-color: #2980b9;
+}
+
+/* Styles pour les rapports */
+.reports-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.report-btn {
+    background-color: var(--light-color);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    border: none;
+    font-weight: bold;
+}
+
+.report-btn:hover {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.report-btn.general {
+    grid-column: 1 / -1;
+    background-color: var(--warning-color);
+    color: white;
+}
+
+.report-btn.general:hover {
+    background-color: #e67e22;
+}
+
+.report-results {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.report-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--light-color);
+}
+
+.report-item:last-child {
+    border-bottom: none;
+}
+
+/* Nouveau style pour le bouton enregistrer et imprimer */
+.save-print-btn {
+    background-color: var(--warning-color);
+    color: white;
+}
+
+.save-print-btn:hover {
+    background-color: #e67e22;
+}
+
+/* Styles pour l'écran de connexion */
+.login-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, var(--primary-color), #1a2530);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    padding: 20px;
+}
+
+.login-container {
+    background-color: white;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 400px;
+}
+
+.login-logo {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.login-logo .logo {
+    font-size: 3rem;
+    color: var(--warning-color);
+}
+
+.login-title {
+    text-align: center;
+    margin-bottom: 20px;
+    color: var(--primary-color);
+}
+
+.login-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    text-align: center;
+    display: none;
+}
+
+/* Nouveaux styles pour l'affichage des paris groupés */
+.bets-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+
+.bets-table th {
+    background-color: var(--light-color);
+    padding: 10px;
+    text-align: left;
+    font-weight: bold;
+    border-bottom: 2px solid #ddd;
+}
+
+.bets-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.bets-table tr:hover {
+    background-color: #f9f9f9;
+}
+
+.grouped-bets {
+    background-color: #f8f9fa;
+    border-left: 4px solid var(--secondary-color);
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 4px;
+}
+
+.group-header {
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.group-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 5px;
+    margin-top: 5px;
+}
+
+.group-item {
+    background-color: white;
+    padding: 5px;
+    border-radius: 4px;
+    text-align: center;
+    border: 1px solid #ddd;
+    font-size: 0.9rem;
+}
+
+.bet-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.bet-summary:last-child {
+    border-bottom: none;
+}
+
+.bet-type {
+    font-weight: bold;
+    min-width: 100px;
+}
+
+.bet-numbers {
+    flex: 1;
+    text-align: center;
+}
+
+.bet-amount-summary {
+    min-width: 80px;
+    text-align: right;
+    font-weight: bold;
+}
+
+/* Styles pour la synchronisation Firebase */
+.sync-status {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.sync-connected {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.sync-disconnected {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.sync-pending {
+    background-color: var(--warning-color);
+    color: white;
+}
+
+/* Nouveaux styles pour les notifications */
+.notification {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--primary-color);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 90%;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 20px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+.notification.success {
+    background-color: var(--success-color);
+}
+
+.notification.warning {
+    background-color: var(--warning-color);
+}
+
+.notification.error {
+    background-color: var(--accent-color);
+}
+
+.notification i {
+    font-size: 1.2rem;
+}
+
+/* Styles pour le logo dans le ticket */
+.ticket-logo-container {
+    text-align: center;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--light-color);
+}
+
+.ticket-logo {
+    max-width: 100px;
+    height: auto;
+    border-radius: 10px;
+}
+
+/* Style pour le bouton de vérification des fiches */
+.sync-check-btn {
+    background-color: var(--warning-color);
+    color: white;
+}
+
+.sync-check-btn:hover {
+    background-color: #e67e22;
+}
+
+/* Indicateur de fiches en attente */
+.pending-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: var(--accent-color);
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+/* Améliorations pour la navigation après ajout */
+.bet-type-navigation {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+}
+
+.bet-type-nav-item {
+    background-color: var(--light-color);
+    padding: 10px 15px;
+    border-radius: 20px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.3s;
+    border: 2px solid transparent;
+}
+
+.bet-type-nav-item:hover {
+    background-color: #dde4e6;
+}
+
+.bet-type-nav-item.active {
+    background-color: var(--secondary-color);
+    color: white;
+    border-color: var(--secondary-color);
+}
+
+/* Styles pour les boutons de modification */
+.edit-btn {
+    background-color: var(--warning-color);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin-left: 5px;
+}
+
+.edit-btn:hover {
+    background-color: #e67e22;
+}
+
+.delete-btn {
+    background-color: var(--accent-color);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin-left: 5px;
+}
+
+.delete-btn:hover {
+    background-color: #c0392b;
+}
+
+/* Styles pour les boutons automatiques */
+.auto-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.auto-btn {
+    flex: 1;
+    background-color: var(--secondary-color);
+    color: white;
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+
+.auto-btn:hover {
+    background-color: #2980b9;
+}
+
+.auto-btn.reverse {
+    background-color: var(--tunisia-color);
+}
+
+.auto-btn.reverse:hover {
+    background-color: #16a085;
+}
+
+/* Styles pour les boules paire (GRAP corrigé) */
+.pair-ball {
+    background-color: var(--light-color);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-weight: bold;
+}
+
+.pair-ball:hover {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+/* Styles pour l'écran de rapport */
+.report-screen {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: white;
+    z-index: 100;
+    padding: 20px;
+    overflow-y: auto;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.report-container {
+    padding: 15px;
+}
+
+.report-header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 10px;
+}
+
+.report-details {
+    margin-bottom: 20px;
+}
+
+.report-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.report-row.total {
+    font-weight: bold;
+    border-top: 2px solid #333;
+    border-bottom: none;
+    padding-top: 15px;
+    margin-top: 10px;
+}
+
+.report-profit {
+    color: var(--success-color);
+    font-weight: bold;
+}
+
+.report-loss {
+    color: var(--accent-color);
+    font-weight: bold;
+}
+
+/* Nouveaux styles pour la sélection multiple de graps */
+.all-graps-btn {
+    background-color: var(--warning-color);
+    color: white;
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.all-graps-btn:hover {
+    background-color: #e67e22;
+}
+
+/* Styles pour la sélection des jeux multi-tirages */
+.multi-game-select {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.multi-game-option {
+    background-color: var(--light-color);
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.multi-game-option:hover {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.multi-game-option.selected {
+    background-color: var(--success-color);
+    color: white;
+}
+
+/* Styles pour la gestion des fiches */
+.ticket-management {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    margin-bottom: 10px;
+}
+
+.ticket-management-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.ticket-actions-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.ticket-search-box {
+    margin-bottom: 15px;
+}
+
+.ticket-details {
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+/* Organisation améliorée des jeux */
+.game-category {
+    margin-bottom: 20px;
+}
+
+.game-category-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid var(--light-color);
+}
+
+.game-category-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.game-item {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 15px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    border-left: 4px solid var(--secondary-color);
+}
+
+.game-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.game-item.borlette {
+    border-left-color: var(--miami-color);
+}
+
+.game-item.lotto {
+    border-left-color: var(--newyork-color);
+}
+
+.game-item.special {
+    border-left-color: var(--success-color);
+}
+
+.game-name {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.game-multiplier {
+    font-size: 0.9rem;
+    color: var(--warning-color);
+    font-weight: bold;
+}
+
+/* Styles pour l'affichage simultané de toutes les catégories */
+.all-categories-container {
+    display: block;
+}
+
+.game-category {
+    display: block !important;
+}
+
+/* Nouveaux styles pour l'écran de vérification des résultats */
+.results-check-screen {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: white;
+    z-index: 100;
+    padding: 20px;
+    overflow-y: auto;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.winning-ticket {
+    background-color: #d4edda;
+    border-left: 4px solid var(--success-color);
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+}
+
+.winning-amount {
+    color: var(--success-color);
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.lot-result {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 5px;
+}
+
+.lot-number {
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.lot-multiplier {
+    color: var(--warning-color);
+    font-weight: bold;
+}
+
+.check-results-btn {
+    background-color: var(--success-color);
+    color: white;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.check-results-btn:hover {
+    background-color: #219955;
+}
+
+/* Styles pour les fiches multi-tirages */
+.multi-draw-ticket {
+    background-color: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.multi-draw-ticket-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ffc107;
+}
+
+.multi-draw-bets-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+}
+
+.multi-draw-bet-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.multi-draw-bet-item:last-child {
+    border-bottom: none;
+}
+
+/* Notification pour le total */
+.total-notification {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--primary-color);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 90%;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -20px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+.total-notification .total-amount {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+/* Boutons pour multi-tirages */
+.multi-draw-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.multi-draw-action-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.add-to-multi-draw {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.add-to-multi-draw:hover {
+    background-color: #2980b9;
+}
+
+.view-multi-draw-ticket {
+    background-color: var(--warning-color);
+    color: white;
+}
+
+.view-multi-draw-ticket:hover {
+    background-color: #e67e22;
+}
+
+/* Écran pour visualiser les fiches multi-tirages */
+.multi-tickets-screen {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: white;
+    z-index: 100;
+    padding: 20px;
+    overflow-y: auto;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.multi-ticket-item {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 15px;
+    margin-bottom: 10px;
+    border-left: 4px solid var(--warning-color);
+}
+
+/* Styles pour les nouveaux formulaires */
+.options-container {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.option-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 8px;
+    background-color: white;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.option-checkbox:hover {
+    background-color: #e9ecef;
+}
+
+.option-checkbox input {
+    width: auto;
+    margin-right: 5px;
+}
+
+.option-checkbox .option-multiplier {
+    margin-left: auto;
+    font-weight: bold;
+    color: var(--success-color);
+}
+
+.manual-balls-input {
+    margin-bottom: 15px;
+}
+
+.manual-balls-input input {
+    font-family: monospace;
+}
+
+.balls-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.ball-tag {
+    background-color: var(--light-color);
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ball-tag .remove-ball {
+    color: var(--accent-color);
+    cursor: pointer;
+    font-size: 0.8rem;
+}

@@ -1,0 +1,1 @@
+mongodb+srv://lanova:Myster44@cluster0.ocfijlw.mongodb.net/nova?retryWrites=true&w=majority&ssl=true

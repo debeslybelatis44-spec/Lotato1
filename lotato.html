@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOTATO</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="lotato.css">
+     <script src="lotato.js"></script>
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+    <!-- Écran de connexion -->
+    <div class="login-screen" id="login-screen" style="display: none;">
+        <div class="login-container">
+            <div class="login-logo">
+                <div class="logo">
+                    <i class="fas fa-dice"></i>
+                </div>
+            </div>
+            <h2 class="login-title">LOTATO</h2>
+            <div class="login-error" id="login-error">
+                Identifiant ou mot de passe incorrect
+            </div>
+            <div class="form-group">
+                <label for="admin-username">Identifiant</label>
+                <input type="text" id="admin-username" placeholder="admin">
+            </div>
+            <div class="form-group">
+                <label for="admin-password">Mot de passe</label>
+                <input type="password" id="admin-password" placeholder="••••••••">
+            </div>
+            <button class="submit-bet" id="login-btn">Konekte</button>
+        </div>
+    </div>
+    
+    <!-- Vérification de connexion -->
+    <div class="connection-check" id="connection-check" style="display: none;">
+        <div class="connection-content">
+            <h3>Verifikasyon Koneksyon</h3>
+            <div class="connection-status">
+                <div class="status-indicator disconnected" id="internet-status"></div>
+                <span id="internet-text">Entènèt: Pa konekte</span>
+            </div>
+            <div class="connection-status">
+                <div class="status-indicator disconnected" id="server-status"></div>
+                <span id="server-text">Sèvè: Pa konekte</span>
+            </div>
+            <div class="connection-status">
+                <div class="status-indicator disconnected" id="supabase-status"></div>
+                <span id="supabase-text">Baz de done: Pa konekte</span>
+            </div>
+            <p id="connection-message">Tanpri tann pandan y ap verifye koneksyon yo...</p>
+            <div class="bet-actions" style="margin-top: 20px;">
+                <button class="btn-primary" id="retry-connection">Eseye ankò</button>
+                <button class="btn-secondary" id="cancel-print">Anile</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Écran de rapport -->
+    <div class="report-screen" id="report-screen">
+        <div class="screen-header">
+            <button class="back-button" id="back-from-report">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="screen-title">Rapò Fin Tiraj</h2>
+        </div>
+        <div class="report-container" id="report-content">
+            <!-- Le rapport sera généré ici -->
+        </div>
+    </div>
+    
+    <!-- Écran de vérification des résultats -->
+    <div class="results-check-screen" id="results-check-screen">
+        <div class="screen-header">
+            <button class="back-button" id="back-from-results">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="screen-title">Verifye fich ki genyen </h2>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <div class="draw-info">
+                <h4>Rezilta Dènye Tiraj</h4>
+                <div id="latest-results">
+                    <!-- Les résultats seront chargés ici -->
+                </div>
+            </div>
+            
+            <button class="check-results-btn" id="check-winners-btn">
+                <i class="fas fa-trophy"></i> Fich ki Genyen
+            </button>
+            
+            <div style="margin-top: 20px;" id="winning-summary">
+                <!-- Résumé des gains -->
+            </div>
+        </div>
+        
+        <div id="winning-tickets-container">
+            <!-- Les fiches gagnantes seront affichées ici -->
+        </div>
+    </div>
+    
+    <!-- Écran pour visualiser les fiches multi-tirages -->
+    <div class="multi-tickets-screen" id="multi-tickets-screen">
+        <div class="screen-header">
+            <button class="back-button" id="back-from-multi-tickets">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="screen-title">Fiche Multi-Tirages</h2>
+        </div>
+        
+        <div id="multi-tickets-list">
+            <!-- Les fiches multi-tirages seront affichées ici -->
+        </div>
+    </div>
+    
+    <!-- Indicateur de synchronisation -->
+    <div class="sync-status sync-disconnected" id="sync-status" style="display: none;">
+        <i class="fas fa-cloud"></i> <span id="sync-text">Pa Konekte</span>
+    </div>
+    
+    <!-- Panneau d'administration flottant -->
+    <div class="admin-panel" id="admin-panel" style="display: none;">
+        <div class="admin-btn" id="admin-menu-btn">
+            <i class="fas fa-cog"></i>
+        </div>
+    </div>
+    
+    <div class="container" id="main-container" style="display: none;">
+        <header>
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="logo-borlette.jpg" alt="Logo Nova Lotto" class="logo-image" id="company-logo">
+                    <div class="logo">
+                        <i class="fas fa-dice"></i>
+                    </div>
+                </div>
+                <div class="header-text">
+                    <h1>Lotato</h1>
+                    <p>Chwazi yon Jwet</p>
+                </div>
+            </div>
+            <div class="time-display">
+                <i class="fas fa-clock"></i> <span id="current-time">Samdi, 29 Nov - 10:45 AM</span>
+            </div>
+            <!-- Bouton pour vérifier les résultats -->
+            <div style="margin-top: 10px;">
+                <button class="check-results-btn" id="open-results-check">
+                    <i class="fas fa-search"></i> Tcheke Rezilta ak Fich ki genyen 
+                </button>
+            </div>
+            <!-- Bouton pour voir les fiches multi-tirages -->
+            <div style="margin-top: 10px;">
+                <button class="check-results-btn" id="open-multi-tickets">
+                    <i class="fas fa-ticket-alt"></i> Wè fich plizyè tiraj
+                </button>
+            </div>
+        </header>
+        
+        <!-- Panneau Multi-Tirages amélioré -->
+        <div class="multi-draw-panel">
+            <div class="multi-draw-header">
+                <h3 class="multi-draw-title">Jwe nan Plizyè Tiraj</h3>
+                <button class="multi-draw-toggle" id="multi-draw-toggle">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </div>
+            <div class="multi-draw-content" id="multi-draw-content">
+                <div class="multi-draw-grid" id="multi-draw-options">
+                    <!-- Les options seront ajoutées dynamiquement -->
+                </div>
+                
+                <!-- Sélection des jeux -->
+                <div class="multi-game-select" id="multi-game-select">
+                    <!-- Les jeux seront ajoutés dynamiquement -->
+                </div>
+                
+                <div class="multi-draw-form">
+                    <div class="form-group" id="multi-number-inputs">
+                        <!-- Les champs de nombre seront ajoutés dynamiquement -->
+                    </div>
+                    <div class="form-group">
+                        <label for="multi-draw-amount">Kantite pa tiraj</label>
+                        <input type="number" id="multi-draw-amount" placeholder="Kantite" min="1" value="1">
+                    </div>
+                    
+                    <!-- Actions pour multi-tirages -->
+                    <div class="multi-draw-actions">
+                        <button class="multi-draw-action-btn add-to-multi-draw" id="add-to-multi-draw">
+                            <i class="fas fa-plus"></i> Ajoute nan Fiche Multi-Tirages
+                        </button>
+                        <button class="multi-draw-action-btn view-multi-draw-ticket" id="view-current-multi-ticket">
+                            <i class="fas fa-eye"></i> Wè Fich konnya a
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Affichage du total actuel pour multi-tirages -->
+                <div id="current-multi-ticket-info" style="display: none; margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 8px;">
+                    <h4>Fiche Multi-Tirages Aktuèl</h4>
+                    <div id="multi-ticket-summary">
+                        <!-- Résumé du ticket actuel -->
+                    </div>
+                    <div class="multi-draw-actions" style="margin-top: 10px;">
+                        <button class="ticket-action-btn save-print-btn" id="save-print-multi-ticket">
+                            <i class="fas fa-save"></i> <i class="fas fa-print"></i> Anrejistre & Enprime Fiche
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="draws-container">
+            <div class="draw-card miami" data-draw="miami">
+                <div class="draw-icon">
+                    <i class="fas fa-sun"></i>
+                </div>
+                <h3>Miami</h3>
+                <div class="draw-buttons">
+                    <button class="draw-btn morning active" data-time="morning">1:30 PM</button>
+                    <button class="draw-btn evening" data-time="evening">9:50 PM</button>
+                </div>
+                <div class="draw-countdown">18 h 30 min</div>
+            </div>
+            
+            <div class="draw-card georgia" data-draw="georgia">
+                <div class="draw-icon">
+                    <i class="fas fa-map-marker-alt"></i>
+                </div>
+                <h3>Georgia</h3>
+                <div class="draw-buttons">
+                    <button class="draw-btn morning active" data-time="morning">12:30 PM</button>
+                    <button class="draw-btn evening" data-time="evening">7:00 PM</button>
+                </div>
+                <div class="draw-countdown">17 h 29 min</div>
+            </div>
+            
+            <div class="draw-card newyork" data-draw="newyork">
+                <div class="draw-icon">
+                    <i class="fas fa-building"></i>
+                </div>
+                <h3>New York</h3>
+                <div class="draw-buttons">
+                    <button class="draw-btn morning active" data-time="morning">2:30 PM</button>
+                    <button class="draw-btn evening" data-time="evening">8:00 PM</button>
+                </div>
+                <div class="draw-countdown">19 h 30 min</div>
+            </div>
+            
+            <div class="draw-card texas" data-draw="texas">
+                <div class="draw-icon">
+                    <i class="fas fa-hat-cowboy"></i>
+                </div>
+                <h3>Texas</h3>
+                <div class="draw-buttons">
+                    <button class="draw-btn morning active" data-time="morning">12:00 PM</button>
+                    <button class="draw-btn evening" data-time="evening">6:00 PM</button>
+                </div>
+                <div class="draw-countdown">18 h 27 min</div>
+            </div>
+            
+            <!-- Borlette Tunisie -->
+            <div class="draw-card tunisia" data-draw="tunisia">
+                <div class="draw-icon">
+                    <i class="fas fa-flag"></i>
+                </div>
+                <h3>Tunisie</h3>
+                <div class="draw-buttons">
+                    <button class="draw-btn morning active" data-time="morning">10:30 AM</button>
+                    <button class="draw-btn evening" data-time="evening">2:00 PM</button>
+                </div>
+                <div class="draw-countdown">8 h 30 min</div>
+            </div>
+        </div>
+        
+        <div class="results-section">
+            <div class="section-title">
+                <i class="fas fa-trophy"></i>
+                <h2>Dènye Rezilta</h2>
+            </div>
+            
+            <div class="results-grid">
+                <div class="result-card">
+                    <h4>Miami</h4>
+                    <div class="result-number">451</div>
+                </div>
+                <div class="result-card">
+                    <h4>Georgia</h4>
+                    <div class="result-number">327</div>
+                </div>
+                <div class="result-card">
+                    <h4>New York</h4>
+                    <div class="result-number">892</div>
+                </div>
+                <div class="result-card">
+                    <h4>Texas</h4>
+                    <div class="result-number">567</div>
+                </div>
+                <div class="result-card">
+                    <h4>Tunisie</h4>
+                    <div class="result-number">234</div>
+                </div>
+            </div>
+            
+            <!-- Bouton pour générer le rapport -->
+            <div class="ticket-actions" style="margin-top: 15px;">
+                <button class="ticket-action-btn save-print-btn" id="generate-report-btn">
+                    <i class="fas fa-file-alt"></i> Jenere Rapò Fin Tiraj
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="bottom-nav" id="bottom-nav" style="display: none;">
+        <div class="nav-item active" data-screen="home">
+            <div class="nav-icon">
+                <i class="fas fa-home"></i>
+            </div>
+            <span>Akèy</span>
+        </div>
+        <div class="nav-item" data-screen="winning-tickets">
+            <div class="nav-icon">
+                <i class="fas fa-trophy"></i>
+            </div>
+            <span>Fich ki Genyen </span>
+        </div>
+        <div class="nav-item" data-screen="history">
+            <div class="nav-icon">
+                <i class="fas fa-history"></i>
+            </div>
+            <span>Istorik</span>
+        </div>
+        <div class="nav-item" data-screen="ticket-management">
+            <div class="nav-icon">
+                <i class="fas fa-file-invoice"></i>
+            </div>
+            <span>Jere fich yo</span>
+        </div>
+    </div>
+    
+    <!-- Écran de sélection des paris (réorganisé) -->
+    <div class="betting-screen" id="betting-screen">
+        <div class="betting-header">
+            <button class="back-button" id="back-button">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="betting-title" id="betting-title">parye</h2>
+            <!-- Bouton de confirmation de pari en haut -->
+            <div style="margin-left: auto;">
+                <button class="submit-bet" id="confirm-bet-top" style="padding: 8px 15px; font-size: 0.9rem;">
+                    <i class="fas fa-check"></i> Konfime Parye
+                </button>
+            </div>
+        </div>
+        
+        <!-- Notification du total actuel -->
+        <div id="total-notification-container" style="margin-bottom: 15px;">
+            <!-- La notification du total sera affichée ici -->
+        </div>
+        
+        <!-- Navigation par catégories (optionnelle, affichée seulement pour l'édition) -->
+        <div class="bet-type-navigation" id="bet-type-nav" style="display: none;">
+            <!-- Sera rempli dynamiquement -->
+        </div>
+        
+        <!-- Interface réorganisée par catégories - TOUTES LES CATÉGORIES VISIBLES -->
+        <div id="games-interface" class="all-categories-container">
+            <div class="game-category" id="borlette-category">
+                <div class="game-category-title">BORLETTE</div>
+                <div class="game-category-grid">
+                    <div class="game-item borlette" data-game="borlette">
+                        <div class="game-name">BORLETTE</div>
+                        <div class="game-multiplier">x 60 (1er lot)</div>
+                        <small>2 chif - 1er lot ×60, 2e ×20, 3e ×10</small>
+                    </div>
+                    <div class="game-item borlette" data-game="boulpe">
+                        <div class="game-name">BOUL PE</div>
+                        <div class="game-multiplier">x 60 (1er lot)</div>
+                        <small>Boul pe (00-99)</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="game-category" id="lotto-category">
+                <div class="game-category-title">LOTTO</div>
+                <div class="game-category-grid">
+                    <div class="game-item lotto" data-game="lotto3">
+                        <div class="game-name">LOTO 3</div>
+                        <div class="game-multiplier">x 500</div>
+                        <small>3 chif (lot 1 + 1 chif devan)</small>
+                    </div>
+                    <div class="game-item lotto" data-game="lotto4">
+                        <div class="game-name">LOTO 4</div>
+                        <div class="game-multiplier">x 5000</div>
+                        <small>4 chif (lot 1+2 accumulate) - 3 opsyon</small>
+                    </div>
+                    <div class="game-item lotto" data-game="lotto5">
+                        <div class="game-name">LOTO 5</div>
+                        <div class="game-multiplier">x 25000</div>
+                        <small>5 chif (lot 1+2+3 accumulate) - 3 opsyon</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="game-category" id="special-category">
+                <div class="game-category-title">JEUX SPÉCIAUX</div>
+                <div class="game-category-grid">
+                    <div class="game-item special" data-game="grap">
+                        <div class="game-name">GRAP</div>
+                        <div class="game-multiplier">x 500</div>
+                        <small>Boule paire (111, 222...)</small>
+                    </div>
+                    <div class="game-item special" data-game="marriage">
+                        <div class="game-name">MARYAJ</div>
+                        <div class="game-multiplier">x 1000</div>
+                        <small>Maryaj 2 chif</small>
+                    </div>
+                    <!-- Ajout des jeux automatiques -->
+                    <div class="game-item special" data-game="auto-marriage">
+                        <div class="game-name">MARYAJ OTOMATIK</div>
+                        <div class="game-multiplier">x 1000</div>
+                        <small>Marie boules otomatik</small>
+                    </div>
+                    <div class="game-item special" data-game="auto-lotto4">
+                        <div class="game-name">LOTO 4 OTOMATIK</div>
+                        <div class="game-multiplier">x 5000</div>
+                        <small>Lotto 4 otomatik</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Boutons pour les paris automatiques -->
+        <div class="auto-buttons" id="auto-buttons" style="display: none;">
+            <button class="auto-btn" id="auto-marriage-btn">Maryaj Otomatik</button>
+            <button class="auto-btn" id="auto-lotto4-btn">Lotto 4 Otomatik</button>
+            <button class="auto-btn reverse" id="reverse-lotto4-btn">Renverse Lotto 4</button>
+        </div>
+        
+        <div class="bet-form" id="bet-form">
+            <!-- Le formulaire de pari sera chargé dynamiquement -->
+        </div>
+        
+        <div class="active-bets" id="active-bets">
+            <div class="ticket-actions">
+                <button class="ticket-action-btn save-print-btn" id="save-print-ticket">
+                    <i class="fas fa-save"></i> <i class="fas fa-print"></i> Anrejistre & Enprime Fiche
+                </button>
+            </div>
+            <h3>Parye Aktif</h3>
+            <div id="bets-list">
+                <!-- Liste des paris actifs -->
+            </div>
+            <div class="bet-total">
+                <span>Total:</span>
+                <span id="bet-total">0 goud</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Écran de gestion des fiches (remplace sync-check) -->
+    <div class="screen" id="ticket-management-screen">
+        <div class="screen-header">
+            <button class="back-button" data-screen="home">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="screen-title">Jere Fich ou</h2>
+        </div>
+        
+        <div class="ticket-search-box">
+            <div class="search-history">
+                <input type="text" id="search-ticket-number" class="search-input" placeholder="Chache fiche pa nimewo...">
+                <button class="search-btn" id="search-ticket-btn">
+                    <i class="fas fa-search"></i> Chache 
+                </button>
+            </div>
+            <div style="margin-top: 10px;">
+                <button class="btn-secondary" id="show-all-tickets">Afiche Tout Fich</button>
+                <button class="btn-secondary" id="show-pending-tickets">Fiche Pokò ale nan santral</button>
+            </div>
+        </div>
+        
+        <div id="ticket-management-list">
+            <!-- Les fiches seront chargées dynamiquement -->
+        </div>
+    </div>
+    
+    <!-- Écran des fiches -->
+    <div class="screen" id="tickets-screen">
+        <div class="screen-header">
+            <button class="back-button" data-screen="home">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="screen-title">Fiche Parye</h2>
+        </div>
+        
+        <div class="active-bets">
+            <div class="ticket-logo-container">
+                <img src="logo-borlette.jpg" alt="Logo Nova Lotto" class="ticket-logo" id="ticket-logo">
+            </div>
+            <div class="bet-total">
+                <span>Nimewo Fiche:</span>
+                <span id="ticket-number">#001234</span>
+            </div>
+            <div class="bet-total">
+                <span>Dat:</span>
+                <span id="ticket-date">Samdi, 29 Nov - 10:45 AM</span>
+            </div>
+            <div id="ticket-bets-list">
+                <!-- Liste des paris pour la fiche -->
+            </div>
+            <div class="bet-total">
+                <span>Total:</span>
+                <span id="ticket-total">0 goud</span>
+            </div>
+            <div class="ticket-footer">
+                <button class="ticket-footer-btn save-ticket" id="save-ticket-only">Sove Fiche</button>
+                <button class="ticket-footer-btn print-ticket-btn" id="print-ticket-only">Enprime Fiche</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Écran des fiches gagnantes -->
+    <div class="screen" id="winning-tickets-screen">
+        <div class="screen-header">
+            <button class="back-button" data-screen="home">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="screen-title">Fich Genyen</h2>
+        </div>
+        
+        <div class="search-history">
+            <input type="text" id="search-winning-tickets" class="search-input" placeholder="Chache fiche...">
+            <button class="search-btn" id="search-winning-btn">
+                <i class="fas fa-search"></i> Chache
+            </button>
+        </div>
+        
+        <div id="winning-tickets-list">
+            <!-- Les fiches gagnantes seront chargées dynamiquement -->
+        </div>
+    </div>
+    
+    <!-- Écran historique -->
+    <div class="screen" id="history-screen">
+        <div class="screen-header">
+            <button class="back-button" data-screen="home">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="screen-title">Istorik Parye</h2>
+        </div>
+        
+        <div class="search-history">
+            <input type="text" id="search-history" class="search-input" placeholder="Chache fiche...">
+            <button class="search-btn" id="search-history-btn">
+                <i class="fas fa-search"></i> Chache
+            </button>
+        </div>
+        
+        <div class="reports-container" id="reports-container">
+            <!-- Les boutons de rapport seront chargés dynamiquement -->
+        </div>
+        
+        <div id="report-results">
+            <!-- Les résultats des rapports seront chargés dynamiquement -->
+        </div>
+        
+        <div id="history-list">
+            <!-- L'historique sera chargé dynamiquement -->
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+<script src="state.js"></script>
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script src="draws-tickets.js"></script>
+<script src="bets-results.js"></script>
+<script src="ui-init.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js')
+            .then(reg => console.log('Service Worker enregistré', reg))
+            .catch(err => console.log('Échec d\'enregistrement', err));
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,4057 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lotato - Superviseur Niveau 2</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #000c79;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --dark-color: #2c3e50;
+            --light-color: #ecf0f1;
+            --sidebar-width: 220px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fa;
+            color: var(--dark-color);
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, var(--secondary-color), #1a2530);
+            color: white;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .logo-container {
+            padding: 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .logo-placeholder {
+            width: 50px;
+            height: 50px;
+            background-color: var(--primary-color);
+            border-radius: 10px;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+        }
+        
+        .user-info {
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background-color: var(--warning-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .user-details h3 {
+            font-size: 0.95rem;
+            margin-bottom: 3px;
+        }
+        
+        .user-details p {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .subsystem-name {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.6);
+            margin-top: 2px;
+        }
+        
+        .nav-menu {
+            padding: 15px 0;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            transition: all 0.3s;
+            border-left: 4px solid transparent;
+        }
+        
+        .nav-item:hover {
+            background-color: rgba(255,255,255,0.1);
+            color: white;
+            border-left-color: var(--primary-color);
+        }
+        
+        .nav-item.active {
+            background-color: rgba(255,255,255,0.15);
+            color: white;
+            border-left-color: var(--primary-color);
+        }
+        
+        .nav-icon {
+            width: 25px;
+            font-size: 1.1rem;
+            margin-right: 12px;
+        }
+        
+        .nav-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            margin-bottom: 25px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .page-title {
+            font-size: 1.5rem;
+            color: var(--secondary-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .page-title i {
+            color: var(--primary-color);
+        }
+        
+        .top-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn-success {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #219955;
+        }
+        
+        .btn-warning {
+            background-color: var(--warning-color);
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e67e22;
+        }
+        
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+        
+        /* Stats Cards */
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .stat-card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: transform 0.3s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-3px);
+        }
+        
+        .stat-icon {
+            width: 45px;
+            height: 45px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: white;
+        }
+        
+        .icon-sales {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .icon-users {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .icon-tickets {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        
+        .icon-profit {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        
+        .stat-info {
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+        
+        .stat-label {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            margin-top: 3px;
+        }
+        
+        /* Tables */
+        .table-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            overflow-x: auto;
+        }
+        
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .table-title {
+            font-size: 1.1rem;
+            color: var(--secondary-color);
+            font-weight: 600;
+        }
+        
+        .search-box {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .search-input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            min-width: 200px;
+            font-size: 0.9rem;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        
+        .table th {
+            background-color: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--secondary-color);
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+        }
+        
+        .table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            vertical-align: middle;
+        }
+        
+        .table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        /* Status Badges */
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            display: inline-block;
+            text-align: center;
+            min-width: 70px;
+        }
+        
+        .status-active {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-inactive {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        /* Role Badges */
+        .role-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+        
+        .role-supervisor {
+            background-color: var(--warning-color);
+            color: white;
+        }
+        
+        .role-agent {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .role-subsystem {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .action-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 5px;
+            border: none;
+            background-color: #f8f9fa;
+            color: #6c757d;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+        
+        .action-btn:hover {
+            background-color: #e9ecef;
+            color: var(--secondary-color);
+        }
+        
+        .action-btn.view:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .action-btn.edit:hover {
+            background-color: var(--warning-color);
+            color: white;
+        }
+        
+        .action-btn.delete:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .action-btn.block:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        /* Modals */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background-color: white;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .modal-lg {
+            max-width: 900px;
+        }
+        
+        .modal-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-size: 1.2rem;
+            color: var(--secondary-color);
+            font-weight: 600;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #6c757d;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        
+        .modal-close:hover {
+            color: var(--danger-color);
+        }
+        
+        .modal-body {
+            padding: 20px;
+            max-height: calc(90vh - 120px);
+            overflow-y: auto;
+        }
+        
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        /* Forms */
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        
+        /* Loading */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            color: #6c757d;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Notifications */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 18px;
+            border-radius: 8px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 3000;
+            animation: slideIn 0.3s ease-out;
+            max-width: 350px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .notification.success {
+            background-color: var(--success-color);
+        }
+        
+        .notification.error {
+            background-color: var(--danger-color);
+        }
+        
+        .notification.warning {
+            background-color: var(--warning-color);
+        }
+        
+        .notification.info {
+            background-color: var(--primary-color);
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+        
+        .empty-icon {
+            font-size: 3rem;
+            color: #dee2e6;
+            margin-bottom: 15px;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-weight: 600;
+            color: #6c757d;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            border-bottom-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+        
+        .tab:hover:not(.active) {
+            background-color: #f8f9fa;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Summary Stats */
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .summary-stat {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-left: 4px solid;
+            transition: transform 0.3s;
+        }
+        
+        .summary-stat:hover {
+            transform: translateY(-2px);
+        }
+        
+        .summary-stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: white;
+        }
+        
+        .summary-stat-info {
+            flex: 1;
+        }
+        
+        .summary-stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+        
+        .summary-stat-label {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 3px;
+        }
+        
+        /* Ticket Details */
+        .ticket-info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .ticket-info-item {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .ticket-info-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        
+        .ticket-info-value {
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+        
+        /* Bet List */
+        .bet-list {
+            margin-top: 15px;
+        }
+        
+        .bet-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .bet-item:last-child {
+            border-bottom: none;
+        }
+        
+        .bet-details {
+            flex: 1;
+        }
+        
+        .bet-amount {
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+        
+        /* Report Filters */
+        .report-filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 70px;
+                overflow-x: hidden;
+            }
+            
+            .user-details, .nav-label {
+                display: none;
+            }
+            
+            .main-content {
+                margin-left: 70px;
+            }
+            
+            .logo-container {
+                padding: 15px 10px;
+            }
+            
+            .user-info {
+                justify-content: center;
+                padding: 10px;
+            }
+            
+            .nav-item {
+                justify-content: center;
+                padding: 12px 10px;
+            }
+            
+            .nav-icon {
+                margin-right: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .stats-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .table-header {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+            
+            .search-box {
+                width: 100%;
+            }
+            
+            .search-input {
+                min-width: auto;
+                flex: 1;
+            }
+            
+            .top-bar {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+            
+            .ticket-info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Quick Stats */
+        .quick-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .quick-stat {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .quick-stat-icon {
+            width: 35px;
+            height: 35px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1rem;
+        }
+        
+        .quick-stat-info {
+            flex: 1;
+        }
+        
+        .quick-stat-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+        
+        .quick-stat-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        
+        /* Hierarchy View */
+        .hierarchy-list {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+        
+        .hierarchy-item {
+            padding: 15px;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+        
+        .hierarchy-item:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+        }
+        
+        .hierarchy-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .hierarchy-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+        
+        .hierarchy-actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .agents-list {
+            margin-top: 10px;
+            padding-left: 30px;
+            border-left: 2px dashed #dee2e6;
+        }
+        
+        .agent-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .agent-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="logo-container">
+            <div class="logo-placeholder">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <div style="font-size: 0.9rem; color: rgba(255,255,255,0.9);">Superviseur Niveau 2</div>
+        </div>
+        
+        <div class="user-info">
+            <div class="user-avatar" id="user-avatar">S2</div>
+            <div class="user-details">
+                <h3 id="user-name">Superviseur</h3>
+                <p id="user-role">Niveau 2</p>
+                <p id="subsystem-name" class="subsystem-name"></p>
+            </div>
+        </div>
+        
+        <div class="nav-menu">
+            <a href="#" class="nav-item active" data-section="dashboard">
+                <div class="nav-icon"><i class="fas fa-tachometer-alt"></i></div>
+                <div class="nav-label">Tableau de bord</div>
+            </a>
+            <a href="#" class="nav-item" data-section="hierarchy">
+                <div class="nav-icon"><i class="fas fa-sitemap"></i></div>
+                <div class="nav-label">Hiérarchie</div>
+            </a>
+            <a href="#" class="nav-item" data-section="supervisors">
+                <div class="nav-icon"><i class="fas fa-user-tie"></i></div>
+                <div class="nav-label">Superviseurs N1</div>
+            </a>
+            <a href="#" class="nav-item" data-section="agents">
+                <div class="nav-icon"><i class="fas fa-users"></i></div>
+                <div class="nav-label">Tous les Agents</div>
+            </a>
+            <a href="#" class="nav-item" data-section="tickets">
+                <div class="nav-icon"><i class="fas fa-ticket-alt"></i></div>
+                <div class="nav-label">Tickets</div>
+            </a>
+            <a href="#" class="nav-item" data-section="reports">
+                <div class="nav-icon"><i class="fas fa-chart-bar"></i></div>
+                <div class="nav-label">Rapports</div>
+            </a>
+            <a href="#" class="nav-item" data-section="activity">
+                <div class="nav-icon"><i class="fas fa-history"></i></div>
+                <div class="nav-label">Activité</div>
+            </a>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="page-title">
+                <i class="fas fa-tachometer-alt"></i>
+                <span id="page-title">Tableau de bord Superviseur N2</span>
+            </div>
+            <div class="top-actions">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="current-time" style="color: #6c757d; font-size: 0.9rem;"></span>
+                    <button class="btn btn-primary" id="refresh-btn">
+                        <i class="fas fa-sync-alt"></i> Actualiser
+                    </button>
+                    <button class="btn btn-danger" id="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i> Déconnexion
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dashboard Section -->
+        <div id="dashboard-section" class="section-content active">
+            <!-- Welcome Message -->
+            <div class="table-container" style="margin-bottom: 20px;">
+                <div class="table-header">
+                    <div class="table-title">Bienvenue</div>
+                </div>
+                <div id="welcome-message">
+                    <p>Connecté en tant que <strong id="welcome-user-name">Superviseur Niveau 2</strong></p>
+                    <p>Sous-système: <strong id="welcome-subsystem-name">Chargement...</strong></p>
+                    <div class="quick-stats" style="margin-top: 15px;">
+                        <div class="quick-stat">
+                            <div class="quick-stat-icon" style="background-color: #f39c12;">
+                                <i class="fas fa-user-tie"></i>
+                            </div>
+                            <div class="quick-stat-info">
+                                <div class="quick-stat-value" id="welcome-supervisors-count">0</div>
+                                <div class="quick-stat-label">Superviseurs N1</div>
+                            </div>
+                        </div>
+                        <div class="quick-stat">
+                            <div class="quick-stat-icon" style="background-color: #2ecc71;">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="quick-stat-info">
+                                <div class="quick-stat-value" id="welcome-agents-count">0</div>
+                                <div class="quick-stat-label">Agents</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Stats -->
+            <div class="quick-stats">
+                <div class="quick-stat">
+                    <div class="quick-stat-icon" style="background-color: #3498db;">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <div class="quick-stat-info">
+                        <div class="quick-stat-value" id="supervisors-count">0</div>
+                        <div class="quick-stat-label">Superviseurs N1</div>
+                    </div>
+                </div>
+                
+                <div class="quick-stat">
+                    <div class="quick-stat-icon" style="background-color: #2ecc71;">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="quick-stat-info">
+                        <div class="quick-stat-value" id="agents-count">0</div>
+                        <div class="quick-stat-label">Agents</div>
+                    </div>
+                </div>
+                
+                <div class="quick-stat">
+                    <div class="quick-stat-icon" style="background-color: #f39c12;">
+                        <i class="fas fa-ticket-alt"></i>
+                    </div>
+                    <div class="quick-stat-info">
+                        <div class="quick-stat-value" id="today-tickets-count">0</div>
+                        <div class="quick-stat-label">Tickets Aujourd'hui</div>
+                    </div>
+                </div>
+                
+                <div class="quick-stat">
+                    <div class="quick-stat-icon" style="background-color: #e74c3c;">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <div class="quick-stat-info">
+                        <div class="quick-stat-value" id="today-sales-amount">0 HTG</div>
+                        <div class="quick-stat-label">Ventes Aujourd'hui</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stats Cards -->
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-icon icon-sales">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="monthly-sales">0 HTG</div>
+                        <div class="stat-label">Ventes du mois</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon icon-users">
+                        <i class="fas fa-user-check"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="active-users">0</div>
+                        <div class="stat-label">Utilisateurs actifs</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon icon-tickets">
+                        <i class="fas fa-receipt"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="monthly-tickets">0</div>
+                        <div class="stat-label">Tickets du mois</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon icon-profit">
+                        <i class="fas fa-percentage"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="commission-rate">10%</div>
+                        <div class="stat-label">Taux commission</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hierarchy Preview -->
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Aperçu Hiérarchique</div>
+                    <button class="btn btn-primary" onclick="showSection('hierarchy')">
+                        <i class="fas fa-expand"></i> Voir détail
+                    </button>
+                </div>
+                
+                <div class="loading" id="hierarchy-preview-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement de la hiérarchie...</p>
+                </div>
+                
+                <div id="hierarchy-preview" style="display: none;">
+                    <!-- Rempli dynamiquement -->
+                </div>
+                
+                <div class="empty-state" id="hierarchy-preview-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-sitemap"></i>
+                    </div>
+                    <h3>Aucune hiérarchie disponible</h3>
+                    <p>La structure hiérarchique apparaîtra ici</p>
+                </div>
+            </div>
+            
+            <!-- Recent Activity -->
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Activité récente</div>
+                    <button class="btn btn-primary" onclick="showSection('activity')">
+                        <i class="fas fa-history"></i> Voir tout
+                    </button>
+                </div>
+                
+                <div class="loading" id="recent-activity-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement de l'activité...</p>
+                </div>
+                
+                <table class="table" id="recent-activity-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Utilisateur</th>
+                            <th>Action</th>
+                            <th>Détails</th>
+                            <th>Heure</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-activity-body">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+                
+                <div class="empty-state" id="recent-activity-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-history"></i>
+                    </div>
+                    <h3>Aucune activité récente</h3>
+                    <p>Les activités apparaîtront ici</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Hierarchy Section -->
+        <div id="hierarchy-section" class="section-content" style="display: none;">
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Structure Hiérarchique du Sous-Système</div>
+                    <button class="btn btn-success" id="refresh-hierarchy">
+                        <i class="fas fa-sync-alt"></i> Actualiser
+                    </button>
+                </div>
+                
+                <div class="loading" id="hierarchy-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement de la structure hiérarchique...</p>
+                </div>
+                
+                <div id="hierarchy-content" style="display: none;">
+                    <!-- Rempli dynamiquement -->
+                </div>
+                
+                <div class="empty-state" id="hierarchy-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-sitemap"></i>
+                    </div>
+                    <h3>Aucune structure hiérarchique</h3>
+                    <p>Les superviseurs et agents apparaîtront ici</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Supervisors Section -->
+        <div id="supervisors-section" class="section-content" style="display: none;">
+            <div class="tabs">
+                <button class="tab active" data-supervisor-tab="all">Tous les superviseurs</button>
+                <button class="tab" data-supervisor-tab="active">Actifs seulement</button>
+                <button class="tab" data-supervisor-tab="inactive">Inactifs</button>
+            </div>
+            
+            <div class="tab-content active">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Liste des Superviseurs Niveau 1</div>
+                        <div class="search-box">
+                            <input type="text" class="search-input" id="search-supervisors" placeholder="Rechercher un superviseur...">
+                            <button class="btn btn-primary" id="search-supervisors-btn">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="supervisors-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Chargement des superviseurs...</p>
+                    </div>
+                    
+                    <table class="table" id="supervisors-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Identifiant</th>
+                                <th>Agents assignés</th>
+                                <th>Ventes aujourd'hui</th>
+                                <th>Statut</th>
+                                <th>Dernière activité</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supervisors-table-body">
+                            <!-- Rempli dynamiquement -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="empty-state" id="supervisors-empty" style="display: none;">
+                        <div class="empty-icon">
+                            <i class="fas fa-user-tie"></i>
+                        </div>
+                        <h3>Aucun superviseur niveau 1</h3>
+                        <p>Aucun superviseur niveau 1 dans votre sous-système</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Agents Section -->
+        <div id="agents-section" class="section-content" style="display: none;">
+            <div class="tabs">
+                <button class="tab active" data-agent-tab="all">Tous les agents</button>
+                <button class="tab" data-agent-tab="active">Actifs seulement</button>
+                <button class="tab" data-agent-tab="by-supervisor">Par superviseur</button>
+            </div>
+            
+            <div class="tab-content active" id="tab-all-agents">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Liste de Tous les Agents</div>
+                        <div class="search-box">
+                            <select class="form-control" id="filter-agent-supervisor" style="width: 180px;">
+                                <option value="">Tous les superviseurs</option>
+                            </select>
+                            <input type="text" class="search-input" id="search-agents" placeholder="Rechercher un agent...">
+                            <button class="btn btn-primary" id="search-agents-btn">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="agents-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Chargement des agents...</p>
+                    </div>
+                    
+                    <table class="table" id="agents-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Superviseur</th>
+                                <th>Ventes aujourd'hui</th>
+                                <th>Tickets aujourd'hui</th>
+                                <th>Statut</th>
+                                <th>En ligne</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agents-table-body">
+                            <!-- Rempli dynamiquement -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="empty-state" id="agents-empty" style="display: none;">
+                        <div class="empty-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <h3>Aucun agent</h3>
+                        <p>Aucun agent dans votre sous-système</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="tab-by-supervisor" style="display: none;">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Agents par Superviseur</div>
+                        <div class="search-box">
+                            <select class="form-control" id="select-supervisor-agents" style="width: 250px;">
+                                <option value="">Sélectionner un superviseur</option>
+                            </select>
+                            <button class="btn btn-primary" id="load-supervisor-agents">
+                                <i class="fas fa-filter"></i> Filtrer
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="supervisor-agents-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Chargement des agents...</p>
+                    </div>
+                    
+                    <table class="table" id="supervisor-agents-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Ventes aujourd'hui</th>
+                                <th>Tickets aujourd'hui</th>
+                                <th>Performance</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supervisor-agents-body">
+                            <!-- Rempli dynamiquement -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="empty-state" id="supervisor-agents-empty" style="display: none;">
+                        <div class="empty-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <h3>Aucun agent pour ce superviseur</h3>
+                        <p>Sélectionnez un superviseur pour voir ses agents</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tickets Section -->
+        <div id="tickets-section" class="section-content" style="display: none;">
+            <div class="tabs">
+                <button class="tab active" data-ticket-tab="recent">Tickets récents</button>
+                <button class="tab" data-ticket-tab="today">Aujourd'hui</button>
+                <button class="tab" data-ticket-tab="search">Recherche avancée</button>
+            </div>
+            
+            <div class="tab-content active" id="tab-recent-tickets">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Tickets Récent du Sous-Système</div>
+                        <div class="search-box">
+                            <select class="form-control" id="filter-ticket-supervisor" style="width: 180px;">
+                                <option value="">Tous les superviseurs</option>
+                            </select>
+                            <select class="form-control" id="filter-ticket-agent" style="width: 180px;">
+                                <option value="">Tous les agents</option>
+                            </select>
+                            <button class="btn btn-primary" id="filter-tickets-btn">
+                                <i class="fas fa-filter"></i> Filtrer
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="tickets-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Chargement des tickets...</p>
+                    </div>
+                    
+                    <table class="table" id="tickets-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>N° Ticket</th>
+                                <th>Agent</th>
+                                <th>Superviseur</th>
+                                <th>Montant</th>
+                                <th>Date/Heure</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tickets-table-body">
+                            <!-- Rempli dynamiquement -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="empty-state" id="tickets-empty" style="display: none;">
+                        <div class="empty-icon">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <h3>Aucun ticket</h3>
+                        <p>Aucun ticket n'a été trouvé</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="tab-search-tickets" style="display: none;">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Recherche Avancée de Tickets</div>
+                    </div>
+                    
+                    <div class="report-filters">
+                        <div class="form-group">
+                            <label class="form-label">Date de début</label>
+                            <input type="date" class="form-control" id="search-start-date">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Date de fin</label>
+                            <input type="date" class="form-control" id="search-end-date">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Superviseur</label>
+                            <select class="form-control" id="search-ticket-supervisor">
+                                <option value="">Tous</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Agent</label>
+                            <select class="form-control" id="search-ticket-agent">
+                                <option value="">Tous</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Statut</label>
+                            <select class="form-control" id="search-ticket-status">
+                                <option value="">Tous</option>
+                                <option value="active">Actif</option>
+                                <option value="cancelled">Annulé</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group" style="grid-column: span 2;">
+                            <button class="btn btn-primary" id="search-tickets-btn" style="width: 100%; margin-top: 25px;">
+                                <i class="fas fa-search"></i> Rechercher
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="search-tickets-loading" style="display: none;">
+                        <div class="loading-spinner"></div>
+                        <p>Recherche des tickets...</p>
+                    </div>
+                    
+                    <table class="table" id="search-tickets-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>N° Ticket</th>
+                                <th>Agent</th>
+                                <th>Superviseur</th>
+                                <th>Montant</th>
+                                <th>Date</th>
+                                <th>Heure</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="search-tickets-body">
+                            <!-- Rempli dynamiquement -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="empty-state" id="search-tickets-empty" style="display: none;">
+                        <div class="empty-icon">
+                            <i class="fas fa-search"></i>
+                        </div>
+                        <h3>Aucun résultat</h3>
+                        <p>Aucun ticket ne correspond à vos critères de recherche</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Reports Section -->
+        <div id="reports-section" class="section-content" style="display: none;">
+            <div class="tabs">
+                <button class="tab active" data-report-tab="daily">Rapport quotidien</button>
+                <button class="tab" data-report-tab="supervisor">Par superviseur</button>
+                <button class="tab" data-report-tab="agent">Par agent</button>
+                <button class="tab" data-report-tab="custom">Personnalisé</button>
+            </div>
+            
+            <div class="tab-content active" id="tab-daily-report">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Rapport Quotidien du Sous-Système</div>
+                        <div class="search-box">
+                            <input type="date" class="form-control" id="daily-report-date" value="">
+                            <button class="btn btn-success" id="generate-daily-report">
+                                <i class="fas fa-chart-bar"></i> Générer
+                            </button>
+                            <button class="btn btn-primary" id="export-daily-report">
+                                <i class="fas fa-file-export"></i> Exporter
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="daily-report-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Génération du rapport...</p>
+                    </div>
+                    
+                    <div id="daily-report-results" style="display: none;">
+                        <!-- Rapport généré ici -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="tab-supervisor-report" style="display: none;">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Rapport par Superviseur</div>
+                        <div class="search-box">
+                            <select class="form-control" id="select-report-supervisor" style="width: 250px;">
+                                <option value="">Sélectionner un superviseur</option>
+                            </select>
+                            <input type="date" class="form-control" id="supervisor-report-start" style="width: 150px;">
+                            <input type="date" class="form-control" id="supervisor-report-end" style="width: 150px;">
+                            <button class="btn btn-success" id="generate-supervisor-report">
+                                <i class="fas fa-chart-bar"></i> Générer
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="supervisor-report-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Génération du rapport...</p>
+                    </div>
+                    
+                    <div id="supervisor-report-results" style="display: none;">
+                        <!-- Rapport généré ici -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="tab-agent-report" style="display: none;">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">Rapport par Agent</div>
+                        <div class="search-box">
+                            <select class="form-control" id="select-report-agent" style="width: 250px;">
+                                <option value="">Sélectionner un agent</option>
+                            </select>
+                            <input type="date" class="form-control" id="agent-report-start" style="width: 150px;">
+                            <input type="date" class="form-control" id="agent-report-end" style="width: 150px;">
+                            <button class="btn btn-success" id="generate-agent-report">
+                                <i class="fas fa-chart-bar"></i> Générer
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="agent-report-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Génération du rapport...</p>
+                    </div>
+                    
+                    <div id="agent-report-results" style="display: none;">
+                        <!-- Rapport généré ici -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Activity Section -->
+        <div id="activity-section" class="section-content" style="display: none;">
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Journal Complet d'Activité</div>
+                    <div class="search-box">
+                        <input type="date" class="form-control" id="activity-start-date" style="width: 150px;">
+                        <input type="date" class="form-control" id="activity-end-date" style="width: 150px;">
+                        <select class="form-control" id="activity-user-type">
+                            <option value="">Tous les utilisateurs</option>
+                            <option value="supervisor">Superviseurs seulement</option>
+                            <option value="agent">Agents seulement</option>
+                        </select>
+                        <button class="btn btn-primary" id="filter-activity-btn">
+                            <i class="fas fa-filter"></i> Filtrer
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="loading" id="full-activity-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement du journal d'activité...</p>
+                </div>
+                
+                <table class="table" id="full-activity-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Date/Heure</th>
+                            <th>Utilisateur</th>
+                            <th>Rôle</th>
+                            <th>Action</th>
+                            <th>Détails</th>
+                        </tr>
+                    </thead>
+                    <tbody id="full-activity-body">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+                
+                <div class="empty-state" id="full-activity-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-history"></i>
+                    </div>
+                    <h3>Aucune activité</h3>
+                    <p>Aucune activité enregistrée pour cette période</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: View Ticket Details -->
+    <div class="modal" id="view-ticket-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <div class="modal-title">Détails du Ticket</div>
+                <button class="modal-close" id="close-view-ticket">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="loading" id="ticket-details-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des détails...</p>
+                </div>
+                
+                <div id="ticket-details-content" style="display: none;">
+                    <!-- Rempli dynamiquement -->
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="close-ticket-modal">Fermer</button>
+                <button type="button" class="btn btn-danger" id="cancel-ticket-btn" style="display: none;">
+                    <i class="fas fa-ban"></i> Annuler le ticket
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: View User Details -->
+    <div class="modal" id="view-user-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Détails de l'Utilisateur</div>
+                <button class="modal-close" id="close-view-user">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="loading" id="user-details-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des détails...</p>
+                </div>
+                
+                <div id="user-details-content" style="display: none;">
+                    <!-- Rempli dynamiquement -->
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="close-user-modal">Fermer</button>
+                <button type="button" class="btn btn-warning" id="delete-user-btn" style="display: none;">
+                    <i class="fas fa-trash"></i> Supprimer
+                </button>
+                <button type="button" class="btn btn-danger" id="block-user-btn" style="display: none;">
+                    <i class="fas fa-user-slash"></i> Bloquer
+                </button>
+                <button type="button" class="btn btn-success" id="unblock-user-btn" style="display: none;">
+                    <i class="fas fa-user-check"></i> Débloquer
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: Generate Report -->
+    <div class="modal" id="generate-report-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <div class="modal-title">Générer un Rapport</div>
+                <button class="modal-close" id="close-generate-report">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="report-filters">
+                    <div class="form-group">
+                        <label class="form-label">Type de rapport</label>
+                        <select class="form-control" id="report-type">
+                            <option value="daily">Quotidien</option>
+                            <option value="supervisor">Par superviseur</option>
+                            <option value="agent">Par agent</option>
+                            <option value="period">Période</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="report-supervisor-group" style="display: none;">
+                        <label class="form-label">Superviseur</label>
+                        <select class="form-control" id="report-supervisor-select">
+                            <option value="">Sélectionner un superviseur</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="report-agent-group" style="display: none;">
+                        <label class="form-label">Agent</label>
+                        <select class="form-control" id="report-agent-select">
+                            <option value="">Sélectionner un agent</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="report-start-date-group">
+                        <label class="form-label">Date de début</label>
+                        <input type="date" class="form-control" id="report-start-date">
+                    </div>
+                    
+                    <div class="form-group" id="report-end-date-group">
+                        <label class="form-label">Date de fin</label>
+                        <input type="date" class="form-control" id="report-end-date">
+                    </div>
+                    
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label class="form-label">Format d'export</label>
+                        <select class="form-control" id="report-format">
+                            <option value="html">HTML (Aperçu)</option>
+                            <option value="pdf">PDF</option>
+                            <option value="excel">Excel</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="loading" id="report-generate-loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>Génération du rapport...</p>
+                </div>
+                
+                <div id="report-preview" style="display: none;">
+                    <!-- Aperçu du rapport -->
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="close-report-modal">Annuler</button>
+                <button type="button" class="btn btn-primary" id="preview-report-btn">
+                    <i class="fas fa-eye"></i> Aperçu
+                </button>
+                <button type="button" class="btn btn-success" id="export-report-btn">
+                    <i class="fas fa-download"></i> Exporter
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        // Configuration
+        const API_BASE_URL = window.location.origin;
+        let authToken = null;
+        let currentUser = null;
+        let subsystemId = null;
+        let subsystemName = null;
+        let supervisorsList = [];
+        let agentsList = [];
+        
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🛡️ Supervisor Level 2 initialisé');
+            initializeAuth();
+            setupEventListeners();
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 60000); // Mettre à jour l'heure chaque minute
+        });
+        
+        // Initialiser l'authentification
+        function initializeAuth() {
+            // Récupérer le token depuis l'URL ou le localStorage
+            const urlParams = new URLSearchParams(window.location.search);
+            authToken = urlParams.get('token') || localStorage.getItem('nova_token');
+            
+            if (!authToken) {
+                console.log('❌ Aucun token trouvé, redirection vers login');
+                redirectToLogin();
+                return;
+            }
+            
+            // Stocker le token
+            localStorage.setItem('nova_token', authToken);
+            
+            // Vérifier la session
+            checkUserSession();
+        }
+        
+        // Vérifier la session utilisateur
+        async function checkUserSession() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/check`, {
+                    method: 'GET',
+                    headers: {
+                        'x-auth-token': authToken
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.admin) {
+                    currentUser = data.admin;
+                    subsystemId = currentUser.subsystem_id;
+                    
+                    // Vérifier le rôle et niveau
+                    if (currentUser.role !== 'supervisor' || currentUser.level !== 2) {
+                        showNotification('Accès refusé. Rôle superviseur niveau 2 requis.', 'error');
+                        setTimeout(() => redirectToLogin(), 2000);
+                        return;
+                    }
+                    
+                    updateUserInterface();
+                    loadSubsystemInfo();
+                    loadDashboardData();
+                } else {
+                    showNotification('Session expirée. Veuillez vous reconnecter.', 'error');
+                    redirectToLogin();
+                }
+            } catch (error) {
+                console.error('❌ Erreur vérification session:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+                redirectToLogin();
+            }
+        }
+        
+        // Charger les informations du sous-système
+        async function loadSubsystemInfo() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subsystems/mine`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                const data = await response.json();
+                if (data.success && data.subsystems && data.subsystems.length > 0) {
+                    subsystemName = data.subsystems[0].name;
+                    
+                    // Mettre à jour l'interface
+                    document.getElementById('subsystem-name').textContent = subsystemName;
+                    document.getElementById('welcome-subsystem-name').textContent = subsystemName;
+                    document.getElementById('welcome-user-name').textContent = currentUser.name || currentUser.username;
+                }
+            } catch (error) {
+                console.error('❌ Erreur chargement sous-système:', error);
+            }
+        }
+        
+        // Mettre à jour l'interface utilisateur
+        function updateUserInterface() {
+            if (!currentUser) return;
+            
+            const avatarEl = document.getElementById('user-avatar');
+            const nameEl = document.getElementById('user-name');
+            const roleEl = document.getElementById('user-role');
+            
+            if (avatarEl) {
+                const initials = currentUser.name ? 
+                    currentUser.name.charAt(0).toUpperCase() : 
+                    (currentUser.username ? currentUser.username.charAt(0).toUpperCase() : 'S2');
+                avatarEl.textContent = initials;
+            }
+            
+            if (nameEl) {
+                nameEl.textContent = currentUser.name || currentUser.username || 'Superviseur';
+            }
+            
+            if (roleEl) {
+                roleEl.textContent = `Niveau ${currentUser.level || 2}`;
+            }
+        }
+        
+        // Configurer les événements
+        function setupEventListeners() {
+            // Navigation sidebar
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    document.querySelectorAll('.nav-item').forEach(nav => {
+                        nav.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    const section = this.getAttribute('data-section');
+                    showSection(section);
+                });
+            });
+            
+            // Boutons d'action
+            document.getElementById('refresh-btn').addEventListener('click', refreshAllData);
+            document.getElementById('logout-btn').addEventListener('click', logout);
+            document.getElementById('refresh-hierarchy').addEventListener('click', loadHierarchy);
+            
+            // Tabs superviseurs
+            document.querySelectorAll('[data-supervisor-tab]').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-supervisor-tab');
+                    switchSupervisorTab(tabId);
+                });
+            });
+            
+            // Tabs agents
+            document.querySelectorAll('[data-agent-tab]').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-agent-tab');
+                    switchAgentTab(tabId);
+                });
+            });
+            
+            // Tabs tickets
+            document.querySelectorAll('[data-ticket-tab]').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-ticket-tab');
+                    switchTicketTab(tabId);
+                });
+            });
+            
+            // Tabs rapports
+            document.querySelectorAll('[data-report-tab]').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-report-tab');
+                    switchReportTab(tabId);
+                });
+            });
+            
+            // Recherche superviseurs
+            document.getElementById('search-supervisors-btn').addEventListener('click', loadSupervisors);
+            document.getElementById('search-supervisors').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') loadSupervisors();
+            });
+            
+            // Recherche agents
+            document.getElementById('search-agents-btn').addEventListener('click', loadAllAgents);
+            document.getElementById('search-agents').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') loadAllAgents();
+            });
+            
+            // Filtres agents par superviseur
+            document.getElementById('load-supervisor-agents').addEventListener('click', loadAgentsBySupervisor);
+            
+            // Filtres tickets
+            document.getElementById('filter-tickets-btn').addEventListener('click', loadTickets);
+            
+            // Recherche avancée tickets
+            document.getElementById('search-tickets-btn').addEventListener('click', searchTickets);
+            
+            // Rapports
+            document.getElementById('generate-daily-report').addEventListener('click', generateDailyReport);
+            document.getElementById('export-daily-report').addEventListener('click', exportDailyReport);
+            document.getElementById('generate-supervisor-report').addEventListener('click', generateSupervisorReport);
+            document.getElementById('generate-agent-report').addEventListener('click', generateAgentReport);
+            
+            // Filtre activité
+            document.getElementById('filter-activity-btn').addEventListener('click', loadFullActivity);
+            
+            // Modals
+            document.getElementById('close-view-ticket').addEventListener('click', hideViewTicketModal);
+            document.getElementById('close-ticket-modal').addEventListener('click', hideViewTicketModal);
+            document.getElementById('close-view-user').addEventListener('click', hideViewUserModal);
+            document.getElementById('close-user-modal').addEventListener('click', hideViewUserModal);
+            document.getElementById('delete-user-btn').addEventListener('click', deleteUser);
+            document.getElementById('close-generate-report').addEventListener('click', hideGenerateReportModal);
+            document.getElementById('close-report-modal').addEventListener('click', hideGenerateReportModal);
+            
+            // Initialiser les dates
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('daily-report-date').value = today;
+            document.getElementById('search-start-date').value = today;
+            document.getElementById('search-end-date').value = today;
+            document.getElementById('activity-start-date').value = today;
+            document.getElementById('activity-end-date').value = today;
+            document.getElementById('report-start-date').value = today;
+            document.getElementById('report-end-date').value = today;
+            
+            // Type de rapport
+            document.getElementById('report-type').addEventListener('change', function() {
+                const type = this.value;
+                document.getElementById('report-supervisor-group').style.display = 
+                    type === 'supervisor' ? 'block' : 'none';
+                document.getElementById('report-agent-group').style.display = 
+                    type === 'agent' ? 'block' : 'none';
+            });
+        }
+        
+        // Afficher une section
+        function showSection(sectionId) {
+            document.querySelectorAll('.section-content').forEach(section => {
+                section.style.display = 'none';
+            });
+            
+            const section = document.getElementById(`${sectionId}-section`);
+            if (section) {
+                section.style.display = 'block';
+                const pageTitle = document.getElementById('page-title');
+                const activeNav = document.querySelector(`.nav-item[data-section="${sectionId}"] .nav-label`);
+                pageTitle.textContent = activeNav ? activeNav.textContent : 'Tableau de bord';
+                
+                switch(sectionId) {
+                    case 'dashboard':
+                        loadDashboardData();
+                        break;
+                    case 'hierarchy':
+                        loadHierarchy();
+                        break;
+                    case 'supervisors':
+                        loadSupervisors();
+                        break;
+                    case 'agents':
+                        loadAllAgents();
+                        break;
+                    case 'tickets':
+                        loadTickets();
+                        break;
+                    case 'reports':
+                        loadReportData();
+                        break;
+                    case 'activity':
+                        loadFullActivity();
+                        break;
+                }
+            }
+        }
+        
+        // Charger les données du tableau de bord
+        async function loadDashboardData() {
+            try {
+                // Charger les statistiques globales
+                const [statsRes, hierarchyRes, activityRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/api/subsystem/stats`, {
+                        headers: { 'x-auth-token': authToken }
+                    }),
+                    fetch(`${API_BASE_URL}/api/subsystem/users?role=supervisor1`, {
+                        headers: { 'x-auth-token': authToken }
+                    }),
+                    fetch(`${API_BASE_URL}/api/subsystem/users?role=agent`, {
+                        headers: { 'x-auth-token': authToken }
+                    })
+                ]);
+                
+                if (statsRes.status === 401 || hierarchyRes.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const statsData = await statsRes.json();
+                const hierarchyData = await hierarchyRes.json();
+                const agentsData = await activityRes.json();
+                
+                if (statsData.success) {
+                    const stats = statsData.stats;
+                    
+                    // Mettre à jour les compteurs
+                    const supervisorsCount = hierarchyData.success && hierarchyData.users ? hierarchyData.users.length : 0;
+                    const agentsCount = agentsData.success && agentsData.users ? agentsData.users.length : 0;
+                    
+                    document.getElementById('supervisors-count').textContent = supervisorsCount;
+                    document.getElementById('agents-count').textContent = agentsCount;
+                    document.getElementById('today-tickets-count').textContent = stats.today_tickets || 0;
+                    document.getElementById('today-sales-amount').textContent = 
+                        (stats.today_sales || 0).toLocaleString() + ' HTG';
+                    document.getElementById('monthly-sales').textContent = 
+                        (stats.monthly_sales || 0).toLocaleString() + ' HTG';
+                    document.getElementById('active-users').textContent = stats.active_users || 0;
+                    document.getElementById('monthly-tickets').textContent = stats.monthly_tickets || 0;
+                    
+                    // Mettre à jour les compteurs de bienvenue
+                    document.getElementById('welcome-supervisors-count').textContent = supervisorsCount;
+                    document.getElementById('welcome-agents-count').textContent = agentsCount;
+                }
+                
+                // Aperçu hiérarchique
+                const hierarchyPreview = document.getElementById('hierarchy-preview');
+                const hierarchyLoading = document.getElementById('hierarchy-preview-loading');
+                const hierarchyEmpty = document.getElementById('hierarchy-preview-empty');
+                
+                if (hierarchyData.success && hierarchyData.users && hierarchyData.users.length > 0) {
+                    supervisorsList = hierarchyData.users;
+                    
+                    let html = '<div class="hierarchy-list">';
+                    hierarchyData.users.forEach(supervisor => {
+                        html += `
+                            <div class="hierarchy-item">
+                                <div class="hierarchy-header">
+                                    <div class="hierarchy-title">
+                                        <i class="fas fa-user-tie" style="color: #f39c12;"></i>
+                                        <span>${supervisor.name}</span>
+                                        <span class="role-badge role-supervisor">Superviseur N1</span>
+                                    </div>
+                                    <div class="hierarchy-actions">
+                                        <button class="action-btn view" onclick="viewUserDetails('${supervisor.id || supervisor._id}')" title="Voir détails">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="action-btn block" onclick="toggleUserStatus('${supervisor.id || supervisor._id}', '${supervisor.is_active}')" title="${supervisor.is_active ? 'Bloquer' : 'Débloquer'}">
+                                            <i class="fas ${supervisor.is_active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="agents-list">
+                                    <div style="color: #6c757d; font-size: 0.85rem; margin-bottom: 8px;">
+                                        ${supervisor.agents_count || 0} agent(s) assigné(s)
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    
+                    hierarchyPreview.innerHTML = html;
+                    hierarchyLoading.style.display = 'none';
+                    hierarchyPreview.style.display = 'block';
+                    hierarchyEmpty.style.display = 'none';
+                } else {
+                    hierarchyLoading.style.display = 'none';
+                    hierarchyPreview.style.display = 'none';
+                    hierarchyEmpty.style.display = 'block';
+                }
+                
+                // Charger l'activité récente
+                loadRecentActivity();
+                
+            } catch (error) {
+                console.error('❌ Erreur chargement dashboard:', error);
+                showNotification('Erreur lors du chargement des données', 'error');
+            }
+        }
+        
+        // Charger l'activité récente
+        async function loadRecentActivity() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/tickets?limit=10`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                const data = await response.json();
+                
+                const activityTable = document.getElementById('recent-activity-table');
+                const activityBody = document.getElementById('recent-activity-body');
+                const activityLoading = document.getElementById('recent-activity-loading');
+                const activityEmpty = document.getElementById('recent-activity-empty');
+                
+                if (data.success && data.tickets && data.tickets.length > 0) {
+                    activityBody.innerHTML = '';
+                    
+                    data.tickets.forEach(ticket => {
+                        const time = new Date(ticket.date).toLocaleTimeString('fr-FR', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${ticket.agent_name}</td>
+                            <td>Création de ticket</td>
+                            <td>Ticket #${ticket.number} - ${ticket.total.toLocaleString()} HTG</td>
+                            <td>${time}</td>
+                        `;
+                        activityBody.appendChild(row);
+                    });
+                    
+                    activityLoading.style.display = 'none';
+                    activityTable.style.display = 'table';
+                    activityEmpty.style.display = 'none';
+                } else {
+                    activityLoading.style.display = 'none';
+                    activityTable.style.display = 'none';
+                    activityEmpty.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('❌ Erreur chargement activité:', error);
+            }
+        }
+        
+        // Charger la hiérarchie complète
+        async function loadHierarchy() {
+            try {
+                const loading = document.getElementById('hierarchy-loading');
+                const content = document.getElementById('hierarchy-content');
+                const empty = document.getElementById('hierarchy-empty');
+                
+                loading.style.display = 'flex';
+                content.style.display = 'none';
+                empty.style.display = 'none';
+                
+                // Charger les superviseurs level 1
+                const supervisorsResponse = await fetch(`${API_BASE_URL}/api/subsystem/users?role=supervisor1`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (supervisorsResponse.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const supervisorsData = await supervisorsResponse.json();
+                
+                if (supervisorsData.success && supervisorsData.users && supervisorsData.users.length > 0) {
+                    supervisorsList = supervisorsData.users;
+                    
+                    let html = '<div class="hierarchy-list">';
+                    
+                    for (const supervisor of supervisorsData.users) {
+                        // Charger les agents de ce superviseur
+                        const agentsResponse = await fetch(`${API_BASE_URL}/api/subsystem/users?supervisor_id=${supervisor.id || supervisor._id}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        const agentsData = await agentsResponse.json();
+                        const agents = agentsData.success ? agentsData.users : [];
+                        
+                        html += `
+                            <div class="hierarchy-item">
+                                <div class="hierarchy-header">
+                                    <div class="hierarchy-title">
+                                        <i class="fas fa-user-tie" style="color: #f39c12;"></i>
+                                        <span>${supervisor.name}</span>
+                                        <span class="role-badge role-supervisor">Superviseur N1</span>
+                                        <span class="status-badge ${supervisor.is_active ? 'status-active' : 'status-inactive'}">
+                                            ${supervisor.is_active ? 'Actif' : 'Inactif'}
+                                        </span>
+                                    </div>
+                                    <div class="hierarchy-actions">
+                                        <button class="btn btn-sm btn-primary" onclick="viewUserDetails('${supervisor.id || supervisor._id}')">
+                                            <i class="fas fa-eye"></i> Détails
+                                        </button>
+                                        <button class="btn btn-sm ${supervisor.is_active ? 'btn-danger' : 'btn-success'}" 
+                                                onclick="toggleUserStatus('${supervisor.id || supervisor._id}', '${supervisor.is_active}')">
+                                            <i class="fas ${supervisor.is_active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                                            ${supervisor.is_active ? 'Bloquer' : 'Débloquer'}
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" onclick="deleteUserModal('${supervisor.id || supervisor._id}', '${supervisor.name}', 'supervisor')">
+                                            <i class="fas fa-trash"></i> Supprimer
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="agents-list">
+                                    <div style="color: #6c757d; font-size: 0.85rem; margin-bottom: 8px;">
+                                        ${agents.length} agent(s) assigné(s)
+                                    </div>
+                                    ${agents.map(agent => `
+                                        <div class="agent-item">
+                                            <div>
+                                                <i class="fas fa-user" style="color: #2ecc71; margin-right: 8px;"></i>
+                                                <span>${agent.name}</span>
+                                                <span class="role-badge role-agent" style="margin-left: 8px;">Agent</span>
+                                                <span class="status-badge ${agent.is_active ? 'status-active' : 'status-inactive'}" style="margin-left: 8px;">
+                                                    ${agent.is_active ? 'Actif' : 'Inactif'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <button class="action-btn view" onclick="viewUserDetails('${agent.id || agent._id}')" title="Voir détails">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button class="action-btn block" onclick="toggleUserStatus('${agent.id || agent._id}', '${agent.is_active}')" title="${agent.is_active ? 'Bloquer' : 'Débloquer'}">
+                                                    <i class="fas ${agent.is_active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                                                </button>
+                                                <button class="action-btn delete" onclick="deleteUserModal('${agent.id || agent._id}', '${agent.name}', 'agent')" title="Supprimer">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    html += '</div>';
+                    content.innerHTML = html;
+                    
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                    empty.style.display = 'none';
+                } else {
+                    loading.style.display = 'none';
+                    content.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur chargement hiérarchie:', error);
+                showNotification('Erreur lors du chargement de la hiérarchie', 'error');
+                document.getElementById('hierarchy-loading').style.display = 'none';
+                document.getElementById('hierarchy-empty').style.display = 'block';
+            }
+        }
+        
+        // Charger les superviseurs niveau 1
+        async function loadSupervisors() {
+            try {
+                const loading = document.getElementById('supervisors-loading');
+                const table = document.getElementById('supervisors-table');
+                const tbody = document.getElementById('supervisors-table-body');
+                const empty = document.getElementById('supervisors-empty');
+                const searchTerm = document.getElementById('search-supervisors').value;
+                
+                loading.style.display = 'flex';
+                table.style.display = 'none';
+                empty.style.display = 'none';
+                
+                let url = `${API_BASE_URL}/api/subsystem/users?role=supervisor1`;
+                if (searchTerm) {
+                    url += `&search=${encodeURIComponent(searchTerm)}`;
+                }
+                
+                const response = await fetch(url, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.users && data.users.length > 0) {
+                    supervisorsList = data.users;
+                    tbody.innerHTML = '';
+                    
+                    for (const supervisor of data.users) {
+                        // Charger les agents de ce superviseur
+                        const agentsResponse = await fetch(`${API_BASE_URL}/api/subsystem/users?supervisor_id=${supervisor.id || supervisor._id}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        const agentsData = await agentsResponse.json();
+                        const agents = agentsData.success ? agentsData.users : [];
+                        
+                        // Calculer les ventes aujourd'hui
+                        const today = new Date().toISOString().split('T')[0];
+                        const salesResponse = await fetch(`${API_BASE_URL}/api/subsystem/tickets?start_date=${today}&end_date=${today}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        const salesData = await salesResponse.json();
+                        let todaySales = 0;
+                        
+                        if (salesData.success && salesData.tickets) {
+                            // Filtrer les tickets par agent du superviseur
+                            const agentIds = agents.map(a => a.id || a._id);
+                            const supervisorTickets = salesData.tickets.filter(ticket => 
+                                agentIds.includes(ticket.agent_id));
+                            todaySales = supervisorTickets.reduce((sum, ticket) => sum + ticket.total, 0);
+                        }
+                        
+                        // Dernière activité
+                        const lastActivity = supervisor.last_login ? 
+                            new Date(supervisor.last_login).toLocaleDateString('fr-FR') : 'Jamais';
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>
+                                <strong>${supervisor.name}</strong>
+                                <div style="font-size: 0.8rem; color: #6c757d;">${supervisor.email || ''}</div>
+                            </td>
+                            <td>${supervisor.username}</td>
+                            <td>${agents.length}</td>
+                            <td>${todaySales.toLocaleString()} HTG</td>
+                            <td>
+                                <span class="status-badge ${supervisor.is_active ? 'status-active' : 'status-inactive'}">
+                                    ${supervisor.is_active ? 'Actif' : 'Inactif'}
+                                </span>
+                            </td>
+                            <td>${lastActivity}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="action-btn view" onclick="viewUserDetails('${supervisor.id || supervisor._id}')" title="Voir détails">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="action-btn block" onclick="toggleUserStatus('${supervisor.id || supervisor._id}', '${supervisor.is_active}')" title="${supervisor.is_active ? 'Bloquer' : 'Débloquer'}">
+                                        <i class="fas ${supervisor.is_active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                                    </button>
+                                    <button class="action-btn delete" onclick="deleteUserModal('${supervisor.id || supervisor._id}', '${supervisor.name}', 'supervisor')" title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    }
+                    
+                    loading.style.display = 'none';
+                    table.style.display = 'table';
+                    empty.style.display = 'none';
+                    
+                    // Mettre à jour les sélecteurs
+                    updateSupervisorSelectors();
+                } else {
+                    loading.style.display = 'none';
+                    table.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur chargement superviseurs:', error);
+                showNotification('Erreur lors du chargement des superviseurs', 'error');
+            }
+        }
+        
+        // Charger tous les agents
+        async function loadAllAgents() {
+            try {
+                const loading = document.getElementById('agents-loading');
+                const table = document.getElementById('agents-table');
+                const tbody = document.getElementById('agents-table-body');
+                const empty = document.getElementById('agents-empty');
+                const searchTerm = document.getElementById('search-agents').value;
+                const supervisorFilter = document.getElementById('filter-agent-supervisor').value;
+                
+                loading.style.display = 'flex';
+                table.style.display = 'none';
+                empty.style.display = 'none';
+                
+                let url = `${API_BASE_URL}/api/subsystem/users?role=agent`;
+                if (searchTerm) {
+                    url += `&search=${encodeURIComponent(searchTerm)}`;
+                }
+                if (supervisorFilter) {
+                    url += `&supervisor_id=${supervisorFilter}`;
+                }
+                
+                const response = await fetch(url, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.users && data.users.length > 0) {
+                    agentsList = data.users;
+                    tbody.innerHTML = '';
+                    
+                    for (const agent of data.users) {
+                        // Trouver le superviseur
+                        let supervisorName = 'Non assigné';
+                        if (agent.supervisor_id) {
+                            const supervisor = supervisorsList.find(s => 
+                                (s.id || s._id) === agent.supervisor_id);
+                            if (supervisor) {
+                                supervisorName = supervisor.name;
+                            }
+                        }
+                        
+                        // Statistiques aujourd'hui
+                        const today = new Date().toISOString().split('T')[0];
+                        const salesResponse = await fetch(`${API_BASE_URL}/api/subsystem/tickets?start_date=${today}&end_date=${today}&agent_id=${agent.id || agent._id}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        const salesData = await salesResponse.json();
+                        const todaySales = salesData.success && salesData.tickets ? 
+                            salesData.tickets.reduce((sum, ticket) => sum + ticket.total, 0) : 0;
+                        const todayTickets = salesData.success && salesData.tickets ? salesData.tickets.length : 0;
+                        
+                        const isOnline = agent.is_online || false;
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>
+                                <strong>${agent.name}</strong>
+                                <div style="font-size: 0.8rem; color: #6c757d;">${agent.email || ''}</div>
+                            </td>
+                            <td>${supervisorName}</td>
+                            <td>${todaySales.toLocaleString()} HTG</td>
+                            <td>${todayTickets}</td>
+                            <td>
+                                <span class="status-badge ${agent.is_active ? 'status-active' : 'status-inactive'}">
+                                    ${agent.is_active ? 'Actif' : 'Inactif'}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="status-badge ${isOnline ? 'status-active' : 'status-inactive'}">
+                                    ${isOnline ? 'En ligne' : 'Hors ligne'}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="action-btn view" onclick="viewUserDetails('${agent.id || agent._id}')" title="Voir détails">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="action-btn block" onclick="toggleUserStatus('${agent.id || agent._id}', '${agent.is_active}')" title="${agent.is_active ? 'Bloquer' : 'Débloquer'}">
+                                        <i class="fas ${agent.is_active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                                    </button>
+                                    <button class="action-btn delete" onclick="deleteUserModal('${agent.id || agent._id}', '${agent.name}', 'agent')" title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    }
+                    
+                    loading.style.display = 'none';
+                    table.style.display = 'table';
+                    empty.style.display = 'none';
+                    
+                    // Mettre à jour les sélecteurs agents
+                    updateAgentSelectors();
+                } else {
+                    loading.style.display = 'none';
+                    table.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur chargement agents:', error);
+                showNotification('Erreur lors du chargement des agents', 'error');
+            }
+        }
+        
+        // Charger les agents par superviseur
+        async function loadAgentsBySupervisor() {
+            try {
+                const supervisorId = document.getElementById('select-supervisor-agents').value;
+                if (!supervisorId) {
+                    showNotification('Veuillez sélectionner un superviseur', 'warning');
+                    return;
+                }
+                
+                const loading = document.getElementById('supervisor-agents-loading');
+                const table = document.getElementById('supervisor-agents-table');
+                const tbody = document.getElementById('supervisor-agents-body');
+                const empty = document.getElementById('supervisor-agents-empty');
+                
+                loading.style.display = 'flex';
+                table.style.display = 'none';
+                empty.style.display = 'none';
+                
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor_id=${supervisorId}`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.users && data.users.length > 0) {
+                    tbody.innerHTML = '';
+                    
+                    for (const agent of data.users) {
+                        // Statistiques aujourd'hui
+                        const today = new Date().toISOString().split('T')[0];
+                        const salesResponse = await fetch(`${API_BASE_URL}/api/subsystem/tickets?start_date=${today}&end_date=${today}&agent_id=${agent.id || agent._id}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        const salesData = await salesResponse.json();
+                        const todaySales = salesData.success && salesData.tickets ? 
+                            salesData.tickets.reduce((sum, ticket) => sum + ticket.total, 0) : 0;
+                        const todayTickets = salesData.success && salesData.tickets ? salesData.tickets.length : 0;
+                        const performance = todaySales > 0 ? Math.min(100, Math.round((todaySales / 10000) * 100)) : 0;
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>
+                                <strong>${agent.name}</strong>
+                                <div style="font-size: 0.8rem; color: #6c757d;">${agent.username}</div>
+                            </td>
+                            <td>${todaySales.toLocaleString()} HTG</td>
+                            <td>${todayTickets}</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <div style="width: 60px; height: 6px; background-color: #dee2e6; border-radius: 3px; overflow: hidden;">
+                                        <div style="width: ${performance}%; height: 100%; background-color: ${performance > 70 ? '#27ae60' : performance > 40 ? '#f39c12' : '#e74c3c'};"></div>
+                                    </div>
+                                    <span>${performance}%</span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="status-badge ${agent.is_active ? 'status-active' : 'status-inactive'}">
+                                    ${agent.is_active ? 'Actif' : 'Inactif'}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="action-btn view" onclick="viewUserDetails('${agent.id || agent._id}')" title="Voir détails">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="action-btn block" onclick="toggleUserStatus('${agent.id || agent._id}', '${agent.is_active}')" title="${agent.is_active ? 'Bloquer' : 'Débloquer'}">
+                                        <i class="fas ${agent.is_active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                                    </button>
+                                    <button class="action-btn delete" onclick="deleteUserModal('${agent.id || agent._id}', '${agent.name}', 'agent')" title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    }
+                    
+                    loading.style.display = 'none';
+                    table.style.display = 'table';
+                    empty.style.display = 'none';
+                } else {
+                    loading.style.display = 'none';
+                    table.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur chargement agents par superviseur:', error);
+                showNotification('Erreur lors du chargement des agents', 'error');
+            }
+        }
+        
+        // Charger les tickets
+        async function loadTickets() {
+            try {
+                const loading = document.getElementById('tickets-loading');
+                const table = document.getElementById('tickets-table');
+                const tbody = document.getElementById('tickets-table-body');
+                const empty = document.getElementById('tickets-empty');
+                const supervisorId = document.getElementById('filter-ticket-supervisor').value;
+                const agentId = document.getElementById('filter-ticket-agent').value;
+                
+                loading.style.display = 'flex';
+                table.style.display = 'none';
+                empty.style.display = 'none';
+                
+                let url = `${API_BASE_URL}/api/subsystem/tickets?limit=50`;
+                if (supervisorId) {
+                    // Récupérer les agents du superviseur
+                    const agentsRes = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor_id=${supervisorId}`, {
+                        headers: { 'x-auth-token': authToken }
+                    });
+                    
+                    const agentsData = await agentsRes.json();
+                    if (agentsData.success && agentsData.users.length > 0) {
+                        const agentIds = agentsData.users.map(a => a.id || a._id);
+                        url += `&agent_ids=${agentIds.join(',')}`;
+                    }
+                }
+                if (agentId) {
+                    url += `&agent_id=${agentId}`;
+                }
+                
+                const response = await fetch(url, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.tickets && data.tickets.length > 0) {
+                    tbody.innerHTML = '';
+                    
+                    for (const ticket of data.tickets) {
+                        // Trouver l'agent et son superviseur
+                        let agentName = 'Inconnu';
+                        let supervisorName = 'Non assigné';
+                        
+                        if (ticket.agent_id) {
+                            // Chercher dans la liste des agents
+                            const agent = agentsList.find(a => 
+                                (a.id || a._id) === ticket.agent_id);
+                            if (agent) {
+                                agentName = agent.name;
+                                if (agent.supervisor_id) {
+                                    const supervisor = supervisorsList.find(s => 
+                                        (s.id || s._id) === agent.supervisor_id);
+                                    if (supervisor) {
+                                        supervisorName = supervisor.name;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        const ticketDate = new Date(ticket.date || ticket.created_at);
+                        const minutesDiff = (new Date() - ticketDate) / (1000 * 60);
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><strong>${ticket.number || ticket.ticket_number}</strong></td>
+                            <td>${agentName}</td>
+                            <td>${supervisorName}</td>
+                            <td>${ticket.total ? ticket.total.toLocaleString() : '0'} HTG</td>
+                            <td>${ticketDate.toLocaleString('fr-FR', { 
+                                day: '2-digit', 
+                                month: '2-digit', 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                            })}</td>
+                            <td>
+                                <span class="status-badge ${ticket.is_synced ? 'status-active' : 'status-inactive'}">
+                                    ${ticket.is_synced ? 'Validé' : 'En attente'}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="action-btn view" onclick="viewTicketDetails('${ticket.id || ticket._id}')" title="Voir détails">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    ${minutesDiff < 15 ? `
+                                        <button class="action-btn delete" onclick="cancelTicket('${ticket.id || ticket._id}')" title="Annuler (moins de 15 min)">
+                                            <i class="fas fa-ban"></i>
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    }
+                    
+                    loading.style.display = 'none';
+                    table.style.display = 'table';
+                    empty.style.display = 'none';
+                } else {
+                    loading.style.display = 'none';
+                    table.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur chargement tickets:', error);
+                showNotification('Erreur lors du chargement des tickets', 'error');
+            }
+        }
+        
+        // Recherche avancée de tickets
+        async function searchTickets() {
+            try {
+                const loading = document.getElementById('search-tickets-loading');
+                const table = document.getElementById('search-tickets-table');
+                const tbody = document.getElementById('search-tickets-body');
+                const empty = document.getElementById('search-tickets-empty');
+                const startDate = document.getElementById('search-start-date').value;
+                const endDate = document.getElementById('search-end-date').value;
+                const supervisorId = document.getElementById('search-ticket-supervisor').value;
+                const agentId = document.getElementById('search-ticket-agent').value;
+                const status = document.getElementById('search-ticket-status').value;
+                
+                if (!startDate || !endDate) {
+                    showNotification('Veuillez sélectionner une période', 'warning');
+                    return;
+                }
+                
+                loading.style.display = 'flex';
+                table.style.display = 'none';
+                empty.style.display = 'none';
+                
+                // Construire l'URL avec les filtres
+                let url = `${API_BASE_URL}/api/subsystem/tickets?start_date=${startDate}&end_date=${endDate}`;
+                
+                if (supervisorId) {
+                    const agentsRes = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor_id=${supervisorId}`, {
+                        headers: { 'x-auth-token': authToken }
+                    });
+                    
+                    const agentsData = await agentsRes.json();
+                    if (agentsData.success && agentsData.users.length > 0) {
+                        const agentIds = agentsData.users.map(a => a.id || a._id);
+                        url += `&agent_ids=${agentIds.join(',')}`;
+                    }
+                }
+                
+                if (agentId) {
+                    url += `&agent_id=${agentId}`;
+                }
+                
+                const response = await fetch(url, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.tickets && data.tickets.length > 0) {
+                    // Filtrer par statut si spécifié
+                    let filteredTickets = data.tickets;
+                    if (status === 'active') {
+                        filteredTickets = data.tickets.filter(t => t.is_synced === true);
+                    } else if (status === 'cancelled') {
+                        filteredTickets = data.tickets.filter(t => t.is_synced === false);
+                    }
+                    
+                    if (filteredTickets.length === 0) {
+                        loading.style.display = 'none';
+                        empty.style.display = 'block';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = '';
+                    
+                    filteredTickets.forEach(ticket => {
+                        const agent = agentsList.find(a => 
+                            (a.id || a._id) === ticket.agent_id);
+                        const agentName = agent ? agent.name : 'Inconnu';
+                        
+                        const supervisorName = agent && agent.supervisor_id ? 
+                            (supervisorsList.find(s => (s.id || s._id) === agent.supervisor_id)?.name || 'Non assigné') : 
+                            'Non assigné';
+                        
+                        const ticketDate = new Date(ticket.date || ticket.created_at);
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><strong>${ticket.number || ticket.ticket_number}</strong></td>
+                            <td>${agentName}</td>
+                            <td>${supervisorName}</td>
+                            <td>${ticket.total ? ticket.total.toLocaleString() : '0'} HTG</td>
+                            <td>${ticketDate.toLocaleDateString('fr-FR')}</td>
+                            <td>${ticketDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="action-btn view" onclick="viewTicketDetails('${ticket.id || ticket._id}')" title="Voir détails">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    loading.style.display = 'none';
+                    table.style.display = 'table';
+                    empty.style.display = 'none';
+                } else {
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur recherche tickets:', error);
+                showNotification('Erreur lors de la recherche des tickets', 'error');
+            }
+        }
+        
+        // Voir les détails d'un ticket
+        window.viewTicketDetails = async function(ticketId) {
+            try {
+                const modal = document.getElementById('view-ticket-modal');
+                const loading = document.getElementById('ticket-details-loading');
+                const content = document.getElementById('ticket-details-content');
+                const cancelBtn = document.getElementById('cancel-ticket-btn');
+                
+                modal.classList.add('active');
+                loading.style.display = 'flex';
+                content.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                
+                const response = await fetch(`${API_BASE_URL}/api/tickets/${ticketId}`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.ticket) {
+                    const ticket = data.ticket;
+                    const ticketDate = new Date(ticket.date || ticket.created_at);
+                    const minutesDiff = (new Date() - ticketDate) / (1000 * 60);
+                    
+                    // Trouver l'agent et superviseur
+                    let agentName = 'Inconnu';
+                    let supervisorName = 'Non assigné';
+                    
+                    if (ticket.agent_id) {
+                        const agentRes = await fetch(`${API_BASE_URL}/api/subsystem/users/${ticket.agent_id}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        if (agentRes.ok) {
+                            const agentData = await agentRes.json();
+                            if (agentData.success && agentData.user) {
+                                agentName = agentData.user.name;
+                                if (agentData.user.supervisor_id) {
+                                    const supervisorRes = await fetch(`${API_BASE_URL}/api/subsystem/users/${agentData.user.supervisor_id}`, {
+                                        headers: { 'x-auth-token': authToken }
+                                    });
+                                    
+                                    if (supervisorRes.ok) {
+                                        const supervisorData = await supervisorRes.json();
+                                        if (supervisorData.success && supervisorData.user) {
+                                            supervisorName = supervisorData.user.name;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Formater les paris
+                    let betsHTML = '';
+                    if (ticket.bets && Array.isArray(ticket.bets)) {
+                        ticket.bets.forEach((bet, index) => {
+                            betsHTML += `
+                                <div class="bet-item">
+                                    <div class="bet-details">
+                                        <div><strong>${bet.name}</strong> (${bet.type})</div>
+                                        <div style="font-size: 0.85rem; color: #6c757d;">Numéro: ${bet.number}</div>
+                                    </div>
+                                    <div class="bet-amount">
+                                        ${bet.amount ? bet.amount.toLocaleString() : '0'} HTG
+                                        <div style="font-size: 0.75rem; color: #6c757d;">x${bet.multiplier || 1}</div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    content.innerHTML = `
+                        <div class="ticket-info-grid">
+                            <div class="ticket-info-item">
+                                <div class="ticket-info-label">N° Ticket</div>
+                                <div class="ticket-info-value">${ticket.number || ticket.ticket_number}</div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <div class="ticket-info-label">Agent</div>
+                                <div class="ticket-info-value">${agentName}</div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <div class="ticket-info-label">Superviseur</div>
+                                <div class="ticket-info-value">${supervisorName}</div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <div class="ticket-info-label">Date</div>
+                                <div class="ticket-info-value">${ticketDate.toLocaleString('fr-FR')}</div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <div class="ticket-info-label">Statut</div>
+                                <div class="ticket-info-value">
+                                    <span class="status-badge ${ticket.is_synced ? 'status-active' : 'status-inactive'}">
+                                        ${ticket.is_synced ? 'Validé' : 'En attente'}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <div class="ticket-info-label">Montant total</div>
+                                <div class="ticket-info-value" style="font-size: 1.2rem; color: #27ae60;">
+                                    ${ticket.total ? ticket.total.toLocaleString() : '0'} HTG
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <h4 style="color: var(--secondary-color); margin: 20px 0 10px 0;">Détails des paris</h4>
+                        <div class="bet-list">
+                            ${betsHTML || '<p style="text-align: center; color: #6c757d;">Aucun détail de pari disponible</p>'}
+                        </div>
+                        
+                        <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+                            <div style="font-size: 0.9rem; color: #6c757d;">Informations supplémentaires</div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                                <div>
+                                    <div style="font-size: 0.85rem; color: #6c757d;">Âge du ticket</div>
+                                    <div>${Math.floor(minutesDiff)} minutes</div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.85rem; color: #6c757d;">Jeu</div>
+                                    <div>${ticket.draw || 'Non spécifié'}</div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.85rem; color: #6c757d;">Tirage</div>
+                                    <div>${ticket.draw_time || 'Non spécifié'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Afficher le bouton d'annulation si moins de 15 minutes
+                    if (minutesDiff < 15) {
+                        cancelBtn.style.display = 'block';
+                        cancelBtn.onclick = () => cancelTicket(ticketId);
+                    }
+                    
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                } else {
+                    showNotification(data.error || 'Erreur lors du chargement', 'error');
+                    hideViewTicketModal();
+                }
+            } catch (error) {
+                console.error('❌ Erreur détails ticket:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+                hideViewTicketModal();
+            }
+        };
+        
+        // Annuler un ticket
+        window.cancelTicket = async function(ticketId) {
+            if (!confirm('Êtes-vous sûr de vouloir annuler ce ticket ? Cette action est irréversible.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/tickets/${ticketId}`, {
+                    method: 'DELETE',
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Ticket annulé avec succès', 'success');
+                    hideViewTicketModal();
+                    
+                    // Recharger les tickets selon la section active
+                    const activeSection = document.querySelector('.section-content[style*="block"]');
+                    if (activeSection.id === 'tickets-section') {
+                        loadTickets();
+                    }
+                } else {
+                    showNotification(data.error || 'Erreur lors de l\'annulation', 'error');
+                }
+            } catch (error) {
+                console.error('❌ Erreur annulation ticket:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        };
+        
+        // Voir les détails d'un utilisateur
+        window.viewUserDetails = async function(userId) {
+            try {
+                const modal = document.getElementById('view-user-modal');
+                const loading = document.getElementById('user-details-loading');
+                const content = document.getElementById('user-details-content');
+                const deleteBtn = document.getElementById('delete-user-btn');
+                const blockBtn = document.getElementById('block-user-btn');
+                const unblockBtn = document.getElementById('unblock-user-btn');
+                
+                modal.classList.add('active');
+                loading.style.display = 'flex';
+                content.style.display = 'none';
+                deleteBtn.style.display = 'none';
+                blockBtn.style.display = 'none';
+                unblockBtn.style.display = 'none';
+                
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users/${userId}`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.user) {
+                    const user = data.user;
+                    const role = user.role;
+                    const isSupervisor = role === 'supervisor' && user.level === 1;
+                    const isAgent = role === 'agent';
+                    
+                    // Récupérer les statistiques
+                    let statsHTML = '';
+                    if (isSupervisor) {
+                        // Charger les agents du superviseur
+                        const agentsRes = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor_id=${userId}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        const agentsData = await agentsRes.json();
+                        const agentsCount = agentsData.success ? agentsData.users.length : 0;
+                        
+                        statsHTML = `
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 20px;">
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">Agents assignés</div>
+                                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color);">${agentsCount}</div>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">Performance</div>
+                                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color);">85%</div>
+                                </div>
+                            </div>
+                        `;
+                    } else if (isAgent) {
+                        // Statistiques de l'agent
+                        const today = new Date().toISOString().split('T')[0];
+                        const salesResponse = await fetch(`${API_BASE_URL}/api/subsystem/tickets?start_date=${today}&end_date=${today}&agent_id=${userId}`, {
+                            headers: { 'x-auth-token': authToken }
+                        });
+                        
+                        const salesData = await salesResponse.json();
+                        const todayTickets = salesData.success && salesData.tickets ? salesData.tickets.length : 0;
+                        const todaySales = salesData.success && salesData.tickets ? 
+                            salesData.tickets.reduce((sum, ticket) => sum + ticket.total, 0) : 0;
+                        
+                        statsHTML = `
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 20px;">
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">Tickets aujourd'hui</div>
+                                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color);">${todayTickets}</div>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">Ventes aujourd'hui</div>
+                                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color);">${todaySales.toLocaleString()} HTG</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    content.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
+                            <div style="width: 80px; height: 80px; background-color: ${isSupervisor ? '#f39c12' : '#2ecc71'}; 
+                                  border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+                                  font-size: 2rem; color: white; font-weight: bold;">
+                                ${user.name ? user.name.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <h2 style="margin: 0 0 5px 0; color: var(--secondary-color);">${user.name}</h2>
+                                <p style="margin: 0; color: #6c757d;">
+                                    <span class="role-badge ${isSupervisor ? 'role-supervisor' : 'role-agent'}">
+                                        ${isSupervisor ? 'Superviseur Niveau 1' : 'Agent'}
+                                    </span>
+                                    <span class="status-badge ${user.is_active ? 'status-active' : 'status-inactive'}" style="margin-left: 10px;">
+                                        ${user.is_active ? 'Actif' : 'Inactif'}
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Identifiant</div>
+                                <div style="font-weight: bold; color: var(--secondary-color);">${user.username}</div>
+                            </div>
+                            
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Email</div>
+                                <div style="font-weight: bold; color: var(--secondary-color);">${user.email || 'Non spécifié'}</div>
+                            </div>
+                            
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Date de création</div>
+                                <div style="font-weight: bold; color: var(--secondary-color);">
+                                    ${user.dateCreation ? new Date(user.dateCreation).toLocaleDateString('fr-FR') : 'Inconnue'}
+                                </div>
+                            </div>
+                            
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Dernière connexion</div>
+                                <div style="font-weight: bold; color: var(--secondary-color);">
+                                    ${user.last_login ? new Date(user.last_login).toLocaleString('fr-FR') : 'Jamais'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${statsHTML}
+                    `;
+                    
+                    // Afficher les boutons appropriés
+                    deleteBtn.style.display = 'block';
+                    deleteBtn.onclick = () => deleteUserModal(userId, user.name, isSupervisor ? 'supervisor' : 'agent');
+                    
+                    if (user.is_active) {
+                        blockBtn.style.display = 'block';
+                        blockBtn.onclick = () => toggleUserStatus(userId, true);
+                    } else {
+                        unblockBtn.style.display = 'block';
+                        unblockBtn.onclick = () => toggleUserStatus(userId, false);
+                    }
+                    
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                } else {
+                    showNotification(data.error || 'Erreur lors du chargement', 'error');
+                    hideViewUserModal();
+                }
+            } catch (error) {
+                console.error('❌ Erreur détails utilisateur:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+                hideViewUserModal();
+            }
+        };
+        
+        // Bloquer/débloquer un utilisateur
+        window.toggleUserStatus = async function(userId, isCurrentlyActive) {
+            const action = isCurrentlyActive ? 'bloquer' : 'débloquer';
+            const confirmMessage = isCurrentlyActive ? 
+                'Êtes-vous sûr de vouloir bloquer cet utilisateur ?' :
+                'Êtes-vous sûr de vouloir débloquer cet utilisateur ?';
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users/${userId}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'x-auth-token': authToken,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_active: !isCurrentlyActive
+                    })
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`Utilisateur ${action === 'bloquer' ? 'bloqué' : 'débloqué'} avec succès`, 'success');
+                    hideViewUserModal();
+                    
+                    // Recharger les données selon la section active
+                    const activeSection = document.querySelector('.section-content[style*="block"]');
+                    if (activeSection.id === 'hierarchy-section') {
+                        loadHierarchy();
+                    } else if (activeSection.id === 'supervisors-section') {
+                        loadSupervisors();
+                    } else if (activeSection.id === 'agents-section') {
+                        loadAllAgents();
+                    } else if (activeSection.id === 'dashboard-section') {
+                        loadDashboardData();
+                    }
+                } else {
+                    showNotification(data.error || `Erreur lors de l'${action}`, 'error');
+                }
+            } catch (error) {
+                console.error(`❌ Erreur ${action} utilisateur:`, error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        };
+        
+        // Modal pour supprimer un utilisateur
+        window.deleteUserModal = function(userId, userName, userType) {
+            const userTypeText = userType === 'supervisor' ? 'superviseur niveau 1' : 'agent';
+            
+            if (confirm(`Êtes-vous sûr de vouloir supprimer ${userTypeText} "${userName}" ? Cette action est irréversible.`)) {
+                deleteUser(userId);
+            }
+        };
+        
+        // Supprimer un utilisateur
+        async function deleteUser(userId) {
+            try {
+                // Note: Dans le server.js actuel, il n'y a pas de route DELETE pour les utilisateurs
+                // Nous allons donc utiliser une méthode alternative : désactiver l'utilisateur et le marquer comme supprimé
+                // Ou nous pouvons ajouter une route dans server.js
+                
+                // Pour l'instant, nous allons utiliser la route de mise à jour du statut
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users/${userId}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'x-auth-token': authToken,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_active: false,
+                        is_deleted: true  // Ajouter un champ pour marquer comme supprimé
+                    })
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Utilisateur supprimé avec succès', 'success');
+                    hideViewUserModal();
+                    
+                    // Recharger les données
+                    const activeSection = document.querySelector('.section-content[style*="block"]');
+                    if (activeSection.id === 'hierarchy-section') {
+                        loadHierarchy();
+                    } else if (activeSection.id === 'supervisors-section') {
+                        loadSupervisors();
+                    } else if (activeSection.id === 'agents-section') {
+                        loadAllAgents();
+                    } else if (activeSection.id === 'dashboard-section') {
+                        loadDashboardData();
+                    }
+                } else {
+                    showNotification(data.error || 'Erreur lors de la suppression', 'error');
+                }
+            } catch (error) {
+                console.error('❌ Erreur suppression utilisateur:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        }
+        
+        // Générer un rapport quotidien
+        async function generateDailyReport() {
+            try {
+                const date = document.getElementById('daily-report-date').value;
+                const loading = document.getElementById('daily-report-loading');
+                const results = document.getElementById('daily-report-results');
+                
+                loading.style.display = 'flex';
+                results.style.display = 'none';
+                
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/tickets?start_date=${date}&end_date=${date}`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.tickets && data.tickets.length > 0) {
+                    const tickets = data.tickets;
+                    const totalSales = tickets.reduce((sum, ticket) => sum + ticket.total, 0);
+                    const ticketCount = tickets.length;
+                    
+                    // Regrouper par superviseur
+                    const supervisorsMap = new Map();
+                    
+                    for (const ticket of tickets) {
+                        // Trouver le superviseur de l'agent
+                        let supervisorName = 'Non assigné';
+                        if (ticket.agent_id) {
+                            const agent = agentsList.find(a => (a.id || a._id) === ticket.agent_id);
+                            if (agent && agent.supervisor_id) {
+                                const supervisor = supervisorsList.find(s => (s.id || s._id) === agent.supervisor_id);
+                                if (supervisor) {
+                                    supervisorName = supervisor.name;
+                                }
+                            }
+                        }
+                        
+                        if (!supervisorsMap.has(supervisorName)) {
+                            supervisorsMap.set(supervisorName, {
+                                tickets: 0,
+                                sales: 0
+                            });
+                        }
+                        
+                        const supervisorData = supervisorsMap.get(supervisorName);
+                        supervisorData.tickets++;
+                        supervisorData.sales += ticket.total;
+                    }
+                    
+                    let html = `
+                        <h3 style="color: var(--secondary-color); margin-bottom: 20px;">Rapport du ${date}</h3>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 30px;">
+                            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Total tickets</div>
+                                <div style="font-size: 2rem; font-weight: bold; color: var(--secondary-color);">${ticketCount}</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Ventes totales</div>
+                                <div style="font-size: 2rem; font-weight: bold; color: #27ae60;">${totalSales.toLocaleString()} HTG</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (supervisorsMap.size > 0) {
+                        html += `
+                            <h4 style="color: var(--secondary-color); margin-bottom: 15px;">Détail par superviseur</h4>
+                            <table class="table" style="margin-bottom: 30px;">
+                                <thead>
+                                    <tr>
+                                        <th>Superviseur</th>
+                                        <th>Tickets</th>
+                                        <th>Ventes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                        `;
+                        
+                        supervisorsMap.forEach((data, supervisorName) => {
+                            html += `
+                                <tr>
+                                    <td>${supervisorName}</td>
+                                    <td>${data.tickets}</td>
+                                    <td>${data.sales.toLocaleString()} HTG</td>
+                                </tr>
+                            `;
+                        });
+                        
+                        html += `
+                                </tbody>
+                            </table>
+                        `;
+                    }
+                    
+                    results.innerHTML = html;
+                    loading.style.display = 'none';
+                    results.style.display = 'block';
+                } else {
+                    showNotification('Aucune donnée disponible pour cette date', 'warning');
+                    loading.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('❌ Erreur génération rapport:', error);
+                showNotification('Erreur lors de la génération du rapport', 'error');
+                document.getElementById('daily-report-loading').style.display = 'none';
+            }
+        }
+        
+        // Générer un rapport par superviseur
+        async function generateSupervisorReport() {
+            const supervisorId = document.getElementById('select-report-supervisor').value;
+            const startDate = document.getElementById('supervisor-report-start').value;
+            const endDate = document.getElementById('supervisor-report-end').value;
+            
+            if (!supervisorId || !startDate || !endDate) {
+                showNotification('Veuillez remplir tous les champs', 'warning');
+                return;
+            }
+            
+            try {
+                const loading = document.getElementById('supervisor-report-loading');
+                const results = document.getElementById('supervisor-report-results');
+                
+                loading.style.display = 'flex';
+                results.style.display = 'none';
+                
+                // Récupérer les agents du superviseur
+                const agentsRes = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor_id=${supervisorId}`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                const agentsData = await agentsRes.json();
+                
+                if (agentsData.success && agentsData.users && agentsData.users.length > 0) {
+                    const agentIds = agentsData.users.map(a => a.id || a._id);
+                    
+                    // Récupérer les tickets
+                    const ticketsRes = await fetch(`${API_BASE_URL}/api/subsystem/tickets?start_date=${startDate}&end_date=${endDate}&agent_ids=${agentIds.join(',')}`, {
+                        headers: { 'x-auth-token': authToken }
+                    });
+                    
+                    const ticketsData = await ticketsRes.json();
+                    
+                    if (ticketsData.success && ticketsData.tickets && ticketsData.tickets.length > 0) {
+                        const tickets = ticketsData.tickets;
+                        const totalSales = tickets.reduce((sum, ticket) => sum + ticket.total, 0);
+                        const ticketCount = tickets.length;
+                        
+                        // Regrouper par agent
+                        const agentsMap = new Map();
+                        
+                        for (const ticket of tickets) {
+                            const agentId = ticket.agent_id;
+                            const agent = agentsData.users.find(a => (a.id || a._id) === agentId);
+                            const agentName = agent ? agent.name : 'Inconnu';
+                            
+                            if (!agentsMap.has(agentName)) {
+                                agentsMap.set(agentName, {
+                                    tickets: 0,
+                                    sales: 0
+                                });
+                            }
+                            
+                            const agentData = agentsMap.get(agentName);
+                            agentData.tickets++;
+                            agentData.sales += ticket.total;
+                        }
+                        
+                        const supervisor = supervisorsList.find(s => (s.id || s._id) === supervisorId);
+                        const supervisorName = supervisor ? supervisor.name : 'Inconnu';
+                        
+                        let html = `
+                            <h3 style="color: var(--secondary-color); margin-bottom: 20px;">Rapport pour ${supervisorName}</h3>
+                            <p>Période: ${startDate} au ${endDate}</p>
+                            
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 30px;">
+                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">Total tickets</div>
+                                    <div style="font-size: 2rem; font-weight: bold; color: var(--secondary-color);">${ticketCount}</div>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">Ventes totales</div>
+                                    <div style="font-size: 2rem; font-weight: bold; color: #27ae60;">${totalSales.toLocaleString()} HTG</div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        if (agentsMap.size > 0) {
+                            html += `
+                                <h4 style="color: var(--secondary-color); margin-bottom: 15px;">Détail par agent</h4>
+                                <table class="table" style="margin-bottom: 30px;">
+                                    <thead>
+                                        <tr>
+                                            <th>Agent</th>
+                                            <th>Tickets</th>
+                                            <th>Ventes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                            `;
+                            
+                            agentsMap.forEach((data, agentName) => {
+                                html += `
+                                    <tr>
+                                        <td>${agentName}</td>
+                                        <td>${data.tickets}</td>
+                                        <td>${data.sales.toLocaleString()} HTG</td>
+                                    </tr>
+                                `;
+                            });
+                            
+                            html += `
+                                    </tbody>
+                                </table>
+                            `;
+                        }
+                        
+                        results.innerHTML = html;
+                        loading.style.display = 'none';
+                        results.style.display = 'block';
+                    } else {
+                        showNotification('Aucune donnée disponible pour cette période', 'warning');
+                        loading.style.display = 'none';
+                    }
+                } else {
+                    showNotification('Ce superviseur n\'a pas d\'agents', 'warning');
+                    loading.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('❌ Erreur génération rapport superviseur:', error);
+                showNotification('Erreur lors de la génération du rapport', 'error');
+                document.getElementById('supervisor-report-loading').style.display = 'none';
+            }
+        }
+        
+        // Générer un rapport par agent
+        async function generateAgentReport() {
+            const agentId = document.getElementById('select-report-agent').value;
+            const startDate = document.getElementById('agent-report-start').value;
+            const endDate = document.getElementById('agent-report-end').value;
+            
+            if (!agentId || !startDate || !endDate) {
+                showNotification('Veuillez remplir tous les champs', 'warning');
+                return;
+            }
+            
+            try {
+                const loading = document.getElementById('agent-report-loading');
+                const results = document.getElementById('agent-report-results');
+                
+                loading.style.display = 'flex';
+                results.style.display = 'none';
+                
+                // Récupérer les tickets de l'agent
+                const ticketsRes = await fetch(`${API_BASE_URL}/api/subsystem/tickets?start_date=${startDate}&end_date=${endDate}&agent_id=${agentId}`, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                const ticketsData = await ticketsRes.json();
+                
+                if (ticketsData.success && ticketsData.tickets && ticketsData.tickets.length > 0) {
+                    const tickets = ticketsData.tickets;
+                    const totalSales = tickets.reduce((sum, ticket) => sum + ticket.total, 0);
+                    const ticketCount = tickets.length;
+                    
+                    // Trouver l'agent
+                    const agent = agentsList.find(a => (a.id || a._id) === agentId);
+                    const agentName = agent ? agent.name : 'Inconnu';
+                    
+                    // Regrouper par jour
+                    const daysMap = new Map();
+                    
+                    for (const ticket of tickets) {
+                        const ticketDate = new Date(ticket.date || ticket.created_at);
+                        const dateStr = ticketDate.toISOString().split('T')[0];
+                        
+                        if (!daysMap.has(dateStr)) {
+                            daysMap.set(dateStr, {
+                                tickets: 0,
+                                sales: 0
+                            });
+                        }
+                        
+                        const dayData = daysMap.get(dateStr);
+                        dayData.tickets++;
+                        dayData.sales += ticket.total;
+                    }
+                    
+                    let html = `
+                        <h3 style="color: var(--secondary-color); margin-bottom: 20px;">Rapport pour ${agentName}</h3>
+                        <p>Période: ${startDate} au ${endDate}</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 30px;">
+                            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Total tickets</div>
+                                <div style="font-size: 2rem; font-weight: bold; color: var(--secondary-color);">${ticketCount}</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d;">Ventes totales</div>
+                                <div style="font-size: 2rem; font-weight: bold; color: #27ae60;">${totalSales.toLocaleString()} HTG</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (daysMap.size > 0) {
+                        html += `
+                            <h4 style="color: var(--secondary-color); margin-bottom: 15px;">Détail par jour</h4>
+                            <table class="table" style="margin-bottom: 30px;">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Tickets</th>
+                                        <th>Ventes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                        `;
+                        
+                        // Trier les dates
+                        const sortedDates = Array.from(daysMap.keys()).sort();
+                        
+                        sortedDates.forEach(dateStr => {
+                            const data = daysMap.get(dateStr);
+                            html += `
+                                <tr>
+                                    <td>${dateStr}</td>
+                                    <td>${data.tickets}</td>
+                                    <td>${data.sales.toLocaleString()} HTG</td>
+                                </tr>
+                            `;
+                        });
+                        
+                        html += `
+                                </tbody>
+                            </table>
+                        `;
+                    }
+                    
+                    results.innerHTML = html;
+                    loading.style.display = 'none';
+                    results.style.display = 'block';
+                } else {
+                    showNotification('Aucune donnée disponible pour cette période', 'warning');
+                    loading.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('❌ Erreur génération rapport agent:', error);
+                showNotification('Erreur lors de la génération du rapport', 'error');
+                document.getElementById('agent-report-loading').style.display = 'none';
+            }
+        }
+        
+        // Charger l'activité complète
+        async function loadFullActivity() {
+            try {
+                const startDate = document.getElementById('activity-start-date').value;
+                const endDate = document.getElementById('activity-end-date').value;
+                const userType = document.getElementById('activity-user-type').value;
+                
+                const loading = document.getElementById('full-activity-loading');
+                const table = document.getElementById('full-activity-table');
+                const tbody = document.getElementById('full-activity-body');
+                const empty = document.getElementById('full-activity-empty');
+                
+                loading.style.display = 'flex';
+                table.style.display = 'none';
+                empty.style.display = 'none';
+                
+                let url = `${API_BASE_URL}/api/subsystem/tickets`;
+                if (startDate && endDate) {
+                    url += `?start_date=${startDate}&end_date=${endDate}`;
+                }
+                
+                const response = await fetch(url, {
+                    headers: { 'x-auth-token': authToken }
+                });
+                
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.tickets && data.tickets.length > 0) {
+                    tbody.innerHTML = '';
+                    
+                    data.tickets.forEach(ticket => {
+                        const timestamp = new Date(ticket.date || ticket.created_at);
+                        const user = ticket.agent_name || 'Inconnu';
+                        const role = 'Agent'; // Par défaut
+                        
+                        // Filtrer par type d'utilisateur
+                        if (userType === 'supervisor' && role !== 'Superviseur') return;
+                        if (userType === 'agent' && role !== 'Agent') return;
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${timestamp.toLocaleString('fr-FR')}</td>
+                            <td>${user}</td>
+                            <td>
+                                <span class="role-badge role-agent">${role}</span>
+                            </td>
+                            <td>Création de ticket</td>
+                            <td>Ticket #${ticket.number} - ${ticket.total.toLocaleString()} HTG</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    if (tbody.children.length === 0) {
+                        loading.style.display = 'none';
+                        empty.style.display = 'block';
+                    } else {
+                        loading.style.display = 'none';
+                        table.style.display = 'table';
+                        empty.style.display = 'none';
+                    }
+                } else {
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('❌ Erreur chargement activité:', error);
+                showNotification('Erreur lors du chargement des activités', 'error');
+            }
+        }
+        
+        // Exporter un rapport
+        async function exportDailyReport() {
+            showNotification('Fonctionnalité d\'export en développement', 'info');
+        }
+        
+        // Mettre à jour les sélecteurs superviseurs
+        function updateSupervisorSelectors() {
+            const selectors = [
+                'filter-agent-supervisor',
+                'filter-ticket-supervisor',
+                'search-ticket-supervisor',
+                'select-report-supervisor',
+                'select-supervisor-agents',
+                'report-supervisor-select'
+            ];
+            
+            selectors.forEach(selectorId => {
+                const selector = document.getElementById(selectorId);
+                if (selector) {
+                    const currentValue = selector.value;
+                    selector.innerHTML = '<option value="">Tous les superviseurs</option>';
+                    
+                    supervisorsList.forEach(supervisor => {
+                        const option = document.createElement('option');
+                        option.value = supervisor.id || supervisor._id;
+                        option.textContent = supervisor.name;
+                        if (currentValue === option.value) {
+                            option.selected = true;
+                        }
+                        selector.appendChild(option);
+                    });
+                }
+            });
+        }
+        
+        // Mettre à jour les sélecteurs agents
+        function updateAgentSelectors() {
+            const selectors = [
+                'filter-ticket-agent',
+                'search-ticket-agent',
+                'select-report-agent',
+                'report-agent-select'
+            ];
+            
+            selectors.forEach(selectorId => {
+                const selector = document.getElementById(selectorId);
+                if (selector) {
+                    const currentValue = selector.value;
+                    selector.innerHTML = '<option value="">Tous les agents</option>';
+                    
+                    agentsList.forEach(agent => {
+                        const option = document.createElement('option');
+                        option.value = agent.id || agent._id;
+                        option.textContent = agent.name;
+                        if (currentValue === option.value) {
+                            option.selected = true;
+                        }
+                        selector.appendChild(option);
+                    });
+                }
+            });
+        }
+        
+        // Charger les données pour les rapports
+        async function loadReportData() {
+            await loadSupervisors();
+            await loadAllAgents();
+        }
+        
+        // Changer l'onglet superviseurs
+        function switchSupervisorTab(tabId) {
+            document.querySelectorAll('[data-supervisor-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[data-supervisor-tab="${tabId}"]`).classList.add('active');
+            
+            // TODO: Implémenter le filtrage selon l'onglet
+            loadSupervisors();
+        }
+        
+        // Changer l'onglet agents
+        function switchAgentTab(tabId) {
+            document.querySelectorAll('[data-agent-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[data-agent-tab="${tabId}"]`).classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            
+            if (tabId === 'by-supervisor') {
+                document.getElementById('tab-by-supervisor').style.display = 'block';
+                updateSupervisorSelectors();
+            } else {
+                document.getElementById('tab-all-agents').style.display = 'block';
+                loadAllAgents();
+            }
+        }
+        
+        // Changer l'onglet tickets
+        function switchTicketTab(tabId) {
+            document.querySelectorAll('[data-ticket-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[data-ticket-tab="${tabId}"]`).classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            
+            if (tabId === 'search') {
+                document.getElementById('tab-search-tickets').style.display = 'block';
+                updateSupervisorSelectors();
+                updateAgentSelectors();
+            } else {
+                document.getElementById('tab-recent-tickets').style.display = 'block';
+                loadTickets();
+            }
+        }
+        
+        // Changer l'onglet rapports
+        function switchReportTab(tabId) {
+            document.querySelectorAll('[data-report-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[data-report-tab="${tabId}"]`).classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            
+            document.getElementById(`tab-${tabId}-report`).style.display = 'block';
+            
+            if (tabId === 'supervisor' || tabId === 'agent') {
+                loadReportData();
+            }
+        }
+        
+        // Rafraîchir toutes les données
+        function refreshAllData() {
+            const refreshBtn = document.getElementById('refresh-btn');
+            const originalHtml = refreshBtn.innerHTML;
+            
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Actualiser';
+            refreshBtn.disabled = true;
+            
+            const activeSection = document.querySelector('.section-content[style*="block"]') || 
+                                 document.getElementById('dashboard-section');
+            
+            if (activeSection.id === 'dashboard-section') {
+                loadDashboardData();
+            } else if (activeSection.id === 'hierarchy-section') {
+                loadHierarchy();
+            } else if (activeSection.id === 'supervisors-section') {
+                loadSupervisors();
+            } else if (activeSection.id === 'agents-section') {
+                loadAllAgents();
+            } else if (activeSection.id === 'tickets-section') {
+                loadTickets();
+            } else if (activeSection.id === 'reports-section') {
+                loadReportData();
+            } else if (activeSection.id === 'activity-section') {
+                loadFullActivity();
+            }
+            
+            setTimeout(() => {
+                refreshBtn.innerHTML = originalHtml;
+                refreshBtn.disabled = false;
+                showNotification('Données rafraîchies', 'success');
+            }, 1000);
+        }
+        
+        // Mettre à jour l'heure actuelle
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            const dateString = now.toLocaleDateString('fr-FR', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            document.getElementById('current-time').textContent = 
+                `${dateString} - ${timeString}`;
+        }
+        
+        // Afficher une notification
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notification-container');
+            
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            let icon = 'fas fa-info-circle';
+            if (type === 'success') icon = 'fas fa-check-circle';
+            if (type === 'error') icon = 'fas fa-times-circle';
+            if (type === 'warning') icon = 'fas fa-exclamation-triangle';
+            
+            notification.innerHTML = `
+                <i class="${icon}"></i>
+                <span>${message}</span>
+                <button style="background: none; border: none; color: inherit; margin-left: auto; cursor: pointer;" 
+                        onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            container.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+        
+        // Déconnexion
+        function logout() {
+            if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+                localStorage.removeItem('nova_token');
+                localStorage.removeItem('nova_user_data');
+                redirectToLogin();
+            }
+        }
+        
+        // Rediriger vers la page de login
+        function redirectToLogin() {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.location.href = cleanUrl.replace('control-level2.html', 'index.html');
+        }
+        
+        // Cacher le modal ticket
+        function hideViewTicketModal() {
+            document.getElementById('view-ticket-modal').classList.remove('active');
+        }
+        
+        // Cacher le modal utilisateur
+        function hideViewUserModal() {
+            document.getElementById('view-user-modal').classList.remove('active');
+        }
+        
+        // Cacher le modal rapport
+        function hideGenerateReportModal() {
+            document.getElementById('generate-report-modal').classList.remove('active');
+        }
+        
+        // Générer un rapport modal pour superviseur
+        window.generateSupervisorReportModal = function(supervisorId) {
+            document.getElementById('report-type').value = 'supervisor';
+            document.getElementById('report-supervisor-select').value = supervisorId;
+            document.getElementById('report-supervisor-group').style.display = 'block';
+            document.getElementById('generate-report-modal').classList.add('active');
+        };
+        
+        // Générer un rapport modal pour agent
+        window.generateAgentReportModal = function(agentId) {
+            document.getElementById('report-type').value = 'agent';
+            document.getElementById('report-agent-select').value = agentId;
+            document.getElementById('report-agent-group').style.display = 'block';
+            document.getElementById('generate-report-modal').classList.add('active');
+        };
+    </script>
+</body>
+</html>
