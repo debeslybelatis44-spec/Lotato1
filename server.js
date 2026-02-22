@@ -39,7 +39,7 @@ const Subsystem = sequelize.define('Subsystem', {
     subscription_type: { type: DataTypes.ENUM('basic','standard','premium','enterprise'), defaultValue: 'standard' },
     subscription_months: { type: DataTypes.INTEGER, defaultValue: 1 },
     subscription_expires: DataTypes.DATE,
-    admin_user: { type: DataTypes.INTEGER }, // référence à User (à définir après)
+    admin_user: { type: DataTypes.INTEGER }, // référence à User
     is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
     created_at: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
     stats_active_users: { type: DataTypes.INTEGER, defaultValue: 0 },
@@ -71,7 +71,7 @@ const Draw = sequelize.define('Draw', {
     name: { type: DataTypes.STRING, allowNull: false },
     code: { type: DataTypes.STRING, allowNull: false, unique: true },
     icon: { type: DataTypes.STRING, defaultValue: 'fas fa-dice' },
-    morning_time: { type: DataTypes.TIME, allowNull: false }, // stocker comme 'HH:MM:SS'
+    morning_time: { type: DataTypes.TIME, allowNull: false },
     evening_time: { type: DataTypes.TIME, allowNull: false },
     is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
     order: { type: DataTypes.INTEGER, defaultValue: 0 },
@@ -81,7 +81,7 @@ const Draw = sequelize.define('Draw', {
 // Modèle Result
 const Result = sequelize.define('Result', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-    draw: { type: DataTypes.STRING, allowNull: false }, // référence au code du tirage
+    draw: { type: DataTypes.STRING, allowNull: false },
     draw_time: { type: DataTypes.ENUM('morning','evening'), allowNull: false },
     date: { type: DataTypes.DATEONLY, allowNull: false },
     lot1: { type: DataTypes.STRING(3), allowNull: false },
@@ -92,7 +92,7 @@ const Result = sequelize.define('Result', {
     verified_at: DataTypes.DATE
 }, { tableName: 'results', timestamps: false, indexes: [{ fields: ['draw', 'draw_time', 'date'], unique: true }] });
 
-// Modèle Bet (sous-modèle, mais en SQL nous stockons dans une table séparée liée à Ticket)
+// Modèle Bet
 const Bet = sequelize.define('Bet', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     ticket_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'tickets', key: 'id' } },
@@ -101,13 +101,13 @@ const Bet = sequelize.define('Bet', {
     number: { type: DataTypes.STRING, allowNull: false },
     amount: { type: DataTypes.DECIMAL(10,2), allowNull: false },
     multiplier: { type: DataTypes.INTEGER, allowNull: false },
-    options: { type: DataTypes.JSON }, // stocker les options Lotto4/5 en JSON
+    options: { type: DataTypes.JSON },
     perOptionAmount: DataTypes.DECIMAL(10,2),
     isLotto4: DataTypes.BOOLEAN,
     isLotto5: DataTypes.BOOLEAN,
     isAuto: DataTypes.BOOLEAN,
     isGroup: DataTypes.BOOLEAN,
-    details: DataTypes.JSON // pour les groupes (ex: détails des boules)
+    details: DataTypes.JSON
 }, { tableName: 'bets', timestamps: false });
 
 // Modèle Ticket
@@ -132,8 +132,8 @@ const MultiDrawTicket = sequelize.define('MultiDrawTicket', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     number: { type: DataTypes.INTEGER, allowNull: false, unique: true },
     date: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
-    bets: { type: DataTypes.JSON }, // stocker les bets en JSON car ils ont des draws multiples
-    draws: { type: DataTypes.JSON }, // tableau des tirages sélectionnés
+    bets: { type: DataTypes.JSON },
+    draws: { type: DataTypes.JSON },
     total: { type: DataTypes.DECIMAL(10,2), allowNull: false },
     agent_id: { type: DataTypes.INTEGER, references: { model: User, key: 'id' } },
     agent_name: { type: DataTypes.STRING, allowNull: false },
@@ -150,7 +150,7 @@ const Winner = sequelize.define('Winner', {
     draw: { type: DataTypes.STRING, allowNull: false },
     draw_time: { type: DataTypes.ENUM('morning','evening'), allowNull: false },
     date: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
-    winning_bets: { type: DataTypes.JSON }, // stocker les paris gagnants
+    winning_bets: { type: DataTypes.JSON },
     total_winnings: { type: DataTypes.DECIMAL(10,2), allowNull: false },
     paid: { type: DataTypes.BOOLEAN, defaultValue: false },
     paid_at: DataTypes.DATE,
@@ -175,7 +175,7 @@ const History = sequelize.define('History', {
     date: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
     draw: { type: DataTypes.STRING, allowNull: false },
     draw_time: { type: DataTypes.ENUM('morning','evening'), allowNull: false },
-    bets: { type: DataTypes.JSON }, // stocker les bets en JSON
+    bets: { type: DataTypes.JSON },
     total: { type: DataTypes.DECIMAL(10,2), allowNull: false },
     agent_id: { type: DataTypes.INTEGER, references: { model: User, key: 'id' } },
     agent_name: { type: DataTypes.STRING, allowNull: false }
@@ -204,11 +204,172 @@ History.belongsTo(User, { as: 'agent', foreignKey: 'agent_id' });
 Result.belongsTo(User, { as: 'verifier', foreignKey: 'verified_by' });
 
 // =================== SYNC BASE DE DONNÉES ===================
-// Utilisation de sync() sans options : crée les tables si elles n'existent pas, sans les modifier.
-// Si les tables existent déjà, aucune modification n'est tentée.
-sequelize.sync()
-    .then(() => console.log('✅ Base de données synchronisée'))
+// Utilisation de sync({ alter: true }) pour ajuster les tables existantes sans perdre les données
+// et éviter l'erreur de contrainte UNIQUE sur la colonne subdomain.
+sequelize.sync({ alter: true })
+    .then(async () => {
+        console.log('✅ Base de données synchronisée (alter: true)');
+        // Ajout des données de test si nécessaire
+        await seedTestData();
+    })
     .catch(err => console.error('❌ Erreur synchronisation DB:', err));
+
+// =================== DONNÉES DE TEST ===================
+async function seedTestData() {
+    try {
+        // Vérifier si un utilisateur master existe déjà
+        const masterCount = await User.count({ where: { role: 'master' } });
+        if (masterCount === 0) {
+            console.log('Création des utilisateurs de test...');
+
+            // 1. Créer un master
+            const master = await User.create({
+                username: 'master',
+                password: 'master123',
+                name: 'Master Admin',
+                email: 'master@novalotto.com',
+                role: 'master',
+                level: 1
+            });
+            console.log('Master créé:', master.username);
+
+            // 2. Créer un sous-système exemple
+            const sub1 = await Subsystem.create({
+                name: 'Sous-système Alpha',
+                subdomain: 'alpha',
+                contact_email: 'admin@alpha.com',
+                contact_phone: '+123456789',
+                max_users: 50,
+                subscription_type: 'enterprise',
+                subscription_months: 12,
+                subscription_expires: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+                is_active: true
+            });
+
+            // 3. Créer un administrateur de sous-système (propriétaire)
+            const subAdmin = await User.create({
+                username: 'subadmin_alpha',
+                password: 'sub123',
+                name: 'Admin Alpha',
+                email: 'admin@alpha.com',
+                role: 'subsystem',
+                level: 1,
+                subsystem_id: sub1.id
+            });
+            sub1.admin_user = subAdmin.id;
+            await sub1.save();
+
+            // 4. Créer des superviseurs niveau 1 et 2
+            const sup1 = await User.create({
+                username: 'supervisor1_alpha',
+                password: 'sup1',
+                name: 'Superviseur N1 Alpha',
+                email: 'sup1@alpha.com',
+                role: 'supervisor',
+                level: 1,
+                subsystem_id: sub1.id
+            });
+            const sup2 = await User.create({
+                username: 'supervisor2_alpha',
+                password: 'sup2',
+                name: 'Superviseur N2 Alpha',
+                email: 'sup2@alpha.com',
+                role: 'supervisor',
+                level: 2,
+                subsystem_id: sub1.id
+            });
+
+            // 5. Créer 5 agents pour ce sous-système
+            for (let i = 1; i <= 5; i++) {
+                const agent = await User.create({
+                    username: `agent_alpha_${i}`,
+                    password: `agent${i}`,
+                    name: `Agent Alpha ${i}`,
+                    email: `agent${i}@alpha.com`,
+                    role: 'agent',
+                    level: 1,
+                    subsystem_id: sub1.id,
+                    supervisor_id: sup1.id,
+                    supervisor2_id: sup2.id
+                });
+            }
+
+            // 6. Créer un second sous-système pour variété
+            const sub2 = await Subsystem.create({
+                name: 'Sous-système Beta',
+                subdomain: 'beta',
+                contact_email: 'admin@beta.com',
+                contact_phone: '+987654321',
+                max_users: 30,
+                subscription_type: 'standard',
+                subscription_months: 6,
+                subscription_expires: new Date(new Date().setMonth(new Date().getMonth() + 6)),
+                is_active: true
+            });
+
+            const subAdmin2 = await User.create({
+                username: 'subadmin_beta',
+                password: 'subbeta123',
+                name: 'Admin Beta',
+                email: 'admin@beta.com',
+                role: 'subsystem',
+                level: 1,
+                subsystem_id: sub2.id
+            });
+            sub2.admin_user = subAdmin2.id;
+            await sub2.save();
+
+            // Superviseurs Beta
+            const sup1b = await User.create({
+                username: 'supervisor1_beta',
+                password: 'sup1beta',
+                name: 'Superviseur N1 Beta',
+                email: 'sup1@beta.com',
+                role: 'supervisor',
+                level: 1,
+                subsystem_id: sub2.id
+            });
+            const sup2b = await User.create({
+                username: 'supervisor2_beta',
+                password: 'sup2beta',
+                name: 'Superviseur N2 Beta',
+                email: 'sup2@beta.com',
+                role: 'supervisor',
+                level: 2,
+                subsystem_id: sub2.id
+            });
+
+            // 5 agents Beta
+            for (let i = 1; i <= 5; i++) {
+                await User.create({
+                    username: `agent_beta_${i}`,
+                    password: `agentbeta${i}`,
+                    name: `Agent Beta ${i}`,
+                    email: `agent${i}@beta.com`,
+                    role: 'agent',
+                    level: 1,
+                    subsystem_id: sub2.id,
+                    supervisor_id: sup1b.id,
+                    supervisor2_id: sup2b.id
+                });
+            }
+
+            // 7. Créer quelques tirages par défaut
+            await Draw.bulkCreate([
+                { name: 'Borlette', code: 'boro', morning_time: '12:00:00', evening_time: '18:00:00', order: 1 },
+                { name: 'Lotto 3', code: 'lotto3', morning_time: '13:00:00', evening_time: '19:00:00', order: 2 },
+                { name: 'Lotto 4', code: 'lotto4', morning_time: '14:00:00', evening_time: '20:00:00', order: 3 },
+                { name: 'Lotto 5', code: 'lotto5', morning_time: '15:00:00', evening_time: '21:00:00', order: 4 }
+            ]);
+
+            console.log('✅ Données de test insérées avec succès.');
+        } else {
+            console.log('ℹ️ Des utilisateurs existent déjà, pas de création de test.');
+        }
+    } catch (error) {
+        console.error('❌ Erreur lors de l\'insertion des données de test:', error);
+    }
+}
 
 // =================== MIDDLEWARE DE VÉRIFICATION DE TOKEN ===================
 function vérifierToken(req, res, next) {
