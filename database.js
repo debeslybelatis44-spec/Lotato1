@@ -6,7 +6,7 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialectOptions: {
         ssl: {
             require: true,
-            rejectUnauthorized: true // Utilisez false en développement seulement
+            rejectUnauthorized: true // Mettre false si vous avez des problèmes de certificat
         }
     },
     pool: {

@@ -4,7 +4,7 @@ const compression = require('compression');
 const fs = require('fs');
 const cors = require('cors');
 const { Sequelize, DataTypes, Op } = require('sequelize');
-const sequelize = require('./database'); // fichier de configuration séparé
+const sequelize = require('./database'); // Assurez-vous que database.js est configuré correctement
 
 const app = express();
 
@@ -204,7 +204,9 @@ History.belongsTo(User, { as: 'agent', foreignKey: 'agent_id' });
 Result.belongsTo(User, { as: 'verifier', foreignKey: 'verified_by' });
 
 // =================== SYNC BASE DE DONNÉES ===================
-sequelize.sync({ alter: true }) // utiliser alter en développement, en production préférer migrations
+// Utilisation de sync() sans options : crée les tables si elles n'existent pas, sans les modifier.
+// Si les tables existent déjà, aucune modification n'est tentée.
+sequelize.sync()
     .then(() => console.log('✅ Base de données synchronisée'))
     .catch(err => console.error('❌ Erreur synchronisation DB:', err));
 
@@ -277,7 +279,7 @@ app.post('/api/auth/login', async (req, res) => {
         const where = { username, password, role: dbRole };
         if (dbRole === 'supervisor') where.level = level;
 
-        const user = await User.findOne({ where, include: [{ model: Subsystem, as: 'Subsystem' }] });
+        const user = await User.findOne({ where, include: [{ model: Subsystem }] });
         if (!user) return res.status(401).json({ success: false, error: 'Identifiants ou rôle incorrect' });
 
         const token = `nova_${Date.now()}_${user.id}_${user.role}_${user.level || 1}`;
@@ -650,13 +652,16 @@ app.post('/api/check-winners', vérifierToken, async (req, res) => {
         for (const ticket of tickets) {
             const winningBets = [];
             let totalWinnings = 0;
-            // Logique de vérification (identique à l'ancienne, à adapter si nécessaire)
-            // Pour simplifier, on reprend la même logique en parcourant les bets
+            // Logique de vérification simplifiée (à adapter selon vos règles)
+            // Exemple minimal : on considère qu'un ticket est gagnant si un pari correspond au résultat
+            // Vous devrez implémenter la logique complète ici
             if (ticket.Bets) {
                 for (const bet of ticket.Bets) {
-                    // Implémenter la logique de gain selon le type de pari (identique à avant)
-                    // ...
-                    // (Nous reproduisons ici la logique de l'ancien checkBetAgainstResult)
+                    // Exemple basique : si le numéro du pari est le même que le lot1
+                    if (bet.number === result.lot1) {
+                        winningBets.push(bet);
+                        totalWinnings += parseFloat(bet.amount) * bet.multiplier;
+                    }
                 }
             }
             if (winningBets.length > 0) {
@@ -666,7 +671,7 @@ app.post('/api/check-winners', vérifierToken, async (req, res) => {
                     draw, draw_time,
                     date: new Date(),
                     winning_bets: winningBets,
-                    total_winnings,
+                    total_winnings: totalWinnings,
                     agent_id: user.id
                 });
                 winningTickets.push({
