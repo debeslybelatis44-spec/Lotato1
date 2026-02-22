@@ -1,10 +1,14 @@
 const { Sequelize } = require('sequelize');
 
-// Utiliser la variable d'environnement DATABASE_URL fournie par Render
-// Exemple: mysql://user:password@host:port/database
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'mysql',
-    logging: false, // désactiver les logs SQL en production
+    logging: false,
+    dialectOptions: {
+        ssl: {
+            require: true,
+            rejectUnauthorized: true // Utilisez false en développement seulement
+        }
+    },
     pool: {
         max: 5,
         min: 0,
