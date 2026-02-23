@@ -4,8 +4,9 @@ const express = require('express');
 const compression = require('compression');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs'); // Remplacé bcrypt par bcryptjs
 const { Pool } = require('pg');
+const path = require('path'); // Ajouté pour les chemins statiques
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -15,6 +16,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_difficil
 app.use(compression()); // Active la compression gzip
 app.use(cors());
 app.use(express.json());
+
+// Servir les fichiers statiques depuis la racine du projet
+app.use(express.static(path.join(__dirname)));
+
+// Route explicite pour la racine (optionnelle mais sécurise)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Connexion à PostgreSQL (Neon)
 const pool = new Pool({
