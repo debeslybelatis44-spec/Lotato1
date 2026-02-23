@@ -1,4 +1,5 @@
 // lotato.js – Version sans données simulées (uniquement API réelle)
+// Correction : génération du numéro de ticket côté serveur pour éviter les collisions
 
 // ==========================================
 // Configuration de base
@@ -18,7 +19,7 @@ const APP_CONFIG = {
     companyInfo: `${API_BASE_URL}/api/company-info`,
     logo: `${API_BASE_URL}/api/logo`,
     authCheck: `${API_BASE_URL}/api/auth/check`,
-    draws: `${API_BASE_URL}/api/draws`          // Nouvel endpoint pour les tirages
+    draws: `${API_BASE_URL}/api/draws`
 };
 
 const FIVE_MINUTES = 5 * 60 * 1000; // 5 minutes en millisecondes
@@ -26,10 +27,10 @@ const FIVE_MINUTES = 5 * 60 * 1000; // 5 minutes en millisecondes
 // ==========================================
 // Variables globales (initialement vides)
 // ==========================================
-let drawsData = {};                // Données des tirages (chargées depuis l'API)
-let resultsData = {};              // Résultats des tirages (chargés depuis l'API)
+let drawsData = {};
+let resultsData = {};
 let activeBets = [];
-let ticketNumber = 100001;
+let ticketNumber = 100001;  // Point de départ local (sera mis à jour après chaque sauvegarde)
 let savedTickets = [];
 let currentAdmin = null;
 let pendingSyncTickets = [];
@@ -68,7 +69,7 @@ let winningTickets = [];
 let authToken = null;
 let currentUser = null;
 
-// Types de paris (configuration statique – peut aussi être chargée depuis l'API si besoin)
+// Types de paris (configuration statique)
 const betTypes = {
     lotto3: {
         name: "LOTO 3",
@@ -266,7 +267,11 @@ async function loadDataFromAPI() {
         const ticketsData = await apiCall(APP_CONFIG.tickets);
         if (ticketsData && ticketsData.success) {
             savedTickets = ticketsData.tickets || [];
-            ticketNumber = ticketsData.nextTicketNumber || ticketNumber;
+            // Mettre à jour ticketNumber local en fonction du dernier ticket sauvegardé (optionnel)
+            if (savedTickets.length > 0) {
+                const maxNumber = Math.max(...savedTickets.map(t => t.number));
+                ticketNumber = maxNumber + 1;
+            }
         }
 
         // Charger les tickets gagnants
@@ -332,12 +337,12 @@ function checkDrawBeforeOpening(drawId, time) {
 }
 
 // ==========================================
-// Sauvegarde des tickets
+// Sauvegarde des tickets (version corrigée)
 // ==========================================
 async function saveTicketAPI(ticketData) {
     try {
+        // Ne pas envoyer le numéro, il sera généré par le serveur
         const requestData = {
-            number: ticketData.number,
             draw: ticketData.draw,
             draw_time: ticketData.drawTime,
             bets: ticketData.bets,
@@ -374,7 +379,7 @@ async function saveTicket() {
 
     const total = activeBets.reduce((sum, bet) => sum + bet.amount, 0);
     const ticket = {
-        number: ticketNumber,
+        // number: ticketNumber,  // Supprimé : le serveur générera le numéro
         draw: currentDraw,
         drawTime: currentDrawTime,
         bets: activeBets,
@@ -388,9 +393,11 @@ async function saveTicket() {
     try {
         const response = await saveTicketAPI(ticket);
         if (response && response.success) {
+            // Le serveur retourne le ticket créé avec son numéro
             const savedTicket = { ...response.ticket, id: response.ticket.id || Date.now().toString() };
             savedTickets.push(savedTicket);
-            ticketNumber = response.ticket.number + 1;
+            // Mettre à jour le compteur local pour le prochain ticket
+            ticketNumber = savedTicket.number + 1;
             showNotification("Fiche sove avèk siksè!", "success");
             activeBets = [];
             updateBetsList();
@@ -491,7 +498,7 @@ function printTicket(ticketToPrint = null) {
 }
 
 // ==========================================
-// Fonctions pour les multi-tirages
+// Fonctions pour les multi-tirages (inchangées)
 // ==========================================
 async function saveMultiDrawTicketAPI(ticket) {
     try {
