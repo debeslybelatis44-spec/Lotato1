@@ -951,6 +951,10 @@
                 <div class="nav-icon"><i class="fas fa-chart-pie"></i></div>
                 <div class="nav-label">Résultats</div>
             </a>
+            <a href="#" class="nav-item" data-section="restrictions">
+                <div class="nav-icon"><i class="fas fa-ban"></i></div>
+                <div class="nav-label">Restrictions</div>
+            </a>
             <a href="#" class="nav-item" data-section="settings">
                 <div class="nav-icon"><i class="fas fa-cog"></i></div>
                 <div class="nav-label">Paramètres</div>
@@ -1671,6 +1675,50 @@
             </div>
         </div>
         
+        <!-- Restrictions Section (NEW) -->
+        <div id="restrictions-section" class="section-content" style="display: none;">
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Gestion des restrictions de boules</div>
+                    <div class="search-box">
+                        <button class="btn btn-success" id="add-restriction-btn">
+                            <i class="fas fa-plus"></i> Ajouter une restriction
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="loading" id="restrictions-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Chargement des restrictions...</p>
+                </div>
+                
+                <table class="table" id="restrictions-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Numéro</th>
+                            <th>Type</th>
+                            <th>Limite (HTG)</th>
+                            <th>Tirage</th>
+                            <th>Heure</th>
+                            <th>Créé le</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="restrictions-table-body">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+                
+                <div class="empty-state" id="restrictions-empty" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-ban"></i>
+                    </div>
+                    <h3>Aucune restriction</h3>
+                    <p>Ajoutez des restrictions pour bloquer ou limiter des boules</p>
+                </div>
+            </div>
+        </div>
+        
         <!-- Settings Section -->
         <div id="settings-section" class="section-content" style="display: none;">
             <div class="tabs">
@@ -2224,19 +2272,140 @@
         </div>
     </div>
     
+    <!-- Modal: Add Restriction (NEW) -->
+    <div class="modal" id="add-restriction-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Ajouter une restriction</div>
+                <button class="modal-close" id="close-add-restriction-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="add-restriction-form">
+                    <div class="form-group">
+                        <label class="form-label">Numéro à restreindre *</label>
+                        <input type="text" class="form-control" id="restriction-number" placeholder="Ex: 43" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Type de restriction *</label>
+                        <select class="form-control" id="restriction-type" required>
+                            <option value="block">Bloquer (interdire la vente)</option>
+                            <option value="limit">Limiter (montant maximum)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="restriction-limit-group" style="display: none;">
+                        <label class="form-label">Montant limite (HTG) *</label>
+                        <input type="number" class="form-control" id="restriction-limit" min="1" step="1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Appliquer au tirage</label>
+                        <select class="form-control" id="restriction-draw">
+                            <option value="all">Tous les tirages</option>
+                            <option value="borlette">Borlette</option>
+                            <option value="lotto3">Lotto 3</option>
+                            <option value="lotto4">Lotto 4</option>
+                            <option value="lotto5">Lotto 5</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Appliquer à l'heure</label>
+                        <select class="form-control" id="restriction-time">
+                            <option value="all">Toutes les heures</option>
+                            <option value="morning">Matin</option>
+                            <option value="evening">Soir</option>
+                        </select>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="cancel-add-restriction">Annuler</button>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-plus"></i> Ajouter
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: Edit Restriction (NEW) -->
+    <div class="modal" id="edit-restriction-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Modifier la restriction</div>
+                <button class="modal-close" id="close-edit-restriction-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="edit-restriction-form">
+                    <input type="hidden" id="edit-restriction-id">
+                    
+                    <div class="form-group">
+                        <label class="form-label">Numéro</label>
+                        <input type="text" class="form-control" id="edit-restriction-number" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Type de restriction</label>
+                        <select class="form-control" id="edit-restriction-type" required>
+                            <option value="block">Bloquer (interdire la vente)</option>
+                            <option value="limit">Limiter (montant maximum)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="edit-restriction-limit-group">
+                        <label class="form-label">Montant limite (HTG)</label>
+                        <input type="number" class="form-control" id="edit-restriction-limit" min="1" step="1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Appliquer au tirage</label>
+                        <select class="form-control" id="edit-restriction-draw">
+                            <option value="all">Tous les tirages</option>
+                            <option value="borlette">Borlette</option>
+                            <option value="lotto3">Lotto 3</option>
+                            <option value="lotto4">Lotto 4</option>
+                            <option value="lotto5">Lotto 5</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Appliquer à l'heure</label>
+                        <select class="form-control" id="edit-restriction-time">
+                            <option value="all">Toutes les heures</option>
+                            <option value="morning">Matin</option>
+                            <option value="evening">Soir</option>
+                        </select>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="cancel-edit-restriction">Annuler</button>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-save"></i> Sauvegarder
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
     <!-- Notification Container -->
     <div id="notification-container"></div>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Configuration
-        const API_BASE_URL = 'https://lotatonova-fv0b.onrender.com';
+        const API_BASE_URL = 'https://lotato1.onrender.com';
         let subsystemToken = localStorage.getItem('nova_token');
         let currentUser = JSON.parse(localStorage.getItem('nova_user_data') || '{}');
         let currentSubsystem = null;
         let usersList = [];
         let supervisorsList = [];
         let agentsList = [];
+        let restrictionsList = []; // Nouvelle variable
         
         // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
@@ -2405,7 +2574,7 @@
                 });
             });
             
-            // Modals
+            // Modals utilisateurs
             document.getElementById('close-add-user-modal').addEventListener('click', hideAddUserModal);
             document.getElementById('cancel-add-user').addEventListener('click', hideAddUserModal);
             document.getElementById('close-edit-user-modal').addEventListener('click', hideEditUserModal);
@@ -2415,15 +2584,24 @@
             document.getElementById('close-view-ticket-modal').addEventListener('click', hideViewTicketModal);
             document.getElementById('close-ticket-details').addEventListener('click', hideViewTicketModal);
             
-            // Formulaire ajout utilisateur
+            // Modals restrictions (nouveaux)
+            document.getElementById('add-restriction-btn').addEventListener('click', showAddRestrictionModal);
+            document.getElementById('close-add-restriction-modal').addEventListener('click', hideAddRestrictionModal);
+            document.getElementById('cancel-add-restriction').addEventListener('click', hideAddRestrictionModal);
+            document.getElementById('close-edit-restriction-modal').addEventListener('click', hideEditRestrictionModal);
+            document.getElementById('cancel-edit-restriction').addEventListener('click', hideEditRestrictionModal);
+            
+            // Gestion du type de restriction (afficher/cacher champ limite)
+            document.getElementById('restriction-type').addEventListener('change', toggleRestrictionLimitField);
+            document.getElementById('edit-restriction-type').addEventListener('change', toggleEditRestrictionLimitField);
+            
+            // Formulaires
             document.getElementById('add-user-form').addEventListener('submit', createUser);
             document.getElementById('user-type').addEventListener('change', handleUserTypeChange);
-            
-            // Formulaire modification utilisateur
             document.getElementById('edit-user-form').addEventListener('submit', updateUser);
-            
-            // Formulaire résultat
             document.getElementById('enter-result-form').addEventListener('submit', saveResult);
+            document.getElementById('add-restriction-form').addEventListener('submit', createRestriction);
+            document.getElementById('edit-restriction-form').addEventListener('submit', updateRestriction);
             
             // Sauvegarde multiplicateurs
             document.getElementById('save-multipliers').addEventListener('click', saveMultipliers);
@@ -2432,6 +2610,32 @@
             document.getElementById('generate-daily-report').addEventListener('click', generateDailyReport);
             document.getElementById('generate-monthly-report').addEventListener('click', generateMonthlyReport);
             document.getElementById('generate-agent-report').addEventListener('click', generateAgentReport);
+        }
+        
+        // Afficher/cacher champ limite pour ajout restriction
+        function toggleRestrictionLimitField() {
+            const type = document.getElementById('restriction-type').value;
+            const limitGroup = document.getElementById('restriction-limit-group');
+            if (type === 'limit') {
+                limitGroup.style.display = 'block';
+                document.getElementById('restriction-limit').setAttribute('required', 'required');
+            } else {
+                limitGroup.style.display = 'none';
+                document.getElementById('restriction-limit').removeAttribute('required');
+            }
+        }
+        
+        // Afficher/cacher champ limite pour édition restriction
+        function toggleEditRestrictionLimitField() {
+            const type = document.getElementById('edit-restriction-type').value;
+            const limitGroup = document.getElementById('edit-restriction-limit-group');
+            if (type === 'limit') {
+                limitGroup.style.display = 'block';
+                document.getElementById('edit-restriction-limit').setAttribute('required', 'required');
+            } else {
+                limitGroup.style.display = 'none';
+                document.getElementById('edit-restriction-limit').removeAttribute('required');
+            }
         }
         
         // Configurer les sliders de multiplicateurs
@@ -2456,6 +2660,8 @@
                     sliderElement.addEventListener('input', function() {
                         valueElement.textContent = this.value;
                     });
+                    
+                    // Charger la valeur depuis l'API (à implémenter)
                 }
             });
         }
@@ -2490,6 +2696,9 @@
                     case 'results':
                         loadRecentResults();
                         break;
+                    case 'restrictions':
+                        loadRestrictions();
+                        break;
                     case 'activity':
                         loadActivities();
                         break;
@@ -2519,14 +2728,11 @@
                     document.getElementById('active-rate').textContent = 
                         stats.max_users > 0 ? Math.round((stats.active_users / stats.max_users) * 100) + '%' : '0%';
                     
-                    // Mettre à jour les stats rapides
-                    // Note: Ces données seraient normalement récupérées d'autres endpoints
-                    document.getElementById('online-agents').textContent = Math.floor(stats.active_users * 0.6);
-                    document.getElementById('online-supervisors').textContent = Math.floor(stats.active_users * 0.2);
-                    document.getElementById('total-payout').textContent = 
-                        Math.floor(stats.today_sales * 0.2).toLocaleString() + ' HTG';
-                    document.getElementById('pending-issues').textContent = 
-                        Math.floor(stats.today_tickets * 0.05);
+                    // Mettre à jour les stats rapides (maintenant réelles)
+                    document.getElementById('online-agents').textContent = stats.online_agents || 0;
+                    document.getElementById('online-supervisors').textContent = stats.online_supervisors || 0;
+                    document.getElementById('total-payout').textContent = (stats.pending_payout || 0).toLocaleString() + ' HTG';
+                    document.getElementById('pending-issues').textContent = stats.pending_issues || 0;
                 }
             } catch (error) {
                 console.error('Erreur chargement dashboard:', error);
@@ -2568,7 +2774,6 @@
                     
                     // Ajouter chaque utilisateur
                     users.forEach(user => {
-                        const row = document.createElement('tr');
                         
                         // Déterminer le rôle
                         let roleText = 'Agent';
@@ -2578,9 +2783,7 @@
                             roleClass = 'role-supervisor';
                         }
                         
-                        // Déterminer le statut en ligne
-                        const isOnline = user.is_online || Math.random() > 0.5;
-                        
+                        const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>
                                 <strong>${user.name}</strong>
@@ -2602,8 +2805,8 @@
                                 </span>
                             </td>
                             <td>
-                                <span class="status-badge ${isOnline ? 'status-online' : 'status-offline'}">
-                                    ${isOnline ? 'En ligne' : 'Hors ligne'}
+                                <span class="status-badge ${user.is_online ? 'status-online' : 'status-offline'}">
+                                    ${user.is_online ? 'En ligne' : 'Hors ligne'}
                                 </span>
                             </td>
                             <td>
@@ -2702,9 +2905,6 @@
                 const supervisor1 = supervisorsList.find(s => s._id === agent.supervisor_id);
                 const supervisor2 = supervisorsList.find(s => s._id === agent.supervisor2_id);
                 
-                // Déterminer le statut en ligne
-                const isOnline = agent.is_online || Math.random() > 0.5;
-                
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
@@ -2722,8 +2922,8 @@
                         </span>
                     </td>
                     <td>
-                        <span class="status-badge ${isOnline ? 'status-online' : 'status-offline'}">
-                            ${isOnline ? 'En ligne' : 'Hors ligne'}
+                        <span class="status-badge ${agent.is_online ? 'status-online' : 'status-offline'}">
+                            ${agent.is_online ? 'En ligne' : 'Hors ligne'}
                         </span>
                     </td>
                     <td>${agent.total_sales ? agent.total_sales.toLocaleString() + ' HTG' : '0 HTG'}</td>
@@ -2782,9 +2982,6 @@
                     agent.supervisor2_id === supervisor._id
                 ).length;
                 
-                // Déterminer le statut en ligne
-                const isOnline = supervisor.is_online || Math.random() > 0.5;
-                
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
@@ -2802,8 +2999,8 @@
                         </span>
                     </td>
                     <td>
-                        <span class="status-badge ${isOnline ? 'status-online' : 'status-offline'}">
-                            ${isOnline ? 'En ligne' : 'Hors ligne'}
+                        <span class="status-badge ${supervisor.is_online ? 'status-online' : 'status-offline'}">
+                            ${supervisor.is_online ? 'En ligne' : 'Hors ligne'}
                         </span>
                     </td>
                     <td>
@@ -3207,8 +3404,8 @@
             empty.style.display = 'none';
             
             try {
-                // Cette route n'existe pas encore, on simule avec les tickets non synchronisés
-                const response = await fetch(`${API_BASE_URL}/api/subsystem/tickets?period=week`, {
+                // Utilisation de l'endpoint réel
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/tickets?status=pending`, {
                     headers: {
                         'Authorization': `Bearer ${subsystemToken}`
                     }
@@ -3218,9 +3415,8 @@
                 
                 if (data.success) {
                     const tickets = data.tickets || [];
-                    const pendingTickets = tickets.filter(ticket => !ticket.is_synced);
                     
-                    if (pendingTickets.length === 0) {
+                    if (tickets.length === 0) {
                         loading.style.display = 'none';
                         empty.style.display = 'block';
                         return;
@@ -3230,7 +3426,7 @@
                     tbody.innerHTML = '';
                     
                     // Ajouter chaque ticket
-                    pendingTickets.forEach(ticket => {
+                    tickets.forEach(ticket => {
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>
@@ -3285,9 +3481,8 @@
             empty.style.display = 'none';
             
             try {
-                // Cette route n'existe pas encore dans server.js, on simule
-                // En réalité, on utiliserait: /api/tickets/winning
-                const response = await fetch(`${API_BASE_URL}/api/tickets/winning`, {
+                // Endpoint réel pour les tickets gagnants
+                const response = await fetch(`${API_BASE_URL}/api/tickets/winning?subsystemId=${currentSubsystem._id}`, {
                     headers: {
                         'Authorization': `Bearer ${subsystemToken}`
                     }
@@ -3408,6 +3603,12 @@
                                     <button class="action-btn view" onclick="viewTicketDetails('${ticket.id}')" title="Voir détails">
                                         <i class="fas fa-eye"></i>
                                     </button>
+                                    <button class="action-btn" onclick="printTicket('${ticket.id}')" title="Imprimer">
+                                        <i class="fas fa-print"></i>
+                                    </button>
+                                    <button class="action-btn delete" onclick="deleteTicket('${ticket.id}')" title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </div>
                             </td>
                         `;
@@ -3426,6 +3627,35 @@
             }
         }
         
+        // Supprimer un ticket (nouvelle fonction)
+        window.deleteTicket = async function(ticketId) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer ce ticket ? Cette action est irréversible.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/tickets/${ticketId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Ticket supprimé avec succès', 'success');
+                    // Recharger la liste courante
+                    loadAllTickets();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la suppression', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur suppression ticket:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        };
+        
         // Charger les résultats récents
         async function loadRecentResults() {
             const loading = document.getElementById('results-loading');
@@ -3438,7 +3668,7 @@
             empty.style.display = 'none';
             
             try {
-                const response = await fetch(`${API_BASE_URL}/api/results?limit=10`, {
+                const response = await fetch(`${API_BASE_URL}/api/results?subsystemId=${currentSubsystem._id}&limit=10`, {
                     headers: {
                         'Authorization': `Bearer ${subsystemToken}`
                     }
@@ -3447,24 +3677,9 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    const results = data.results;
-                    const resultsArray = [];
+                    const results = data.results || [];
                     
-                    // Convertir l'objet en tableau
-                    for (const draw in results) {
-                        for (const time in results[draw]) {
-                            resultsArray.push({
-                                draw: draw,
-                                time: time,
-                                ...results[draw][time]
-                            });
-                        }
-                    }
-                    
-                    // Trier par date (plus récent en premier)
-                    resultsArray.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    
-                    if (resultsArray.length === 0) {
+                    if (results.length === 0) {
                         loading.style.display = 'none';
                         empty.style.display = 'block';
                         return;
@@ -3474,7 +3689,7 @@
                     tbody.innerHTML = '';
                     
                     // Ajouter chaque résultat
-                    resultsArray.forEach(result => {
+                    results.forEach(result => {
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>${result.draw}</td>
@@ -3647,11 +3862,11 @@
                 const supervisor2 = document.getElementById('supervisor2-select').value;
                 
                 if (supervisor1) {
-                    formData.supervisorId = supervisor1;
-                    formData.supervisorType = 'supervisor1';
+                    formData.supervisor1Id = supervisor1;
                 }
-                
-                // Note: Pour assigner un superviseur 2, on pourrait avoir besoin d'un autre appel API
+                if (supervisor2) {
+                    formData.supervisor2Id = supervisor2;
+                }
             }
             
             try {
@@ -3912,9 +4127,26 @@
                 return;
             }
             
-            // Note: Cette route n'existe pas encore dans server.js
-            // Dans une version complète, on implémenterait DELETE /api/subsystem/users/:id
-            showNotification('Fonctionnalité de suppression à implémenter', 'info');
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subsystem/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Utilisateur supprimé avec succès', 'success');
+                    loadAllUsers();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la suppression', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur suppression utilisateur:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
         };
         
         // Voir les détails d'un utilisateur
@@ -3934,87 +4166,81 @@
             details.style.display = 'none';
             
             try {
-                // Cette route n'existe pas encore, on simule
-                // Dans une version complète, on utiliserait: /api/tickets/:id
-                
-                // Trouver le ticket dans la liste
-                const allTicketsResponse = await fetch(`${API_BASE_URL}/api/subsystem/tickets?period=month`, {
+                const response = await fetch(`${API_BASE_URL}/api/tickets/${ticketId}`, {
                     headers: {
                         'Authorization': `Bearer ${subsystemToken}`
                     }
                 });
                 
-                const allTicketsData = await allTicketsResponse.json();
+                const data = await response.json();
                 
-                if (allTicketsData.success) {
-                    const ticket = allTicketsData.tickets.find(t => t.id === ticketId);
+                if (data.success) {
+                    const ticket = data.ticket;
                     
-                    if (ticket) {
-                        // Compter les paris par type
-                        const betsByType = {};
-                        if (ticket.bets && Array.isArray(ticket.bets)) {
-                            ticket.bets.forEach(bet => {
-                                if (!betsByType[bet.type]) {
-                                    betsByType[bet.type] = 0;
-                                }
-                                betsByType[bet.type] += bet.amount || 0;
-                            });
-                        }
-                        
-                        details.innerHTML = `
-                            <div style="margin-bottom: 25px;">
-                                <h3 style="color: var(--dark-color); margin-bottom: 15px;">Ticket #${ticket.number}</h3>
-                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
-                                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                        <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Agent</div>
-                                        <div style="font-weight: bold; color: var(--dark-color);">${ticket.agent_name}</div>
+                    // Compter les paris par type
+                    const betsByType = {};
+                    if (ticket.bets && Array.isArray(ticket.bets)) {
+                        ticket.bets.forEach(bet => {
+                            if (!betsByType[bet.type]) {
+                                betsByType[bet.type] = 0;
+                            }
+                            betsByType[bet.type] += bet.amount || 0;
+                        });
+                    }
+                    
+                    details.innerHTML = `
+                        <div style="margin-bottom: 25px;">
+                            <h3 style="color: var(--dark-color); margin-bottom: 15px;">Ticket #${ticket.number}</h3>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Agent</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${ticket.agent_name}</div>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tirage</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${ticket.draw} (${ticket.draw_time})</div>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Date</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">
+                                        ${new Date(ticket.date).toLocaleString('fr-FR')}
                                     </div>
-                                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                        <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tirage</div>
-                                        <div style="font-weight: bold; color: var(--dark-color);">${ticket.draw} (${ticket.draw_time})</div>
-                                    </div>
-                                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                        <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Date</div>
-                                        <div style="font-weight: bold; color: var(--dark-color);">
-                                            ${new Date(ticket.date).toLocaleString('fr-FR')}
-                                        </div>
-                                    </div>
-                                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                        <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Montant total</div>
-                                        <div style="font-weight: bold; color: var(--dark-color);">
-                                            ${ticket.total.toLocaleString()} HTG
-                                        </div>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Montant total</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">
+                                        ${ticket.total.toLocaleString()} HTG
                                     </div>
                                 </div>
                             </div>
-                            
-                            <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails des paris</h4>
+                        </div>
+                        
+                        <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails des paris</h4>
+                    `;
+                    
+                    // Ajouter les paris par type
+                    for (const type in betsByType) {
+                        let typeName = type;
+                        if (type === 'borlette') typeName = 'Borlette';
+                        if (type === 'lotto3') typeName = 'Lotto 3';
+                        if (type === 'lotto4') typeName = 'Lotto 4';
+                        if (type === 'lotto5') typeName = 'Lotto 5';
+                        if (type === 'grap') typeName = 'Grap';
+                        if (type === 'marriage') typeName = 'Marriage';
+                        
+                        details.innerHTML += `
+                            <div style="display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee;">
+                                <span>${typeName}</span>
+                                <span style="font-weight: bold;">${betsByType[type].toLocaleString()} HTG</span>
+                            </div>
                         `;
-                        
-                        // Ajouter les paris par type
-                        for (const type in betsByType) {
-                            let typeName = type;
-                            if (type === 'borlette') typeName = 'Borlette';
-                            if (type === 'lotto3') typeName = 'Lotto 3';
-                            if (type === 'lotto4') typeName = 'Lotto 4';
-                            if (type === 'lotto5') typeName = 'Lotto 5';
-                            if (type === 'grap') typeName = 'Grap';
-                            if (type === 'marriage') typeName = 'Marriage';
-                            
-                            details.innerHTML += `
-                                <div style="display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee;">
-                                    <span>${typeName}</span>
-                                    <span style="font-weight: bold;">${betsByType[type].toLocaleString()} HTG</span>
-                                </div>
-                            `;
-                        }
-                        
-                        loading.style.display = 'none';
-                        details.style.display = 'block';
-                    } else {
-                        showNotification('Ticket non trouvé', 'error');
-                        hideViewTicketModal();
                     }
+                    
+                    loading.style.display = 'none';
+                    details.style.display = 'block';
+                } else {
+                    showNotification('Ticket non trouvé', 'error');
+                    hideViewTicketModal();
                 }
             } catch (error) {
                 console.error('Erreur chargement détails ticket:', error);
@@ -4031,9 +4257,6 @@
         // Synchroniser un ticket
         window.syncTicket = async function(ticketId) {
             try {
-                // Cette route n'existe pas encore, on simule
-                // Dans une version complète, on utiliserait: PUT /api/tickets/:id/sync
-                
                 const response = await fetch(`${API_BASE_URL}/api/tickets/${ticketId}/sync`, {
                     method: 'PUT',
                     headers: {
@@ -4046,17 +4269,21 @@
                     })
                 });
                 
-                // Simuler une réponse réussie
-                showNotification('Ticket synchronisé avec succès', 'success');
+                const data = await response.json();
                 
-                // Recharger les tickets
-                loadRecentTickets();
-                loadTodayTickets();
-                loadPendingTickets();
-                
+                if (data.success) {
+                    showNotification('Ticket synchronisé avec succès', 'success');
+                    
+                    // Recharger les tickets
+                    loadRecentTickets();
+                    loadTodayTickets();
+                    loadPendingTickets();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la synchronisation', 'error');
+                }
             } catch (error) {
                 console.error('Erreur synchronisation ticket:', error);
-                showNotification('Erreur lors de la synchronisation', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
             }
         };
         
@@ -4067,70 +4294,104 @@
             }
             
             try {
-                // Cette route n'existe pas encore
-                // Dans une version complète, on utiliserait: PUT /api/winners/:id/pay
+                const response = await fetch(`${API_BASE_URL}/api/winners/${winnerId}/pay`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
                 
-                showNotification('Ticket marqué comme payé', 'success');
+                const data = await response.json();
                 
-                // Recharger les tickets gagnants
-                loadWinningTickets();
-                
+                if (data.success) {
+                    showNotification('Ticket marqué comme payé', 'success');
+                    loadWinningTickets();
+                } else {
+                    showNotification(data.error || 'Erreur lors du marquage', 'error');
+                }
             } catch (error) {
                 console.error('Erreur marquage comme payé:', error);
-                showNotification('Erreur lors du marquage comme payé', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
             }
         };
         
         // Imprimer un ticket
         window.printTicket = function(ticketId) {
-            // Ouvrir une nouvelle fenêtre avec le ticket formaté pour l'impression
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>Ticket #${ticketId}</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; }
-                        .ticket-header { text-align: center; margin-bottom: 20px; }
-                        .ticket-info { margin-bottom: 15px; }
-                        .bet-item { padding: 5px 0; border-bottom: 1px solid #eee; }
-                        .total { font-weight: bold; font-size: 1.2em; margin-top: 15px; }
-                        @media print {
-                            body { padding: 0; }
-                            .no-print { display: none; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="ticket-header">
-                        <h2>NOVA LOTTO</h2>
-                        <p>Ticket #${ticketId}</p>
-                    </div>
-                    <div class="ticket-info">
-                        <p>Date: ${new Date().toLocaleString('fr-FR')}</p>
-                        <p>Statut: VALIDE</p>
-                    </div>
-                    <div class="bets-list">
-                        <h3>Paris:</h3>
-                        <!-- Les paris seraient chargés dynamiquement -->
-                        <div class="bet-item">Borlette: 123 - 100 HTG</div>
-                        <div class="bet-item">Lotto 3: 456 - 50 HTG</div>
-                    </div>
-                    <div class="total">
-                        TOTAL: 150 HTG
-                    </div>
-                    <div style="margin-top: 30px; text-align: center; color: #666;">
-                        <p>Merci pour votre confiance !</p>
-                        <p>Ce ticket est valable jusqu'au tirage correspondant</p>
-                    </div>
-                    <div class="no-print" style="margin-top: 20px; text-align: center;">
-                        <button onclick="window.print()">Imprimer</button>
-                        <button onclick="window.close()">Fermer</button>
-                    </div>
-                </body>
-                </html>
-            `);
-            printWindow.document.close();
+            // Récupérer les détails du ticket pour impression
+            fetch(`${API_BASE_URL}/api/tickets/${ticketId}`, {
+                headers: {
+                    'Authorization': `Bearer ${subsystemToken}`
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const ticket = data.ticket;
+                    const printWindow = window.open('', '_blank');
+                    let betsHtml = '';
+                    if (ticket.bets && ticket.bets.length) {
+                        ticket.bets.forEach(bet => {
+                            betsHtml += `<div class="bet-item">${bet.type}: ${bet.numbers} - ${bet.amount} HTG</div>`;
+                        });
+                    } else {
+                        betsHtml = '<p>Aucun pari détaillé</p>';
+                    }
+                    
+                    printWindow.document.write(`
+                        <html>
+                        <head>
+                            <title>Ticket #${ticket.number}</title>
+                            <style>
+                                body { font-family: Arial, sans-serif; padding: 20px; }
+                                .ticket-header { text-align: center; margin-bottom: 20px; }
+                                .ticket-info { margin-bottom: 15px; }
+                                .bet-item { padding: 5px 0; border-bottom: 1px solid #eee; }
+                                .total { font-weight: bold; font-size: 1.2em; margin-top: 15px; }
+                                @media print {
+                                    body { padding: 0; }
+                                    .no-print { display: none; }
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="ticket-header">
+                                <h2>NOVA LOTTO</h2>
+                                <p>Ticket #${ticket.number}</p>
+                            </div>
+                            <div class="ticket-info">
+                                <p>Agent: ${ticket.agent_name}</p>
+                                <p>Tirage: ${ticket.draw} (${ticket.draw_time})</p>
+                                <p>Date: ${new Date(ticket.date).toLocaleString('fr-FR')}</p>
+                                <p>Statut: ${ticket.is_synced ? 'Synchronisé' : 'En attente'}</p>
+                            </div>
+                            <div class="bets-list">
+                                <h3>Paris:</h3>
+                                ${betsHtml}
+                            </div>
+                            <div class="total">
+                                TOTAL: ${ticket.total.toLocaleString()} HTG
+                            </div>
+                            <div style="margin-top: 30px; text-align: center; color: #666;">
+                                <p>Merci pour votre confiance !</p>
+                                <p>Ce ticket est valable jusqu'au tirage correspondant</p>
+                            </div>
+                            <div class="no-print" style="margin-top: 20px; text-align: center;">
+                                <button onclick="window.print()">Imprimer</button>
+                                <button onclick="window.close()">Fermer</button>
+                            </div>
+                        </body>
+                        </html>
+                    `);
+                    printWindow.document.close();
+                } else {
+                    showNotification('Erreur lors du chargement du ticket', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Erreur impression ticket:', error);
+                showNotification('Erreur de connexion', 'error');
+            });
         };
         
         // Entrer un résultat
@@ -4253,27 +4514,37 @@
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enregistrement...';
                 submitBtn.disabled = true;
                 
-                // Note: Cette route n'existe pas encore dans server.js
-                // Dans une version complète, on utiliserait: POST /api/results
+                const response = await fetch(`${API_BASE_URL}/api/results`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        draw,
+                        time,
+                        date,
+                        lot1,
+                        lot2,
+                        lot3,
+                        verified,
+                        subsystemId: currentSubsystem._id
+                    })
+                });
                 
-                // Simuler un enregistrement réussi
-                setTimeout(() => {
+                const data = await response.json();
+                
+                if (data.success) {
                     showNotification('Résultat enregistré avec succès !', 'success');
-                    
                     hideEnterResultModal();
-                    
-                    // Recharger les résultats
                     loadRecentResults();
-                    
-                    // Réactiver le bouton
-                    submitBtn.innerHTML = originalText;
-                    submitBtn.disabled = false;
-                }, 1000);
-                
+                } else {
+                    showNotification(data.error || 'Erreur lors de l\'enregistrement', 'error');
+                }
             } catch (error) {
                 console.error('Erreur enregistrement résultat:', error);
                 showNotification('Erreur de connexion au serveur', 'error');
-                
+            } finally {
                 // Réactiver le bouton
                 const submitBtn = e.target.querySelector('button[type="submit"]');
                 submitBtn.innerHTML = originalText;
@@ -4286,28 +4557,52 @@
             // Pour l'instant, on ouvre le modal d'entrée avec les données existantes
             enterResult(draw, time);
             
-            // Remplir les champs avec les données existantes
-            // Dans une version complète, on chargerait les données depuis l'API
-            setTimeout(() => {
-                document.getElementById('result-date').value = date.split('T')[0];
-                document.getElementById('result-lot1').value = '123'; // Exemple
-                document.getElementById('result-lot2').value = '45'; // Exemple
-                document.getElementById('result-lot3').value = '67'; // Exemple
-                document.getElementById('result-verified').checked = true;
-            }, 100);
+            // Remplir les champs avec les données existantes (à charger depuis l'API)
+            fetch(`${API_BASE_URL}/api/results?draw=${draw}&time=${time}&date=${date}`, {
+                headers: {
+                    'Authorization': `Bearer ${subsystemToken}`
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.result) {
+                    const result = data.result;
+                    document.getElementById('result-date').value = result.date.split('T')[0];
+                    document.getElementById('result-lot1').value = result.lot1;
+                    document.getElementById('result-lot2').value = result.lot2 || '';
+                    document.getElementById('result-lot3').value = result.lot3 || '';
+                    document.getElementById('result-verified').checked = result.verified;
+                }
+            })
+            .catch(error => console.error('Erreur chargement résultat:', error));
         };
         
         // Supprimer un résultat
-        window.deleteResult = function(draw, time, date) {
+        window.deleteResult = async function(draw, time, date) {
             if (!confirm('Êtes-vous sûr de vouloir supprimer ce résultat ?')) {
                 return;
             }
             
-            // Note: Cette route n'existe pas encore
-            showNotification('Résultat supprimé (simulation)', 'success');
-            
-            // Recharger les résultats
-            loadRecentResults();
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/results?draw=${draw}&time=${time}&date=${date}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Résultat supprimé avec succès', 'success');
+                    loadRecentResults();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la suppression', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur suppression résultat:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
         };
         
         // Changer l'onglet paramètres
@@ -4394,14 +4689,25 @@
                     marriage: parseInt(document.getElementById('marriage').value)
                 };
                 
-                // Note: Cette route n'existe pas encore dans server.js
-                // Dans une version complète, on utiliserait: POST /api/system/settings/multipliers
+                const response = await fetch(`${API_BASE_URL}/api/system/settings/multipliers`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(multipliers)
+                });
                 
-                showNotification('Multiplicateurs sauvegardés avec succès !', 'success');
+                const data = await response.json();
                 
+                if (data.success) {
+                    showNotification('Multiplicateurs sauvegardés avec succès !', 'success');
+                } else {
+                    showNotification(data.error || 'Erreur lors de la sauvegarde', 'error');
+                }
             } catch (error) {
                 console.error('Erreur sauvegarde multiplicateurs:', error);
-                showNotification('Erreur lors de la sauvegarde des multiplicateurs', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
             }
         }
         
@@ -4417,8 +4723,7 @@
                 const date = document.getElementById('report-daily-date').value || 
                     new Date().toISOString().split('T')[0];
                 
-                // Récupérer les tickets du jour
-                const response = await fetch(`${API_BASE_URL}/api/subsystem/tickets?period=day&date=${date}`, {
+                const response = await fetch(`${API_BASE_URL}/api/reports/daily?date=${date}`, {
                     headers: {
                         'Authorization': `Bearer ${subsystemToken}`
                     }
@@ -4427,26 +4732,7 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    const tickets = data.tickets || [];
-                    
-                    // Calculer les totaux
-                    const totalTickets = tickets.length;
-                    const totalSales = tickets.reduce((sum, ticket) => sum + ticket.total, 0);
-                    
-                    // Regrouper par agent
-                    const agentsMap = new Map();
-                    tickets.forEach(ticket => {
-                        if (!agentsMap.has(ticket.agent_name)) {
-                            agentsMap.set(ticket.agent_name, {
-                                tickets: 0,
-                                sales: 0
-                            });
-                        }
-                        
-                        const agentData = agentsMap.get(ticket.agent_name);
-                        agentData.tickets++;
-                        agentData.sales += ticket.total;
-                    });
+                    const report = data.report;
                     
                     // Générer le HTML du rapport
                     let html = `
@@ -4455,18 +4741,18 @@
                             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
                                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
                                     <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tickets vendus</div>
-                                    <div style="font-weight: bold; color: var(--dark-color);">${totalTickets}</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${report.totalTickets}</div>
                                 </div>
                                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
                                     <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Ventes totales</div>
-                                    <div style="font-weight: bold; color: var(--dark-color);">${totalSales.toLocaleString()} HTG</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${report.totalSales.toLocaleString()} HTG</div>
                                 </div>
                             </div>
                         </div>
                     `;
                     
                     // Détails par agent
-                    if (agentsMap.size > 0) {
+                    if (report.agents && report.agents.length > 0) {
                         html += `
                             <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails par agent</h4>
                             <table class="table" style="margin-bottom: 25px;">
@@ -4481,29 +4767,19 @@
                                 <tbody>
                         `;
                         
-                        for (const [agentName, agentData] of agentsMap) {
-                            const avg = agentData.tickets > 0 ? agentData.sales / agentData.tickets : 0;
+                        report.agents.forEach(agent => {
+                            const avg = agent.tickets > 0 ? agent.sales / agent.tickets : 0;
                             html += `
                                 <tr>
-                                    <td>${agentName}</td>
-                                    <td>${agentData.tickets}</td>
-                                    <td>${agentData.sales.toLocaleString()} HTG</td>
+                                    <td>${agent.name}</td>
+                                    <td>${agent.tickets}</td>
+                                    <td>${agent.sales.toLocaleString()} HTG</td>
                                     <td>${avg.toLocaleString()} HTG</td>
                                 </tr>
                             `;
-                        }
+                        });
                         
-                        // Total
-                        html += `
-                                <tr style="background-color: #f8f9fa; font-weight: bold;">
-                                    <td>TOTAL</td>
-                                    <td>${totalTickets}</td>
-                                    <td>${totalSales.toLocaleString()} HTG</td>
-                                    <td>${totalTickets > 0 ? (totalSales / totalTickets).toLocaleString() : 0} HTG</td>
-                                </tr>
-                            </tbody>
-                            </table>
-                        `;
+                        html += `</tbody></table>`;
                     }
                     
                     html += `
@@ -4515,11 +4791,14 @@
                     results.innerHTML = html;
                     loading.style.display = 'none';
                     results.style.display = 'block';
+                } else {
+                    showNotification('Erreur lors de la génération du rapport', 'error');
+                    loading.style.display = 'none';
                 }
             } catch (error) {
                 console.error('Erreur génération rapport quotidien:', error);
                 loading.style.display = 'none';
-                showNotification('Erreur lors de la génération du rapport', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
             }
         }
         
@@ -4533,10 +4812,9 @@
             
             try {
                 const month = document.getElementById('report-monthly-date').value || 
-                    new Date().toISOString().slice(0, 7); // YYYY-MM
+                    new Date().toISOString().slice(0, 7);
                 
-                // Récupérer les tickets du mois
-                const response = await fetch(`${API_BASE_URL}/api/subsystem/tickets?period=month&month=${month}`, {
+                const response = await fetch(`${API_BASE_URL}/api/reports/monthly?month=${month}`, {
                     headers: {
                         'Authorization': `Bearer ${subsystemToken}`
                     }
@@ -4545,52 +4823,25 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    const tickets = data.tickets || [];
+                    const report = data.report;
                     
-                    // Calculer les totaux
-                    const totalTickets = tickets.length;
-                    const totalSales = tickets.reduce((sum, ticket) => sum + ticket.total, 0);
-                    
-                    // Regrouper par jour
-                    const dailyMap = new Map();
-                    tickets.forEach(ticket => {
-                        const dateStr = new Date(ticket.date).toISOString().split('T')[0];
-                        if (!dailyMap.has(dateStr)) {
-                            dailyMap.set(dateStr, {
-                                tickets: 0,
-                                sales: 0
-                            });
-                        }
-                        
-                        const dayData = dailyMap.get(dateStr);
-                        dayData.tickets++;
-                        dayData.sales += ticket.total;
-                    });
-                    
-                    // Convertir en tableau et trier
-                    const dailyArray = Array.from(dailyMap.entries())
-                        .map(([date, data]) => ({ date, ...data }))
-                        .sort((a, b) => a.date.localeCompare(b.date));
-                    
-                    // Générer le HTML du rapport
                     let html = `
                         <div style="margin-bottom: 25px;">
                             <h3 style="color: var(--dark-color); margin-bottom: 15px;">Rapport mensuel - ${month}</h3>
                             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
                                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
                                     <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tickets vendus</div>
-                                    <div style="font-weight: bold; color: var(--dark-color);">${totalTickets}</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${report.totalTickets}</div>
                                 </div>
                                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
                                     <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Ventes totales</div>
-                                    <div style="font-weight: bold; color: var(--dark-color);">${totalSales.toLocaleString()} HTG</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${report.totalSales.toLocaleString()} HTG</div>
                                 </div>
                             </div>
                         </div>
                     `;
                     
-                    // Évolution quotidienne
-                    if (dailyArray.length > 0) {
+                    if (report.daily && report.daily.length > 0) {
                         html += `
                             <h4 style="color: var(--dark-color); margin-bottom: 15px;">Évolution quotidienne</h4>
                             <table class="table" style="margin-bottom: 25px;">
@@ -4599,13 +4850,13 @@
                                         <th>Date</th>
                                         <th>Tickets</th>
                                         <th>Ventes</th>
-                                        <th>Moyenne par ticket</th>
+                                        <th>Moyenne</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                         `;
                         
-                        dailyArray.forEach(day => {
+                        report.daily.forEach(day => {
                             const avg = day.tickets > 0 ? day.sales / day.tickets : 0;
                             html += `
                                 <tr>
@@ -4617,18 +4868,7 @@
                             `;
                         });
                         
-                        // Total
-                        const avgTotal = totalTickets > 0 ? totalSales / totalTickets : 0;
-                        html += `
-                                <tr style="background-color: #f8f9fa; font-weight: bold;">
-                                    <td>TOTAL</td>
-                                    <td>${totalTickets}</td>
-                                    <td>${totalSales.toLocaleString()} HTG</td>
-                                    <td>${avgTotal.toLocaleString()} HTG</td>
-                                </tr>
-                            </tbody>
-                            </table>
-                        `;
+                        html += `</tbody></table>`;
                     }
                     
                     html += `
@@ -4640,11 +4880,14 @@
                     results.innerHTML = html;
                     loading.style.display = 'none';
                     results.style.display = 'block';
+                } else {
+                    showNotification('Erreur lors de la génération du rapport', 'error');
+                    loading.style.display = 'none';
                 }
             } catch (error) {
                 console.error('Erreur génération rapport mensuel:', error);
                 loading.style.display = 'none';
-                showNotification('Erreur lors de la génération du rapport', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
             }
         }
         
@@ -4666,127 +4909,102 @@
                     return;
                 }
                 
-                // Récupérer l'agent
-                const agentResponse = await fetch(`${API_BASE_URL}/api/subsystem/users`, {
+                const response = await fetch(`${API_BASE_URL}/api/reports/agent?agentId=${agentId}&period=${period}`, {
                     headers: {
                         'Authorization': `Bearer ${subsystemToken}`
                     }
                 });
                 
-                const agentData = await agentResponse.json();
+                const data = await response.json();
                 
-                if (agentData.success) {
-                    const agent = agentData.users.find(u => u._id === agentId);
+                if (data.success) {
+                    const report = data.report;
                     
-                    if (agent) {
-                        // Récupérer les tickets de l'agent
-                        // Note: Il faudrait une route spécifique pour les tickets par agent
-                        const ticketsResponse = await fetch(`${API_BASE_URL}/api/subsystem/tickets?period=${period}`, {
-                            headers: {
-                                'Authorization': `Bearer ${subsystemToken}`
-                            }
+                    let html = `
+                        <div style="margin-bottom: 25px;">
+                            <h3 style="color: var(--dark-color); margin-bottom: 15px;">Rapport agent - ${report.agent.name}</h3>
+                            <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
+                                <div style="width: 60px; height: 60px; background-color: #f8f9fa; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--primary-color);">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div>
+                                    <h4 style="margin: 0 0 5px 0; color: var(--dark-color);">${report.agent.name}</h4>
+                                    <p style="margin: 0; color: #6c757d;">
+                                        <i class="fas fa-user-tag"></i> ${report.agent.username}
+                                        <br>
+                                        <i class="fas fa-calendar"></i> Période: ${period === 'today' ? 'Aujourd\'hui' : period === 'week' ? 'Cette semaine' : 'Ce mois'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tickets vendus</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${report.totalTickets}</div>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                    <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Ventes totales</div>
+                                    <div style="font-weight: bold; color: var(--dark-color);">${report.totalSales.toLocaleString()} HTG</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (report.tickets && report.tickets.length > 0) {
+                        html += `
+                            <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails des tickets</h4>
+                            <table class="table" style="margin-bottom: 25px;">
+                                <thead>
+                                    <tr>
+                                        <th>Numéro</th>
+                                        <th>Tirage</th>
+                                        <th>Date</th>
+                                        <th>Montant</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                        `;
+                        
+                        report.tickets.slice(0, 10).forEach(ticket => {
+                            html += `
+                                <tr>
+                                    <td>#${ticket.number}</td>
+                                    <td>${ticket.draw} (${ticket.draw_time})</td>
+                                    <td>${new Date(ticket.date).toLocaleDateString('fr-FR')}</td>
+                                    <td>${ticket.total.toLocaleString()} HTG</td>
+                                </tr>
+                            `;
                         });
                         
-                        const ticketsData = await ticketsResponse.json();
-                        
-                        if (ticketsData.success) {
-                            const allTickets = ticketsData.tickets || [];
-                            const agentTickets = allTickets.filter(t => {
-                                // Trouver l'ID de l'agent dans le ticket
-                                // Note: Cette logique dépend de la structure des données
-                                return t.agent_name === agent.name;
-                            });
-                            
-                            // Calculer les totaux
-                            const totalTickets = agentTickets.length;
-                            const totalSales = agentTickets.reduce((sum, ticket) => sum + ticket.total, 0);
-                            
-                            // Générer le HTML du rapport
-                            let html = `
-                                <div style="margin-bottom: 25px;">
-                                    <h3 style="color: var(--dark-color); margin-bottom: 15px;">Rapport agent - ${agent.name}</h3>
-                                    <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
-                                        <div style="width: 60px; height: 60px; background-color: #f8f9fa; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--primary-color);">
-                                            <i class="fas fa-user"></i>
-                                        </div>
-                                        <div>
-                                            <h4 style="margin: 0 0 5px 0; color: var(--dark-color);">${agent.name}</h4>
-                                            <p style="margin: 0; color: #6c757d;">
-                                                <i class="fas fa-user-tag"></i> ${agent.username}
-                                                <br>
-                                                <i class="fas fa-calendar"></i> Période: ${period === 'today' ? 'Aujourd\'hui' : period === 'week' ? 'Cette semaine' : 'Ce mois'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
-                                        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                            <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tickets vendus</div>
-                                            <div style="font-weight: bold; color: var(--dark-color);">${totalTickets}</div>
-                                        </div>
-                                        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                            <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Ventes totales</div>
-                                            <div style="font-weight: bold; color: var(--dark-color);">${totalSales.toLocaleString()} HTG</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                            
-                            // Détails des tickets
-                            if (agentTickets.length > 0) {
-                                html += `
-                                    <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails des tickets</h4>
-                                    <table class="table" style="margin-bottom: 25px;">
-                                        <thead>
-                                            <tr>
-                                                <th>Numéro</th>
-                                                <th>Tirage</th>
-                                                <th>Date</th>
-                                                <th>Montant</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                `;
-                                
-                                agentTickets.slice(0, 10).forEach(ticket => {
-                                    html += `
-                                        <tr>
-                                            <td>#${ticket.number}</td>
-                                            <td>${ticket.draw} (${ticket.draw_time})</td>
-                                            <td>${new Date(ticket.date).toLocaleDateString('fr-FR')}</td>
-                                            <td>${ticket.total.toLocaleString()} HTG</td>
-                                        </tr>
-                                    `;
-                                });
-                                
-                                if (agentTickets.length > 10) {
-                                    html += `
-                                        <tr>
-                                            <td colspan="4" style="text-align: center; color: #6c757d;">
-                                                ... et ${agentTickets.length - 10} autres tickets
-                                            </td>
-                                        </tr>
-                                    `;
-                                }
-                                
-                                html += `</tbody></table>`;
-                            }
-                            
+                        if (report.tickets.length > 10) {
                             html += `
-                                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #dee2e6; font-size: 0.9rem; color: #6c757d;">
-                                    Rapport généré le ${new Date().toLocaleString('fr-FR')}
-                                </div>
+                                <tr>
+                                    <td colspan="4" style="text-align: center; color: #6c757d;">
+                                        ... et ${report.tickets.length - 10} autres tickets
+                                    </td>
+                                </tr>
                             `;
-                            
-                            results.innerHTML = html;
-                            loading.style.display = 'none';
-                            results.style.display = 'block';
                         }
+                        
+                        html += `</tbody></table>`;
                     }
+                    
+                    html += `
+                        <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #dee2e6; font-size: 0.9rem; color: #6c757d;">
+                            Rapport généré le ${new Date().toLocaleString('fr-FR')}
+                        </div>
+                    `;
+                    
+                    results.innerHTML = html;
+                    loading.style.display = 'none';
+                    results.style.display = 'block';
+                } else {
+                    showNotification('Erreur lors de la génération du rapport', 'error');
+                    loading.style.display = 'none';
                 }
             } catch (error) {
                 console.error('Erreur génération rapport agent:', error);
                 loading.style.display = 'none';
-                showNotification('Erreur lors de la génération du rapport', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
             }
         }
         
@@ -4877,6 +5095,9 @@
                 case 'results-section':
                     loadRecentResults();
                     break;
+                case 'restrictions-section':
+                    loadRestrictions();
+                    break;
                 case 'activity-section':
                     loadActivities();
                     break;
@@ -4931,13 +5152,276 @@
             }
         }
         
-        // Exporter un rapport
+        // --- Fonctions pour les restrictions ---
+        
+        // Charger les restrictions
+        async function loadRestrictions() {
+            const loading = document.getElementById('restrictions-loading');
+            const table = document.getElementById('restrictions-table');
+            const empty = document.getElementById('restrictions-empty');
+            const tbody = document.getElementById('restrictions-table-body');
+            
+            loading.style.display = 'flex';
+            table.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/restrictions?subsystemId=${currentSubsystem._id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    restrictionsList = data.restrictions || [];
+                    
+                    if (restrictionsList.length === 0) {
+                        loading.style.display = 'none';
+                        empty.style.display = 'block';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = '';
+                    
+                    restrictionsList.forEach(restriction => {
+                        const row = document.createElement('tr');
+                        const typeText = restriction.type === 'block' ? 'Bloqué' : 'Limité';
+                        const limitDisplay = restriction.type === 'limit' ? restriction.limitAmount + ' HTG' : '—';
+                        const drawText = restriction.draw === 'all' ? 'Tous' : restriction.draw;
+                        const timeText = restriction.time === 'all' ? 'Toutes' : (restriction.time === 'morning' ? 'Matin' : 'Soir');
+                        
+                        row.innerHTML = `
+                            <td><strong>${restriction.number}</strong></td>
+                            <td>${typeText}</td>
+                            <td>${limitDisplay}</td>
+                            <td>${drawText}</td>
+                            <td>${timeText}</td>
+                            <td>${new Date(restriction.createdAt).toLocaleDateString('fr-FR')}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="action-btn edit" onclick="editRestriction('${restriction._id}')" title="Modifier">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="action-btn delete" onclick="deleteRestriction('${restriction._id}')" title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        
+                        tbody.appendChild(row);
+                    });
+                    
+                    loading.style.display = 'none';
+                    table.style.display = 'table';
+                } else {
+                    showNotification('Erreur lors du chargement des restrictions', 'error');
+                    loading.style.display = 'none';
+                    empty.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Erreur chargement restrictions:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        }
+        
+        // Afficher modal ajout restriction
+        function showAddRestrictionModal() {
+            document.getElementById('add-restriction-modal').classList.add('active');
+            document.getElementById('add-restriction-form').reset();
+            toggleRestrictionLimitField();
+        }
+        
+        // Cacher modal ajout restriction
+        function hideAddRestrictionModal() {
+            document.getElementById('add-restriction-modal').classList.remove('active');
+        }
+        
+        // Afficher modal édition restriction
+        window.editRestriction = async function(restrictionId) {
+            const restriction = restrictionsList.find(r => r._id === restrictionId);
+            if (!restriction) {
+                showNotification('Restriction non trouvée', 'error');
+                return;
+            }
+            
+            document.getElementById('edit-restriction-id').value = restriction._id;
+            document.getElementById('edit-restriction-number').value = restriction.number;
+            document.getElementById('edit-restriction-type').value = restriction.type;
+            document.getElementById('edit-restriction-limit').value = restriction.limitAmount || '';
+            document.getElementById('edit-restriction-draw').value = restriction.draw || 'all';
+            document.getElementById('edit-restriction-time').value = restriction.time || 'all';
+            
+            toggleEditRestrictionLimitField();
+            document.getElementById('edit-restriction-modal').classList.add('active');
+        };
+        
+        // Cacher modal édition restriction
+        function hideEditRestrictionModal() {
+            document.getElementById('edit-restriction-modal').classList.remove('active');
+        }
+        
+        // Créer une restriction
+        async function createRestriction(e) {
+            e.preventDefault();
+            
+            const number = document.getElementById('restriction-number').value.trim();
+            const type = document.getElementById('restriction-type').value;
+            const limit = type === 'limit' ? document.getElementById('restriction-limit').value : null;
+            const draw = document.getElementById('restriction-draw').value;
+            const time = document.getElementById('restriction-time').value;
+            
+            if (!number) {
+                showNotification('Veuillez saisir un numéro', 'warning');
+                return;
+            }
+            
+            if (type === 'limit' && (!limit || limit <= 0)) {
+                showNotification('Veuillez saisir une limite valide', 'warning');
+                return;
+            }
+            
+            try {
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                const originalText = submitBtn.innerHTML;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Création...';
+                submitBtn.disabled = true;
+                
+                const response = await fetch(`${API_BASE_URL}/api/restrictions`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        number,
+                        type,
+                        limitAmount: limit,
+                        draw,
+                        time,
+                        subsystemId: currentSubsystem._id
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Restriction créée avec succès', 'success');
+                    hideAddRestrictionModal();
+                    loadRestrictions();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la création', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur création restriction:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            } finally {
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        }
+        
+        // Mettre à jour une restriction
+        async function updateRestriction(e) {
+            e.preventDefault();
+            
+            const id = document.getElementById('edit-restriction-id').value;
+            const number = document.getElementById('edit-restriction-number').value.trim();
+            const type = document.getElementById('edit-restriction-type').value;
+            const limit = type === 'limit' ? document.getElementById('edit-restriction-limit').value : null;
+            const draw = document.getElementById('edit-restriction-draw').value;
+            const time = document.getElementById('edit-restriction-time').value;
+            
+            if (!number) {
+                showNotification('Veuillez saisir un numéro', 'warning');
+                return;
+            }
+            
+            if (type === 'limit' && (!limit || limit <= 0)) {
+                showNotification('Veuillez saisir une limite valide', 'warning');
+                return;
+            }
+            
+            try {
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                const originalText = submitBtn.innerHTML;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sauvegarde...';
+                submitBtn.disabled = true;
+                
+                const response = await fetch(`${API_BASE_URL}/api/restrictions/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        number,
+                        type,
+                        limitAmount: limit,
+                        draw,
+                        time
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Restriction modifiée avec succès', 'success');
+                    hideEditRestrictionModal();
+                    loadRestrictions();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la modification', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur modification restriction:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            } finally {
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        }
+        
+        // Supprimer une restriction
+        window.deleteRestriction = async function(restrictionId) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer cette restriction ?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/restrictions/${restrictionId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${subsystemToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Restriction supprimée', 'success');
+                    loadRestrictions();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la suppression', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur suppression restriction:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            }
+        };
+        
+        // Exporter les rapports (à implémenter)
         document.getElementById('export-daily-report').addEventListener('click', function() {
-            alert('Fonctionnalité d\'export à implémenter');
+            showNotification('Fonctionnalité d\'export à implémenter', 'info');
         });
         
         document.getElementById('export-monthly-report').addEventListener('click', function() {
-            alert('Fonctionnalité d\'export à implémenter');
+            showNotification('Fonctionnalité d\'export à implémenter', 'info');
         });
     </script>
 </body>
