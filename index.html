@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/manifest.json">
+<meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Lotato - Connexion</title>
     <style>
         * {
@@ -192,7 +193,7 @@
         }
         
         .footer a {
-            color: #ef4444;
+             color: #ef4444;
         }
     </style>
 </head>
@@ -290,9 +291,54 @@
     </div>
 
     <script>
-        // Variables globales
-        const API_BASE_URL = ''; // URL relative, utilise le même domaine
-
+        // Vérifier si l'utilisateur est déjà connecté via token
+        function checkExistingToken() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tokenFromUrl = urlParams.get('token');
+            const storedToken = localStorage.getItem('nova_token');
+            
+            // Priorité: token dans l'URL > token stocké
+            const token = tokenFromUrl || storedToken;
+            
+            if (token) {
+                console.log("Token trouvé, tentative de connexion automatique...");
+                autoLoginWithToken(token);
+                return true;
+            }
+            return false;
+        }
+        
+        async function autoLoginWithToken(token) {
+            try {
+                const response = await fetch('/api/auth/verify-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Stocker le token
+                    localStorage.setItem('nova_token', token);
+                    
+                    // Rediriger vers la page appropriée
+                    setTimeout(() => {
+                        window.location.href = data.redirectUrl;
+                    }, 500);
+                } else {
+                    // Token invalide, nettoyer
+                    localStorage.removeItem('nova_token');
+                    console.log("Token invalide, nettoyage effectué");
+                }
+            } catch (error) {
+                console.error('Erreur vérification token:', error);
+                localStorage.removeItem('nova_token');
+            }
+        }
+        
         // Gestion des onglets
         document.querySelectorAll('.tab-btn').forEach(button => {
             button.addEventListener('click', () => {
@@ -314,20 +360,10 @@
                 hideStatusMessage();
             });
         });
-
-        // Fonction de connexion
+        
         async function login(role) {
-            // Récupérer les identifiants selon le rôle
-            const usernameInput = document.getElementById(`${role}-username`);
-            const passwordInput = document.getElementById(`${role}-password`);
-            
-            if (!usernameInput || !passwordInput) {
-                showStatusMessage('Erreur: formulaire non trouvé', 'error');
-                return;
-            }
-            
-            const username = usernameInput.value.trim();
-            const password = passwordInput.value;
+            const username = document.getElementById(`${role}-username`).value;
+            const password = document.getElementById(`${role}-password`).value;
             
             if (!username || !password) {
                 showStatusMessage('Veuillez remplir tous les champs', 'error');
@@ -342,79 +378,36 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({
+                        username: username,
+                        password: password,
+                        role: role
+                    })
                 });
                 
                 const data = await response.json();
                 
-                if (data.success && data.admin) {
+                if (data.success) {
                     showStatusMessage('Connexion réussie! Redirection...', 'success');
                     
-                    // Stocker les informations
+                    // Stocker le token et les infos utilisateur
                     localStorage.setItem('nova_token', data.token);
-                    localStorage.setItem('nova_user_role', data.admin.role);
-                    localStorage.setItem('nova_user_data', JSON.stringify(data.admin));
+                    localStorage.setItem('nova_user_role', role);
+                    localStorage.setItem('nova_user_data', JSON.stringify(data.user));
                     
-                    // Déterminer la page de redirection
-                    let redirectUrl = getRedirectUrl(data.admin);
-                    
-                    // Rediriger après un court délai
+                    // Rediriger sans passer le token dans l'URL
                     setTimeout(() => {
-                        window.location.href = redirectUrl;
+                        window.location.href = data.redirectUrl;
                     }, 1000);
                 } else {
                     showStatusMessage(data.error || 'Identifiants incorrects', 'error');
                 }
             } catch (error) {
                 showStatusMessage('Erreur de connexion au serveur', 'error');
-                console.error('Erreur de connexion:', error);
+                console.error('Erreur:', error);
             }
         }
-
-        // Déterminer l'URL de redirection selon le rôle
-        function getRedirectUrl(user) {
-            if (!user || !user.role) {
-                return '/index.html';
-            }
-            
-            switch(user.role) {
-                case 'agent':
-                    return '/lotato.html';
-                case 'supervisor':
-                    if (user.level === 1) return '/control-level1.html';
-                    if (user.level === 2) return '/control-level2.html';
-                    return '/index.html';
-                case 'subsystem':
-                    return '/subsystem-admin.html';
-                case 'master':
-                    return '/master-dashboard.html';
-                default:
-                    return '/index.html';
-            }
-        }
-
-        // Vérifier si un token existe dans localStorage
-        function checkStoredToken() {
-            const token = localStorage.getItem('nova_token');
-            const userData = localStorage.getItem('nova_user_data');
-            
-            if (token && userData) {
-                try {
-                    const user = JSON.parse(userData);
-                    // Rediriger automatiquement vers la page appropriée
-                    const redirectUrl = getRedirectUrl(user);
-                    window.location.href = redirectUrl;
-                    return true;
-                } catch (e) {
-                    // Si les données sont corrompues, on les nettoie
-                    localStorage.removeItem('nova_token');
-                    localStorage.removeItem('nova_user_role');
-                    localStorage.removeItem('nova_user_data');
-                }
-            }
-            return false;
-        }
-
+        
         // Fonctions pour afficher/masquer les messages
         function showStatusMessage(message, type) {
             const statusDiv = document.getElementById('status-message');
@@ -429,21 +422,20 @@
         
         // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
-            // Vérifier d'abord si un token existe déjà
-            if (!checkStoredToken()) {
-                // Si pas de token, focus sur le premier champ
+            // Vérifier si un token existe déjà
+            if (!checkExistingToken()) {
+                // Sinon, focus sur le premier champ
                 document.getElementById('agent-username').focus();
             }
         });
     </script>
-    
-    <!-- Service Worker (optionnel) -->
     <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/service-worker.js')
-                .then(reg => console.log('Service Worker enregistré', reg))
-                .catch(err => console.log('Échec d’enregistrement du Service Worker', err));
-        }
-    </script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(reg => console.log('Service Worker enregistré', reg))
+      .catch(err => console.log('Échec d’enregistrement', err));
+  }
+</script>
+
 </body>
 </html>
