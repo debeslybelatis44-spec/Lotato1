@@ -894,7 +894,7 @@
                         <div class="stat-value" id="total-subsystems">0</div>
                         <div class="stat-label">Sous-systèmes actifs</div>
                         <div class="stat-trend trend-up" id="subsystems-trend">
-                            <i class="fas fa-arrow-up"></i> 0% ce mois
+                            <i class="fas fa-arrow-up"></i> 12% ce mois
                         </div>
                     </div>
                 </div>
@@ -907,7 +907,7 @@
                         <div class="stat-value" id="total-users">0</div>
                         <div class="stat-label">Utilisateurs totaux</div>
                         <div class="stat-trend trend-up" id="users-trend">
-                            <i class="fas fa-arrow-up"></i> 0% ce mois
+                            <i class="fas fa-arrow-up"></i> 8% ce mois
                         </div>
                     </div>
                 </div>
@@ -920,7 +920,7 @@
                         <div class="stat-value" id="total-revenue">0 HTG</div>
                         <div class="stat-label">Revenu du mois</div>
                         <div class="stat-trend trend-up" id="revenue-trend">
-                            <i class="fas fa-arrow-up"></i> 0% ce mois
+                            <i class="fas fa-arrow-up"></i> 15% ce mois
                         </div>
                     </div>
                 </div>
@@ -933,7 +933,7 @@
                         <div class="stat-value" id="active-rate">0%</div>
                         <div class="stat-label">Taux d'activité</div>
                         <div class="stat-trend trend-up" id="activity-trend">
-                            <i class="fas fa-arrow-up"></i> 0% ce mois
+                            <i class="fas fa-arrow-up"></i> 5% ce mois
                         </div>
                     </div>
                 </div>
@@ -1672,66 +1672,18 @@
         </div>
     </div>
     
-    <!-- NEW Modal: List Users of Subsystem -->
-    <div class="modal" id="users-modal">
-        <div class="modal-content" style="max-width: 900px;">
-            <div class="modal-header">
-                <div class="modal-title" id="users-modal-title">Utilisateurs du sous-système</div>
-                <button class="modal-close" id="close-users-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="loading" id="users-loading">
-                    <div class="loading-spinner"></div>
-                    <p>Chargement des utilisateurs...</p>
-                </div>
-                <div id="users-content" style="display: none;">
-                    <table class="table" id="users-table">
-                        <thead>
-                            <tr>
-                                <th>Nom</th>
-                                <th>Email</th>
-                                <th>Rôle</th>
-                                <th>Statut</th>
-                                <th>Dernière connexion</th>
-                                <th>Date création</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="users-table-body"></tbody>
-                    </table>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-                        <div id="users-pagination-info">Affichage 0-0 sur 0</div>
-                        <div class="pagination">
-                            <button class="action-btn" id="users-prev-page" disabled>
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
-                            <span style="margin: 0 10px;" id="users-current-page">Page 1</span>
-                            <button class="action-btn" id="users-next-page" disabled>
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="empty-state" id="users-empty" style="display: none;">
-                    <div class="empty-icon"><i class="fas fa-users"></i></div>
-                    <h3>Aucun utilisateur</h3>
-                    <p>Ce sous-système n'a pas encore d'utilisateurs.</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="close-users-footer">Fermer</button>
-            </div>
-        </div>
-    </div>
-    
     <!-- Notification Container -->
     <div id="notification-container"></div>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Configuration
-        const API_BASE_URL = 'https://lotatonova-fv0b.onrender.com'; 
+        const API_BASE_URL = 'https://lotato1.onrender.com'; 
         // Configuration API Backend
+        const APP_CONFIG = {
+            health: `${API_BASE_URL}/api/health`,
+            login: `${API_BASE_URL}/api/auth/login`
+        };
         
         // Récupérer les données d'authentification depuis le localStorage partagé
         let masterToken = localStorage.getItem('nova_token');
@@ -1745,11 +1697,6 @@
         let statsChart1 = null;
         let statsChart2 = null;
         let statsChart3 = null;
-        
-        // Variables pour la pagination des utilisateurs
-        let currentUsersPage = 1;
-        let usersTotalPages = 1;
-        let currentSubsystemIdForUsers = null;
         
         // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
@@ -1863,12 +1810,6 @@
             document.getElementById('close-edit-modal').addEventListener('click', hideEditSubsystemModal);
             document.getElementById('cancel-edit').addEventListener('click', hideEditSubsystemModal);
             
-            // Nouveau modal utilisateurs
-            document.getElementById('close-users-modal').addEventListener('click', hideUsersModal);
-            document.getElementById('close-users-footer').addEventListener('click', hideUsersModal);
-            document.getElementById('users-prev-page').addEventListener('click', () => changeUsersPage(-1));
-            document.getElementById('users-next-page').addEventListener('click', () => changeUsersPage(1));
-            
             // Formulaire ajout sous-système
             document.getElementById('add-subsystem-form').addEventListener('submit', createSubsystem);
             
@@ -1914,12 +1855,10 @@
             }
         }
         
-        // --- Fonctions API réelles ---
-        
         // Charger les données du tableau de bord
         async function loadDashboardData() {
             try {
-                // Récupérer les statistiques globales via un endpoint dédié (ou on peut combiner plusieurs appels)
+                // Récupérer les statistiques globales
                 const response = await fetch(`${API_BASE_URL}/api/master/subsystems?limit=100`, {
                     headers: {
                         'x-auth-token': masterToken
@@ -1932,59 +1871,44 @@
                     const subsystems = data.subsystems || [];
                     currentSubsystems = subsystems;
                     
-                    // Calculer les statistiques réelles
+                    // Calculer les statistiques
                     const totalSubsystems = subsystems.length;
                     const activeSubsystems = subsystems.filter(s => s.is_active).length;
                     
-                    // Récupérer le nombre total d'utilisateurs (on peut avoir un endpoint séparé)
+                    // Calculer le nombre total d'utilisateurs
                     let totalUsers = 0;
                     subsystems.forEach(s => {
-                        totalUsers += s.stats?.total_users || 0;
+                        totalUsers += s.users || 0;
                     });
                     
-                    // Revenu du mois (à remplacer par un vrai appel si disponible)
-                    const revenueResponse = await fetch(`${API_BASE_URL}/api/master/revenue/month`, {
-                        headers: { 'x-auth-token': masterToken }
-                    });
-                    const revenueData = await revenueResponse.json();
-                    const monthlyRevenue = revenueData.success ? revenueData.revenue : 0;
+                    // Calculer le revenu estimé (pour la démo)
+                    const estimatedRevenue = totalSubsystems * 5000; // 5000 HTG par sous-système/mois
                     
-                    // Taux d'activité (pourcentage d'utilisateurs actifs sur la période)
-                    const activityRate = totalUsers > 0 ? Math.round((activeSubsystems / totalSubsystems) * 100) : 0;
-                    
-                    // Mettre à jour les cartes
+                    // Mettre à jour les cartes de statistiques
                     document.getElementById('total-subsystems').textContent = totalSubsystems;
                     document.getElementById('total-users').textContent = totalUsers.toLocaleString();
-                    document.getElementById('total-revenue').textContent = monthlyRevenue.toLocaleString() + ' HTG';
-                    document.getElementById('active-rate').textContent = activityRate + '%';
+                    document.getElementById('total-revenue').textContent = estimatedRevenue.toLocaleString() + ' HTG';
+                    document.getElementById('active-rate').textContent = 
+                        totalSubsystems > 0 ? Math.round((activeSubsystems / totalSubsystems) * 100) + '%' : '0%';
                     
-                    // Trends (à récupérer depuis un endpoint de comparaison)
-                    // Pour l'exemple, on peut appeler un endpoint /api/master/trends
-                    const trendsResponse = await fetch(`${API_BASE_URL}/api/master/trends`, {
-                        headers: { 'x-auth-token': masterToken }
-                    });
-                    const trendsData = await trendsResponse.json();
-                    if (trendsData.success) {
-                        document.getElementById('subsystems-trend').innerHTML = `<i class="fas fa-arrow-${trendsData.subsystems.direction}"></i> ${trendsData.subsystems.percent}% ce mois`;
-                        document.getElementById('users-trend').innerHTML = `<i class="fas fa-arrow-${trendsData.users.direction}"></i> ${trendsData.users.percent}% ce mois`;
-                        document.getElementById('revenue-trend').innerHTML = `<i class="fas fa-arrow-${trendsData.revenue.direction}"></i> ${trendsData.revenue.percent}% ce mois`;
-                        document.getElementById('activity-trend').innerHTML = `<i class="fas fa-arrow-${trendsData.activity.direction}"></i> ${trendsData.activity.percent}% ce mois`;
-                    }
+                    // Mettre à jour les stats rapides
+                    document.getElementById('today-tickets').textContent = 
+                        subsystems.reduce((sum, s) => sum + (s.stats?.today_tickets || 0), 0);
+                    document.getElementById('online-users').textContent = 
+                        Math.floor(totalUsers * 0.3); // Estimation: 30% des utilisateurs en ligne
+                    document.getElementById('expiring-soon').textContent = 
+                        subsystems.filter(s => {
+                            if (!s.subscription_expires) return false;
+                            const expireDate = new Date(s.subscription_expires);
+                            const now = new Date();
+                            const daysDiff = Math.ceil((expireDate - now) / (1000 * 60 * 60 * 24));
+                            return daysDiff <= 7 && daysDiff > 0;
+                        }).length;
+                    document.getElementById('system-alerts').textContent = 
+                        subsystems.filter(s => !s.is_active || (s.stats?.usage_percentage || 0) >= 90).length;
                     
-                    // Quick stats (appels spécifiques)
-                    const quickStatsResponse = await fetch(`${API_BASE_URL}/api/master/quick-stats`, {
-                        headers: { 'x-auth-token': masterToken }
-                    });
-                    const quickData = await quickStatsResponse.json();
-                    if (quickData.success) {
-                        document.getElementById('today-tickets').textContent = quickData.today_tickets;
-                        document.getElementById('online-users').textContent = quickData.online_users;
-                        document.getElementById('expiring-soon').textContent = quickData.expiring_soon;
-                        document.getElementById('system-alerts').textContent = quickData.system_alerts;
-                    }
-                    
-                    // Mettre à jour le graphique de revenu (appel API)
-                    updateRevenueChart();
+                    // Mettre à jour le graphique de revenu
+                    updateRevenueChart(subsystems);
                 }
             } catch (error) {
                 console.error('Erreur chargement dashboard:', error);
@@ -1992,55 +1916,62 @@
             }
         }
         
-        // Mettre à jour le graphique de revenu avec données réelles
-        async function updateRevenueChart() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/master/revenue/daily?days=30`, {
-                    headers: { 'x-auth-token': masterToken }
-                });
-                const data = await response.json();
+        // Mettre à jour le graphique de revenu
+        function updateRevenueChart(subsystems) {
+            const ctx = document.getElementById('revenue-chart').getContext('2d');
+            
+            // Données de démo pour les 30 derniers jours
+            const labels = [];
+            const data = [];
+            
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                labels.push(date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }));
                 
-                if (data.success) {
-                    const labels = data.labels; // ['01/03', '02/03', ...]
-                    const values = data.values; // [1200, 1500, ...]
-                    
-                    const ctx = document.getElementById('revenue-chart').getContext('2d');
-                    
-                    if (revenueChart) {
-                        revenueChart.destroy();
-                    }
-                    
-                    revenueChart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: 'Revenu quotidien (HTG)',
-                                data: values,
-                                borderColor: '#3498db',
-                                backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                                borderWidth: 2,
-                                fill: true,
-                                tension: 0.4
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: { display: true, position: 'top' }
-                            },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: { callback: (value) => value.toLocaleString() + ' HTG' }
+                // Générer des données aléatoires pour la démo
+                const dailyRevenue = subsystems.length * (50 + Math.random() * 150);
+                data.push(Math.round(dailyRevenue));
+            }
+            
+            if (revenueChart) {
+                revenueChart.destroy();
+            }
+            
+            revenueChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Revenu quotidien (HTG)',
+                        data: data,
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' HTG';
                                 }
                             }
                         }
-                    });
+                    }
                 }
-            } catch (error) {
-                console.error('Erreur chargement graphique revenu:', error);
-            }
+            });
         }
         
         // Charger les sous-systèmes récents
@@ -2056,7 +1987,9 @@
             
             try {
                 const response = await fetch(`${API_BASE_URL}/api/master/subsystems?page=1&limit=5&status=active`, {
-                    headers: { 'x-auth-token': masterToken }
+                    headers: {
+                        'x-auth-token': masterToken
+                    }
                 });
                 
                 const data = await response.json();
@@ -2070,11 +2003,14 @@
                         return;
                     }
                     
+                    // Vider le tableau
                     tbody.innerHTML = '';
                     
+                    // Ajouter chaque sous-système
                     subsystems.forEach(subsystem => {
                         const row = document.createElement('tr');
                         
+                        // Calculer le pourcentage d'utilisation
                         const usagePercentage = subsystem.stats?.usage_percentage || 0;
                         const subscriptionDaysLeft = subsystem.subscription_expires ? 
                             Math.ceil((new Date(subsystem.subscription_expires) - new Date()) / (1000 * 60 * 60 * 24)) : 0;
@@ -2125,10 +2061,6 @@
                                     <button class="action-btn delete" onclick="deactivateSubsystem('${subsystem.id}')" title="Désactiver">
                                         <i class="fas fa-ban"></i>
                                     </button>
-                                    <!-- Nouveau bouton pour lister les utilisateurs -->
-                                    <button class="action-btn" onclick="showSubsystemUsers('${subsystem.id}', '${subsystem.name}')" title="Voir utilisateurs" style="background-color: #9b59b6; color: white;">
-                                        <i class="fas fa-users"></i>
-                                    </button>
                                 </div>
                             </td>
                         `;
@@ -2172,7 +2104,9 @@
                 }
                 
                 const response = await fetch(url, {
-                    headers: { 'x-auth-token': masterToken }
+                    headers: {
+                        'x-auth-token': masterToken
+                    }
                 });
                 
                 const data = await response.json();
@@ -2181,6 +2115,7 @@
                     const subsystems = data.subsystems || [];
                     totalPages = data.pagination?.total_pages || 1;
                     
+                    // Mettre à jour la pagination
                     updatePagination(data.pagination);
                     
                     if (subsystems.length === 0) {
@@ -2189,14 +2124,18 @@
                         return;
                     }
                     
+                    // Vider le tableau
                     tbody.innerHTML = '';
                     
+                    // Ajouter chaque sous-système
                     subsystems.forEach(subsystem => {
                         const row = document.createElement('tr');
                         
+                        // Calculer les jours restants
                         const subscriptionDaysLeft = subsystem.subscription_expires ? 
                             Math.ceil((new Date(subsystem.subscription_expires) - new Date()) / (1000 * 60 * 60 * 24)) : null;
                         
+                        // Déterminer le statut d'expiration
                         let expirationStatus = 'Actif';
                         let expirationClass = 'status-active';
                         
@@ -2270,9 +2209,6 @@
                                             <i class="fas fa-check"></i>
                                         </button>`
                                     }
-                                    <button class="action-btn" onclick="showSubsystemUsers('${subsystem.id}', '${subsystem.name}')" title="Voir utilisateurs" style="background-color: #9b59b6; color: white;">
-                                        <i class="fas fa-users"></i>
-                                    </button>
                                 </div>
                             </td>
                         `;
@@ -2322,10 +2258,11 @@
             }
         }
         
-        // Filtrer les sous-systèmes (recherche locale)
+        // Filtrer les sous-systèmes
         function filterSubsystems() {
             const searchTerm = document.getElementById('search-subsystems').value.toLowerCase();
             const rows = document.querySelectorAll('#subsystems-table-body tr');
+            
             rows.forEach(row => {
                 const text = row.textContent.toLowerCase();
                 row.style.display = text.includes(searchTerm) ? '' : 'none';
@@ -2333,6 +2270,7 @@
         }
         
         function filterAllSubsystems() {
+            // Recharger avec recherche
             currentPage = 1;
             loadAllSubsystems();
         }
@@ -2342,6 +2280,7 @@
             document.getElementById('add-subsystem-modal').classList.add('active');
         }
         
+        // Cacher le modal d'ajout
         function hideAddSubsystemModal() {
             document.getElementById('add-subsystem-modal').classList.remove('active');
             document.getElementById('add-subsystem-form').reset();
@@ -2362,6 +2301,7 @@
                 send_credentials: document.getElementById('send-credentials').checked
             };
             
+            // Validation
             if (!formData.name || !formData.subdomain || !formData.contact_email) {
                 showNotification('Veuillez remplir tous les champs obligatoires', 'warning');
                 return;
@@ -2373,6 +2313,7 @@
             }
             
             try {
+                // Désactiver le bouton
                 const submitBtn = e.target.querySelector('button[type="submit"]');
                 const originalText = submitBtn.innerHTML;
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Création...';
@@ -2392,6 +2333,7 @@
                 if (data.success) {
                     showNotification('Sous-système créé avec succès !', 'success');
                     
+                    // Afficher les identifiants
                     const credentials = data.admin_credentials;
                     alert(`✅ Sous-système créé avec succès !
 
@@ -2405,9 +2347,11 @@
                     
                     hideAddSubsystemModal();
                     
+                    // Recharger les données
                     loadDashboardData();
                     loadRecentSubsystems();
                     
+                    // Si on est dans la section sous-systèmes, recharger aussi
                     if (document.getElementById('subsystems-section').style.display !== 'none') {
                         loadAllSubsystems();
                     }
@@ -2418,6 +2362,7 @@
                 console.error('Erreur création sous-système:', error);
                 showNotification('Erreur de connexion au serveur', 'error');
             } finally {
+                // Réactiver le bouton
                 const submitBtn = e.target.querySelector('button[type="submit"]');
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
@@ -2436,7 +2381,9 @@
             
             try {
                 const response = await fetch(`${API_BASE_URL}/api/master/subsystems/${subsystemId}`, {
-                    headers: { 'x-auth-token': masterToken }
+                    headers: {
+                        'x-auth-token': masterToken
+                    }
                 });
                 
                 const data = await response.json();
@@ -2444,11 +2391,7 @@
                 if (data.success) {
                     const subsystem = data.subsystem;
                     
-                    // ... (construction du HTML des détails, identique à l'original mais avec données réelles)
-                    // Pour gagner de la place, je reprends le code existant qui utilise subsystem.xxx
-                    // ... (code inchangé, il utilise les propriétés de subsystem)
-                    
-                    // Exemple simplifié :
+                    // Formater la date d'expiration
                     let expirationText = 'Non spécifiée';
                     let expirationClass = '';
                     if (subsystem.subscription_expires) {
@@ -2470,12 +2413,20 @@
                         }
                     }
                     
-                    // Compter les utilisateurs par rôle (si disponible)
-                    let usersByRole = { owner:0, admin:0, supervisor:0, agent:0 };
+                    // Compter les utilisateurs par rôle
+                    const usersByRole = {
+                        owner: 0,
+                        admin: 0,
+                        supervisor: 0,
+                        agent: 0
+                    };
+                    
                     if (subsystem.users && Array.isArray(subsystem.users)) {
                         subsystem.users.forEach(user => {
                             const role = user.user?.role || user.role_in_subsystem;
-                            if (role && usersByRole.hasOwnProperty(role)) usersByRole[role]++;
+                            if (role && usersByRole.hasOwnProperty(role)) {
+                                usersByRole[role]++;
+                            }
                         });
                     }
                     
@@ -2569,6 +2520,7 @@
                         </div>
                     `;
                     
+                    // Stocker l'ID du sous-système pour les actions
                     details.setAttribute('data-subsystem-id', subsystemId);
                     
                     loading.style.display = 'none';
@@ -2584,17 +2536,17 @@
             }
         };
         
+        // Cacher le modal de visualisation
         function hideViewSubsystemModal() {
             document.getElementById('view-subsystem-modal').classList.remove('active');
         }
         
+        // Modifier un sous-système
         window.editSubsystem = async function(subsystemId) {
+            // Pour l'instant, on va simplement charger les données dans le modal d'édition
+            // Dans une version complète, on chargerait les données et les afficherait dans un formulaire
             showNotification('Fonctionnalité d\'édition à implémenter', 'info');
         };
-        
-        function hideEditSubsystemModal() {
-            document.getElementById('edit-subsystem-modal').classList.remove('active');
-        }
         
         // Désactiver un sous-système
         window.deactivateSubsystem = async function(subsystemId) {
@@ -2616,9 +2568,13 @@
                 
                 if (data.success) {
                     showNotification('Sous-système désactivé avec succès', 'success');
+                    
+                    // Recharger les données
                     loadDashboardData();
                     loadRecentSubsystems();
                     loadAllSubsystems();
+                    
+                    // Fermer le modal de visualisation si ouvert
                     hideViewSubsystemModal();
                 } else {
                     showNotification(data.error || 'Erreur lors de la désactivation', 'error');
@@ -2629,6 +2585,7 @@
             }
         };
         
+        // Activer un sous-système
         window.activateSubsystem = async function(subsystemId) {
             try {
                 const response = await fetch(`${API_BASE_URL}/api/master/subsystems/${subsystemId}/activate`, {
@@ -2654,115 +2611,26 @@
             }
         };
         
-        // --- Nouvelle fonction pour afficher les utilisateurs d'un sous-système ---
-        window.showSubsystemUsers = async function(subsystemId, subsystemName) {
-            currentSubsystemIdForUsers = subsystemId;
-            currentUsersPage = 1;
-            document.getElementById('users-modal-title').textContent = `Utilisateurs de ${subsystemName}`;
-            document.getElementById('users-modal').classList.add('active');
-            await loadSubsystemUsers();
-        };
-        
-        async function loadSubsystemUsers() {
-            const modal = document.getElementById('users-modal');
-            const loading = document.getElementById('users-loading');
-            const content = document.getElementById('users-content');
-            const empty = document.getElementById('users-empty');
-            const tbody = document.getElementById('users-table-body');
-            
-            loading.style.display = 'flex';
-            content.style.display = 'none';
-            empty.style.display = 'none';
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/master/subsystems/${currentSubsystemIdForUsers}/users?page=${currentUsersPage}&limit=10`, {
-                    headers: { 'x-auth-token': masterToken }
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    const users = data.users || [];
-                    const pagination = data.pagination;
-                    
-                    if (users.length === 0) {
-                        loading.style.display = 'none';
-                        empty.style.display = 'block';
-                        return;
-                    }
-                    
-                    tbody.innerHTML = '';
-                    
-                    users.forEach(user => {
-                        const row = document.createElement('tr');
-                        const lastLogin = user.last_login ? new Date(user.last_login).toLocaleString('fr-FR') : 'Jamais';
-                        const createdAt = new Date(user.created_at).toLocaleDateString('fr-FR');
-                        const statusClass = user.is_active ? 'status-active' : 'status-inactive';
-                        const statusText = user.is_active ? 'Actif' : 'Inactif';
-                        
-                        row.innerHTML = `
-                            <td><strong>${user.full_name || user.username}</strong></td>
-                            <td>${user.email}</td>
-                            <td><span class="role-badge role-${user.role}">${user.role}</span></td>
-                            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                            <td>${lastLogin}</td>
-                            <td>${createdAt}</td>
-                            <td>
-                                <button class="action-btn view" onclick="viewUserDetails('${user.id}')" title="Voir détail">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                            </td>
-                        `;
-                        tbody.appendChild(row);
-                    });
-                    
-                    // Mettre à jour la pagination des utilisateurs
-                    if (pagination) {
-                        usersTotalPages = pagination.total_pages;
-                        document.getElementById('users-pagination-info').textContent = 
-                            `Affichage ${(pagination.page-1)*pagination.limit+1}-${Math.min(pagination.page*pagination.limit, pagination.total)} sur ${pagination.total}`;
-                        document.getElementById('users-current-page').textContent = `Page ${pagination.page} sur ${pagination.total_pages}`;
-                        document.getElementById('users-prev-page').disabled = pagination.page <= 1;
-                        document.getElementById('users-next-page').disabled = pagination.page >= pagination.total_pages;
-                    }
-                    
-                    loading.style.display = 'none';
-                    content.style.display = 'block';
-                } else {
-                    showNotification(data.error || 'Erreur lors du chargement des utilisateurs', 'error');
-                    loading.style.display = 'none';
-                    empty.style.display = 'block';
-                }
-            } catch (error) {
-                console.error('Erreur chargement utilisateurs:', error);
-                showNotification('Erreur de connexion au serveur', 'error');
-                loading.style.display = 'none';
-                empty.style.display = 'block';
-            }
+        // Cacher le modal d'édition
+        function hideEditSubsystemModal() {
+            document.getElementById('edit-subsystem-modal').classList.remove('active');
         }
-        
-        function changeUsersPage(delta) {
-            const newPage = currentUsersPage + delta;
-            if (newPage >= 1 && newPage <= usersTotalPages) {
-                currentUsersPage = newPage;
-                loadSubsystemUsers();
-            }
-        }
-        
-        function hideUsersModal() {
-            document.getElementById('users-modal').classList.remove('active');
-        }
-        
-        // (Les fonctions viewUserDetails peuvent être ajoutées si besoin)
         
         // Changer l'onglet des statistiques
         function switchStatsTab(tabId) {
-            document.querySelectorAll('[data-stats-tab]').forEach(tab => tab.classList.remove('active'));
+            // Mettre à jour les tabs
+            document.querySelectorAll('[data-stats-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
             document.querySelector(`[data-stats-tab="${tabId}"]`).classList.add('active');
             
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            // Afficher le contenu correspondant
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
             document.getElementById(`${tabId}-tab`).classList.add('active');
             
+            // Charger les données correspondantes
             switch(tabId) {
                 case 'agents':
                     loadAgentsStats();
@@ -2779,19 +2647,33 @@
             }
         }
         
+        // Changer l'onglet des rapports
         function switchReportTab(tabId) {
-            document.querySelectorAll('[data-report-tab]').forEach(tab => tab.classList.remove('active'));
+            // Mettre à jour les tabs
+            document.querySelectorAll('[data-report-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
             document.querySelector(`[data-report-tab="${tabId}"]`).classList.add('active');
             
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            // Afficher le contenu correspondant
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
             document.getElementById(`${tabId}-tab`).classList.add('active');
         }
         
+        // Changer l'onglet de configuration
         function switchConfigTab(tabId) {
-            document.querySelectorAll('[data-config-tab]').forEach(tab => tab.classList.remove('active'));
+            // Mettre à jour les tabs
+            document.querySelectorAll('[data-config-tab]').forEach(tab => {
+                tab.classList.remove('active');
+            });
             document.querySelector(`[data-config-tab="${tabId}"]`).classList.add('active');
             
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            // Afficher le contenu correspondant
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
             document.getElementById(`${tabId}-tab`).classList.add('active');
         }
         
@@ -2808,7 +2690,9 @@
             
             try {
                 const response = await fetch(`${API_BASE_URL}/api/agents?detailed=true`, {
-                    headers: { 'x-auth-token': masterToken }
+                    headers: {
+                        'x-auth-token': masterToken
+                    }
                 });
                 
                 const data = await response.json();
@@ -2833,7 +2717,9 @@
                         row.innerHTML = `
                             <td>
                                 <strong>${agent.full_name || agent.username}</strong>
-                                <div style="font-size: 0.8rem; color: #6c757d;">${agent.email || ''}</div>
+                                <div style="font-size: 0.8rem; color: #6c757d;">
+                                    ${agent.email || ''}
+                                </div>
                             </td>
                             <td>${agent.subsystem_name || 'N/A'}</td>
                             <td>
@@ -2842,7 +2728,9 @@
                                 </span>
                             </td>
                             <td>${(agent.total_sales || 0).toLocaleString()} HTG</td>
-                            <td style="color: #27ae60; font-weight: bold;">${(agent.total_payout || 0).toLocaleString()} HTG</td>
+                            <td style="color: #27ae60; font-weight: bold;">
+                                ${(agent.total_payout || 0).toLocaleString()} HTG
+                            </td>
                             <td style="color: #e74c3c; font-weight: bold;">
                                 ${((agent.total_sales || 0) - (agent.total_payout || 0) < 0 ? 
                                     Math.abs(profit) : 0).toLocaleString()} HTG
@@ -2856,8 +2744,13 @@
                                 </div>
                                 ${successRate}%
                             </td>
-                            <td>${agent.last_active ? `Dernière activité: ${new Date(agent.last_active).toLocaleTimeString('fr-FR')}` : 'Aucune activité'}</td>
+                            <td>
+                                ${agent.last_active ? 
+                                    `Dernière activité: ${new Date(agent.last_active).toLocaleTimeString('fr-FR')}` :
+                                    'Aucune activité'}
+                            </td>
                         `;
+                        
                         tbody.appendChild(row);
                     });
                     
@@ -2872,6 +2765,7 @@
             }
         }
         
+        // Filtrer les agents
         function filterAgents() {
             const searchTerm = document.getElementById('search-agents').value.toLowerCase();
             const statusFilter = document.getElementById('filter-online').value;
@@ -2883,14 +2777,21 @@
                 
                 let shouldShow = true;
                 
-                if (searchTerm && !text.includes(searchTerm)) shouldShow = false;
-                if (statusFilter === 'online' && !isOnline) shouldShow = false;
-                if (statusFilter === 'offline' && isOnline) shouldShow = false;
+                if (searchTerm && !text.includes(searchTerm)) {
+                    shouldShow = false;
+                }
+                
+                if (statusFilter === 'online' && !isOnline) {
+                    shouldShow = false;
+                } else if (statusFilter === 'offline' && isOnline) {
+                    shouldShow = false;
+                }
                 
                 row.style.display = shouldShow ? '' : 'none';
             });
         }
         
+        // Charger les statistiques des superviseurs
         async function loadSupervisorsStats() {
             const loading = document.getElementById('supervisors-loading');
             const table = document.getElementById('supervisors-table');
@@ -2901,7 +2802,9 @@
             
             try {
                 const response = await fetch(`${API_BASE_URL}/api/supervisors?role=supervisor&detailed=true`, {
-                    headers: { 'x-auth-token': masterToken }
+                    headers: {
+                        'x-auth-token': masterToken
+                    }
                 });
                 
                 const data = await response.json();
@@ -2920,7 +2823,9 @@
                         row.innerHTML = `
                             <td>
                                 <strong>${supervisor.full_name || supervisor.username}</strong>
-                                <div style="font-size: 0.8rem; color: #6c757d;">${supervisor.email || ''}</div>
+                                <div style="font-size: 0.8rem; color: #6c757d;">
+                                    ${supervisor.email || ''}
+                                </div>
                             </td>
                             <td>${supervisor.subsystem_name || 'N/A'}</td>
                             <td>${supervisor.agents_count || 0}</td>
@@ -2940,6 +2845,7 @@
                                 ${performance.toLocaleString()} HTG/agent
                             </td>
                         `;
+                        
                         tbody.appendChild(row);
                     });
                     
@@ -2953,6 +2859,7 @@
             }
         }
         
+        // Charger les statistiques des sous-systèmes
         async function loadSubsystemsStats() {
             const loading = document.getElementById('subsystems-stats-loading');
             const table = document.getElementById('subsystems-stats-table');
@@ -2963,7 +2870,9 @@
             
             try {
                 const response = await fetch(`${API_BASE_URL}/api/master/subsystems/stats`, {
-                    headers: { 'x-auth-token': masterToken }
+                    headers: {
+                        'x-auth-token': masterToken
+                    }
                 });
                 
                 const data = await response.json();
@@ -2977,13 +2886,15 @@
                         const profit = (subsystem.total_sales || 0) - (subsystem.total_payout || 0);
                         const profitRate = subsystem.total_sales > 0 ? 
                             Math.round((profit / subsystem.total_sales) * 100) : 0;
-                        const masterCommission = profit * 0.1; // 10% de commission
+                        const masterCommission = profit * 0.1; // 10% de commission pour le master
                         
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>
                                 <strong>${subsystem.name}</strong>
-                                <div style="font-size: 0.8rem; color: #6c757d;">${subsystem.subdomain}</div>
+                                <div style="font-size: 0.8rem; color: #6c757d;">
+                                    ${subsystem.subdomain}
+                                </div>
                             </td>
                             <td>${subsystem.active_agents || 0}</td>
                             <td>${(subsystem.total_sales || 0).toLocaleString()} HTG</td>
@@ -3009,12 +2920,14 @@
                                 </button>
                             </td>
                         `;
+                        
                         tbody.appendChild(row);
                     });
                     
                     loading.style.display = 'none';
                     table.style.display = 'table';
                     
+                    // Mettre à jour le graphique de comparaison
                     updateSubsystemsComparisonChart(subsystems);
                 }
             } catch (error) {
@@ -3024,14 +2937,20 @@
             }
         }
         
+        // Mettre à jour le graphique de comparaison des sous-systèmes
         function updateSubsystemsComparisonChart(subsystems) {
             const ctx = document.getElementById('subsystems-comparison-chart').getContext('2d');
             
             const labels = subsystems.map(s => s.name);
-            const profits = subsystems.map(s => (s.total_sales || 0) - (s.total_payout || 0));
+            const profits = subsystems.map(s => {
+                const profit = (s.total_sales || 0) - (s.total_payout || 0);
+                return profit;
+            });
             const sales = subsystems.map(s => s.total_sales || 0);
             
-            if (statsChart1) statsChart1.destroy();
+            if (statsChart1) {
+                statsChart1.destroy();
+            }
             
             statsChart1 = new Chart(ctx, {
                 type: 'bar',
@@ -3057,22 +2976,35 @@
                 options: {
                     responsive: true,
                     plugins: {
-                        legend: { display: true, position: 'top' }
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        title: {
+                            display: false
+                        }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            ticks: { callback: value => value.toLocaleString() + ' HTG' }
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' HTG';
+                                }
+                            }
                         }
                     }
                 }
             });
         }
         
+        // Charger les statistiques globales
         async function loadGlobalStats() {
             try {
                 const response = await fetch(`${API_BASE_URL}/api/statistics`, {
-                    headers: { 'x-auth-token': masterToken }
+                    headers: {
+                        'x-auth-token': masterToken
+                    }
                 });
                 
                 const data = await response.json();
@@ -3080,14 +3012,15 @@
                 if (data.success) {
                     const stats = data.statistics || {};
                     
+                    // Mettre à jour les cartes
                     document.getElementById('total-active-agents').textContent = stats.active_agents || 0;
                     document.getElementById('total-active-supervisors').textContent = stats.active_supervisors || 0;
                     document.getElementById('global-sales').textContent = (stats.total_sales || 0).toLocaleString() + ' HTG';
                     document.getElementById('global-profit').textContent = (stats.total_profit || 0).toLocaleString() + ' HTG';
                     
-                    // Charger les graphiques
-                    await updateGlobalProfitChart();
-                    await updateGamesDistributionChart();
+                    // Mettre à jour les graphiques
+                    updateGlobalProfitChart(stats);
+                    updateGamesDistributionChart(stats);
                 }
             } catch (error) {
                 console.error('Erreur chargement stats globales:', error);
@@ -3095,100 +3028,110 @@
             }
         }
         
-        async function updateGlobalProfitChart() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/master/global/profit/daily?days=30`, {
-                    headers: { 'x-auth-token': masterToken }
-                });
-                const data = await response.json();
+        // Mettre à jour le graphique de profit global
+        function updateGlobalProfitChart(stats) {
+            const ctx = document.getElementById('global-profit-chart').getContext('2d');
+            
+            // Données de démo pour les 30 derniers jours
+            const labels = [];
+            const profitData = [];
+            
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                labels.push(date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }));
                 
-                if (data.success) {
-                    const ctx = document.getElementById('global-profit-chart').getContext('2d');
-                    
-                    if (statsChart2) statsChart2.destroy();
-                    
-                    statsChart2 = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: data.labels,
-                            datasets: [{
-                                label: 'Profit quotidien (HTG)',
-                                data: data.values,
-                                borderColor: '#e74c3c',
-                                backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                                borderWidth: 2,
-                                fill: true,
-                                tension: 0.4
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: { display: true, position: 'top' }
-                            },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: { callback: value => value.toLocaleString() + ' HTG' }
+                // Générer des données aléatoires pour la démo
+                const dailyProfit = (stats.total_profit || 10000) * (0.8 + Math.random() * 0.4) / 30;
+                profitData.push(Math.round(dailyProfit));
+            }
+            
+            if (statsChart2) {
+                statsChart2.destroy();
+            }
+            
+            statsChart2 = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Profit quotidien (HTG)',
+                        data: profitData,
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' HTG';
                                 }
                             }
                         }
-                    });
+                    }
                 }
-            } catch (error) {
-                console.error('Erreur chargement graphique profit global:', error);
-            }
+            });
         }
         
-        async function updateGamesDistributionChart() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/games/distribution`, {
-                    headers: { 'x-auth-token': masterToken }
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    const ctx = document.getElementById('games-distribution-chart').getContext('2d');
-                    
-                    const games = data.games; // ['Borlette', 'Lotto 3', ...]
-                    const salesData = data.sales; // [12000, 8000, ...]
-                    const colors = ['#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#e74c3c', '#1abc9c'];
-                    
-                    if (statsChart3) statsChart3.destroy();
-                    
-                    statsChart3 = new Chart(ctx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: games,
-                            datasets: [{
-                                data: salesData,
-                                backgroundColor: colors,
-                                borderColor: colors.map(c => c.replace('0.8', '1')),
-                                borderWidth: 1
-                            }]
+        // Mettre à jour le graphique de distribution des jeux
+        function updateGamesDistributionChart(stats) {
+            const ctx = document.getElementById('games-distribution-chart').getContext('2d');
+            
+            // Données de démo
+            const games = ['Borlette', 'Lotto 3', 'Lotto 4', 'Lotto 5', 'Grap', 'Marriage'];
+            const colors = ['#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#e74c3c', '#1abc9c'];
+            
+            // Générer des données aléatoires pour la démo
+            const salesData = games.map(() => Math.floor(Math.random() * 10000) + 5000);
+            
+            if (statsChart3) {
+                statsChart3.destroy();
+            }
+            
+            statsChart3 = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: games,
+                    datasets: [{
+                        data: salesData,
+                        backgroundColor: colors,
+                        borderColor: colors.map(c => c.replace('0.8', '1')),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
                         },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: { position: 'bottom' },
-                                tooltip: {
-                                    callbacks: {
-                                        label: (context) => {
-                                            const label = context.label || '';
-                                            const value = context.raw || 0;
-                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                            const percentage = Math.round((value / total) * 100);
-                                            return `${label}: ${value.toLocaleString()} HTG (${percentage}%)`;
-                                        }
-                                    }
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${value.toLocaleString()} HTG (${percentage}%)`;
                                 }
                             }
                         }
-                    });
+                    }
                 }
-            } catch (error) {
-                console.error('Erreur chargement distribution jeux:', error);
-            }
+            });
         }
         
         // Générer un rapport consolidé
@@ -3202,32 +3145,33 @@
             try {
                 const period = document.getElementById('report-period').value;
                 
+                // Déterminer les dates selon la période
                 let startDate, endDate;
                 const now = new Date();
                 
                 switch(period) {
                     case 'today':
-                        startDate = new Date(now.setHours(0,0,0,0));
-                        endDate = new Date(now.setHours(23,59,59,999));
+                        startDate = new Date(now.setHours(0, 0, 0, 0));
+                        endDate = new Date(now.setHours(23, 59, 59, 999));
                         break;
                     case 'week':
                         const startOfWeek = new Date(now);
                         startOfWeek.setDate(now.getDate() - now.getDay());
-                        startDate = new Date(startOfWeek.setHours(0,0,0,0));
-                        endDate = new Date(now.setHours(23,59,59,999));
+                        startDate = new Date(startOfWeek.setHours(0, 0, 0, 0));
+                        endDate = new Date(now.setHours(23, 59, 59, 999));
                         break;
                     case 'month':
                         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                        endDate = new Date(now.getFullYear(), now.getMonth()+1, 0, 23,59,59,999);
+                        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
                         break;
                     case 'quarter':
                         const quarter = Math.floor(now.getMonth() / 3);
-                        startDate = new Date(now.getFullYear(), quarter*3, 1);
-                        endDate = new Date(now.getFullYear(), quarter*3+3, 0, 23,59,59,999);
+                        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+                        endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999);
                         break;
                     case 'year':
                         startDate = new Date(now.getFullYear(), 0, 1);
-                        endDate = new Date(now.getFullYear(), 11, 31, 23,59,59,999);
+                        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
                         break;
                 }
                 
@@ -3237,7 +3181,9 @@
                     `end_date=${endDate.toISOString().split('T')[0]}&` +
                     `group_by=day`,
                     {
-                        headers: { 'x-auth-token': masterToken }
+                        headers: {
+                            'x-auth-token': masterToken
+                        }
                     }
                 );
                 
@@ -3246,8 +3192,12 @@
                 if (data.success) {
                     const report = data.report;
                     
-                    const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('fr-FR');
+                    // Formater les dates
+                    const formatDate = (dateStr) => {
+                        return new Date(dateStr).toLocaleDateString('fr-FR');
+                    };
                     
+                    // Générer le HTML du rapport
                     let html = `
                         <div style="margin-bottom: 25px;">
                             <h3 style="color: #2c3e50; margin-bottom: 15px;">Rapport consolidé Master</h3>
@@ -3274,6 +3224,7 @@
                         </div>
                     `;
                     
+                    // Détails par sous-système
                     if (report.subsystems_detail && report.subsystems_detail.length > 0) {
                         html += `
                             <h4 style="color: #2c3e50; margin-bottom: 15px;">Détails par sous-système</h4>
@@ -3304,6 +3255,7 @@
                             `;
                         });
                         
+                        // Total
                         html += `
                                 <tr style="background-color: #f8f9fa; font-weight: bold;">
                                     <td>TOTAL</td>
@@ -3319,6 +3271,7 @@
                         `;
                     }
                     
+                    // Breakdown quotidien
                     if (report.daily_breakdown && report.daily_breakdown.length > 0) {
                         html += `
                             <h4 style="color: #2c3e50; margin-bottom: 15px;">Évolution quotidienne</h4>
@@ -3369,10 +3322,14 @@
             }
         }
         
+        // Exporter le rapport
         function exportReport() {
+            // Pour l'instant, on affiche juste une alerte
+            // Dans une version complète, on générerait un PDF ou un Excel
             alert('Fonctionnalité d\'export à implémenter');
         }
         
+        // Rafraîchir les données
         function refreshData() {
             const refreshBtn = document.getElementById('refresh-btn');
             const originalHtml = refreshBtn.innerHTML;
@@ -3394,6 +3351,7 @@
                 }
             }
             
+            // Réactiver le bouton après 2 secondes
             setTimeout(() => {
                 refreshBtn.innerHTML = originalHtml;
                 refreshBtn.disabled = false;
@@ -3401,14 +3359,17 @@
             }, 2000);
         }
         
+        // Démarrer le rafraîchissement automatique
         function startAutoRefresh() {
+            // Rafraîchir toutes les 2 minutes
             setInterval(() => {
                 if (document.getElementById('dashboard-section').style.display !== 'none') {
                     loadDashboardData();
                 }
-            }, 120000);
+            }, 120000); // 2 minutes
         }
         
+        // Afficher une notification
         function showNotification(message, type = 'info') {
             const container = document.getElementById('notification-container');
             
@@ -3423,18 +3384,23 @@
             notification.innerHTML = `
                 <i class="${icon}"></i>
                 <span>${message}</span>
-                <button style="background: none; border: none; color: inherit; margin-left: auto; cursor: pointer;" onclick="this.parentElement.remove()">
+                <button style="background: none; border: none; color: inherit; margin-left: auto; cursor: pointer;" 
+                        onclick="this.parentElement.remove()">
                     <i class="fas fa-times"></i>
                 </button>
             `;
             
             container.appendChild(notification);
             
+            // Supprimer automatiquement après 5 secondes
             setTimeout(() => {
-                if (notification.parentNode) notification.remove();
+                if (notification.parentNode) {
+                    notification.remove();
+                }
             }, 5000);
         }
         
+        // Déconnexion
         function logout() {
             if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
                 localStorage.removeItem('nova_token');
@@ -3444,12 +3410,11 @@
             }
         }
         
-        // Exposer les fonctions globales
+        // Fonctions globales pour les boutons d'action
         window.deactivateSubsystem = deactivateSubsystem;
         window.activateSubsystem = activateSubsystem;
         window.viewSubsystem = viewSubsystem;
         window.editSubsystem = editSubsystem;
-        window.showSubsystemUsers = showSubsystemUsers;
     </script>
 </body>
 </html>
