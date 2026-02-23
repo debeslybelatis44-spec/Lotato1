@@ -1279,7 +1279,6 @@
         let supervisorToken = localStorage.getItem('nova_token');
         let currentSupervisor = JSON.parse(localStorage.getItem('nova_user_data') || '{}');
         let agentsList = [];
-        let notificationsList = [];
         let currentAgentToBlock = null;
         let currentTicketToDelete = null;
         
@@ -1300,7 +1299,7 @@
             loadSupervisorInfo();
             loadDashboardData();
             setupEventListeners();
-            startNotificationPolling();
+            loadNotificationCount(); // Charger le compteur de notifications
         });
         
         // Vérifier le rôle du superviseur
@@ -1359,7 +1358,6 @@
         // Charger les informations du sous-système
         async function loadSubsystemInfo() {
             try {
-                // Récupérer le sous-système via l'API
                 const response = await fetch(`${API_BASE_URL}/api/subsystem/stats`, {
                     headers: {
                         'Authorization': `Bearer ${supervisorToken}`
@@ -1369,7 +1367,6 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    // Mettre à jour le nom du système
                     document.getElementById('supervisor-system').textContent = 
                         `Système: Sous-système ${data.stats.subsystem_name || 'N/A'}`;
                 }
@@ -1385,19 +1382,16 @@
                 item.addEventListener('click', function(e) {
                     e.preventDefault();
                     
-                    // Mettre à jour la navigation active
                     document.querySelectorAll('.nav-item').forEach(nav => {
                         nav.classList.remove('active');
                     });
                     this.classList.add('active');
                     
-                    // Afficher la section correspondante
                     const section = this.getAttribute('data-section');
                     showSection(section);
                 });
             });
             
-            // Boutons d'action
             document.getElementById('refresh-btn').addEventListener('click', refreshData);
             document.getElementById('logout-btn').addEventListener('click', logout);
             document.getElementById('notification-bell').addEventListener('click', function() {
@@ -1420,10 +1414,7 @@
             document.getElementById('close-agent-details-modal').addEventListener('click', hideAgentDetailsModal);
             document.getElementById('close-agent-details').addEventListener('click', hideAgentDetailsModal);
             
-            // Bouton suppression ticket
             document.getElementById('delete-ticket-btn').addEventListener('click', deleteTicket);
-            
-            // Bouton blocage agent
             document.getElementById('confirm-block-agent').addEventListener('click', confirmBlockAgent);
             
             // Filtres
@@ -1443,19 +1434,16 @@
         
         // Afficher une section
         function showSection(sectionId) {
-            // Cacher toutes les sections
             document.querySelectorAll('.section-content').forEach(section => {
                 section.style.display = 'none';
             });
             
-            // Afficher la section demandée
             const section = document.getElementById(`${sectionId}-section`);
             if (section) {
                 section.style.display = 'block';
                 document.getElementById('page-title').textContent = 
                     document.querySelector(`.nav-item[data-section="${sectionId}"] .nav-label`).textContent;
                 
-                // Charger les données spécifiques à la section
                 switch(sectionId) {
                     case 'dashboard':
                         loadDashboardData();
@@ -1479,7 +1467,6 @@
         // Charger les données du tableau de bord
         async function loadDashboardData() {
             try {
-                // Récupérer les agents assignés
                 const agentsResponse = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor=1`, {
                     headers: {
                         'Authorization': `Bearer ${supervisorToken}`
@@ -1491,18 +1478,15 @@
                 if (agentsData.success) {
                     agentsList = agentsData.users || [];
                     
-                    // Mettre à jour le compteur d'agents
                     document.getElementById('total-agents').textContent = agentsList.length;
                     document.getElementById('agents-count').textContent = agentsList.length;
                     
-                    // Compter les agents en ligne
                     const onlineAgents = agentsList.filter(agent => agent.is_online).length;
                     const activeAgents = agentsList.filter(agent => agent.is_active).length;
                     
                     document.getElementById('online-agents').textContent = onlineAgents;
                     document.getElementById('active-agents').textContent = activeAgents;
                     
-                    // Récupérer les statistiques des ventes
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
                     
@@ -1510,7 +1494,6 @@
                     let totalSales = 0;
                     let totalWinnings = 0;
                     
-                    // Pour chaque agent, récupérer les tickets du jour
                     for (const agent of agentsList) {
                         const ticketsResponse = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&date=${today.toISOString()}`, {
                             headers: {
@@ -1525,7 +1508,6 @@
                             totalSales += ticketsData.tickets.reduce((sum, ticket) => sum + ticket.total, 0);
                         }
                         
-                        // Récupérer les gains du jour
                         const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}&date=${today.toISOString()}`, {
                             headers: {
                                 'Authorization': `Bearer ${supervisorToken}`
@@ -1539,14 +1521,12 @@
                         }
                     }
                     
-                    // Mettre à jour les statistiques
                     document.getElementById('today-tickets').textContent = totalTickets;
                     document.getElementById('today-sales').textContent = `Montant: ${totalSales.toLocaleString()} HTG`;
                     document.getElementById('today-revenue').textContent = `${totalSales.toLocaleString()} HTG`;
                     
-                    // Calculer profit/perte
                     const profitLoss = totalSales - totalWinnings;
-                    const commission = totalSales * 0.05; // 5% de commission
+                    const commission = totalSales * 0.05;
                     
                     document.getElementById('profit-loss').textContent = `${profitLoss.toLocaleString()} HTG`;
                     document.getElementById('commission').textContent = `Commission: ${commission.toLocaleString()} HTG`;
@@ -1560,7 +1540,6 @@
                         profitStatus.className = 'profit-badge profit-negative';
                     }
                     
-                    // Charger l'activité récente
                     loadRecentActivity(agentsList);
                 }
             } catch (error) {
@@ -1581,10 +1560,8 @@
             empty.style.display = 'none';
             
             try {
-                // Récupérer les activités récentes (tickets, connexions, etc.)
                 const activities = [];
                 
-                // Pour chaque agent, récupérer les 5 derniers tickets
                 for (const agent of agents.slice(0, 5)) {
                     const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&limit=5`, {
                         headers: {
@@ -1607,7 +1584,6 @@
                     }
                 }
                 
-                // Trier par date (plus récent en premier)
                 activities.sort((a, b) => new Date(b.time) - new Date(a.time));
                 
                 if (activities.length === 0) {
@@ -1616,20 +1592,14 @@
                     return;
                 }
                 
-                // Vider le tableau
                 tbody.innerHTML = '';
                 
-                // Ajouter chaque activité
                 activities.slice(0, 10).forEach(activity => {
                     const row = document.createElement('tr');
-                    
-                    // Calculer le temps écoulé
                     const timeAgo = getTimeAgo(new Date(activity.time));
                     
                     row.innerHTML = `
-                        <td>
-                            <strong>${activity.agent}</strong>
-                        </td>
+                        <td><strong>${activity.agent}</strong></td>
                         <td>${activity.action}</td>
                         <td>${activity.details}</td>
                         <td>${timeAgo}</td>
@@ -1665,7 +1635,6 @@
             empty.style.display = 'none';
             
             try {
-                // Récupérer les agents assignés
                 const response = await fetch(`${API_BASE_URL}/api/subsystem/users?role=agent&supervisor=1`, {
                     headers: {
                         'Authorization': `Bearer ${supervisorToken}`
@@ -1683,11 +1652,9 @@
                         return;
                     }
                     
-                    // Remplir le filtre des agents
                     const agentFilter = document.getElementById('filter-today-agent');
                     const reportAgentSelect = document.getElementById('report-agent');
                     
-                    // Vider les options existantes (garder la première)
                     while (agentFilter.options.length > 1) {
                         agentFilter.remove(1);
                     }
@@ -1695,7 +1662,6 @@
                         reportAgentSelect.remove(1);
                     }
                     
-                    // Ajouter les agents
                     agentsList.forEach(agent => {
                         const option1 = document.createElement('option');
                         option1.value = agent._id;
@@ -1708,12 +1674,9 @@
                         reportAgentSelect.appendChild(option2);
                     });
                     
-                    // Vider le tableau
                     tbody.innerHTML = '';
                     
-                    // Pour chaque agent, calculer les statistiques
                     for (const agent of agentsList) {
-                        // Récupérer les tickets du jour
                         const today = new Date();
                         today.setHours(0, 0, 0, 0);
                         
@@ -1729,7 +1692,6 @@
                         const todaySales = ticketsData.success ? 
                             ticketsData.tickets.reduce((sum, ticket) => sum + ticket.total, 0) : 0;
                         
-                        // Récupérer les gains du jour
                         const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}&date=${today.toISOString()}`, {
                             headers: {
                                 'Authorization': `Bearer ${supervisorToken}`
@@ -1747,9 +1709,7 @@
                         row.innerHTML = `
                             <td>
                                 <strong>${agent.name}</strong>
-                                <div style="font-size: 0.8rem; color: #6c757d;">
-                                    ${agent.username}
-                                </div>
+                                <div style="font-size: 0.8rem; color: #6c757d;">${agent.username}</div>
                             </td>
                             <td>${agent.username}</td>
                             <td>
@@ -1792,7 +1752,6 @@
                     loading.style.display = 'none';
                     table.style.display = 'table';
                     
-                    // Appliquer les filtres initiaux
                     filterAgents();
                 }
             } catch (error) {
@@ -1813,7 +1772,6 @@
                 const text = row.textContent.toLowerCase();
                 let showRow = text.includes(searchTerm);
                 
-                // Appliquer le filtre de statut
                 if (statusFilter !== 'all') {
                     const statusCell = row.cells[2];
                     const statusText = statusCell.textContent.trim();
@@ -1847,7 +1805,6 @@
             details.style.display = 'none';
             
             try {
-                // Récupérer les détails de l'agent
                 const agent = agentsList.find(a => a._id === agentId);
                 
                 if (!agent) {
@@ -1856,11 +1813,9 @@
                     return;
                 }
                 
-                // Récupérer les statistiques détaillées
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 
-                // Tickets du jour
                 const ticketsResponse = await fetch(`${API_BASE_URL}/api/tickets?agent=${agentId}&date=${today.toISOString()}`, {
                     headers: {
                         'Authorization': `Bearer ${supervisorToken}`
@@ -1871,7 +1826,6 @@
                 const todayTickets = ticketsData.success ? ticketsData.tickets : [];
                 const todaySales = todayTickets.reduce((sum, ticket) => sum + ticket.total, 0);
                 
-                // Gains du jour
                 const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agentId}&date=${today.toISOString()}`, {
                     headers: {
                         'Authorization': `Bearer ${supervisorToken}`
@@ -1882,7 +1836,6 @@
                 const todayWinners = winnersData.success ? winnersData.tickets : [];
                 const todayWinnings = todayWinners.reduce((sum, winner) => sum + winner.total_winnings, 0);
                 
-                // Tickets en attente
                 const pendingResponse = await fetch(`${API_BASE_URL}/api/tickets/pending?agent=${agentId}`, {
                     headers: {
                         'Authorization': `Bearer ${supervisorToken}`
@@ -1892,7 +1845,6 @@
                 const pendingData = await pendingResponse.json();
                 const pendingTickets = pendingData.success ? pendingData.tickets : [];
                 
-                // Générer les détails
                 details.innerHTML = `
                     <div style="margin-bottom: 25px;">
                         <h3 style="color: var(--dark-color); margin-bottom: 15px;">${agent.name}</h3>
@@ -1965,12 +1917,10 @@
             }
         };
         
-        // Cacher le modal des détails agent
         function hideAgentDetailsModal() {
             document.getElementById('agent-details-modal').classList.remove('active');
         }
         
-        // Bloquer un agent
         window.blockAgent = function(agentId, agentName) {
             currentAgentToBlock = { id: agentId, name: agentName };
             document.getElementById('block-agent-message').textContent = 
@@ -1979,7 +1929,6 @@
             document.getElementById('block-agent-modal').classList.add('active');
         };
         
-        // Débloquer un agent
         window.unblockAgent = async function(agentId, agentName) {
             if (!confirm(`Débloquer l'agent "${agentName}" ?`)) {
                 return;
@@ -1992,22 +1941,15 @@
                         'Authorization': `Bearer ${supervisorToken}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        is_active: true
-                    })
+                    body: JSON.stringify({ is_active: true })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
                     showNotification(`Agent "${agentName}" débloqué avec succès`, 'success');
-                    
-                    // Recharger les données
                     loadDashboardData();
                     loadAgentsData();
-                    
-                    // Ajouter une notification
-                    addNotification('Agent débloqué', `L'agent ${agentName} a été débloqué`, 'success');
                 } else {
                     showNotification(data.error || 'Erreur lors du déblocage', 'error');
                 }
@@ -2017,13 +1959,11 @@
             }
         };
         
-        // Cacher le modal de blocage agent
         function hideBlockAgentModal() {
             document.getElementById('block-agent-modal').classList.remove('active');
             currentAgentToBlock = null;
         }
         
-        // Confirmer le blocage d'un agent
         async function confirmBlockAgent() {
             if (!currentAgentToBlock) return;
             
@@ -2036,25 +1976,15 @@
                         'Authorization': `Bearer ${supervisorToken}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        is_active: false
-                    })
+                    body: JSON.stringify({ is_active: false })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
                     showNotification(`Agent "${currentAgentToBlock.name}" bloqué avec succès`, 'success');
-                    
-                    // Recharger les données
                     loadDashboardData();
                     loadAgentsData();
-                    
-                    // Ajouter une notification
-                    addNotification('Agent bloqué', 
-                        `L'agent ${currentAgentToBlock.name} a été bloqué${reason ? `: ${reason}` : ''}`, 
-                        'warning');
-                    
                     hideBlockAgentModal();
                 } else {
                     showNotification(data.error || 'Erreur lors du blocage', 'error');
@@ -2065,21 +1995,17 @@
             }
         }
         
-        // Changer l'onglet tickets
         function switchTicketTab(tabId) {
-            // Mettre à jour les tabs
             document.querySelectorAll('[data-ticket-tab]').forEach(tab => {
                 tab.classList.remove('active');
             });
             document.querySelector(`[data-ticket-tab="${tabId}"]`).classList.add('active');
             
-            // Afficher le contenu correspondant
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
             document.getElementById(`${tabId}-tickets-tab`).classList.add('active');
             
-            // Charger les données correspondantes
             if (tabId === 'today') {
                 loadTodayTickets();
             } else if (tabId === 'recent') {
@@ -2087,7 +2013,6 @@
             }
         }
         
-        // Charger les tickets d'aujourd'hui
         async function loadTodayTickets() {
             const loading = document.getElementById('today-tickets-loading');
             const table = document.getElementById('today-tickets-table');
@@ -2102,7 +2027,6 @@
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 
-                // Récupérer les tickets de tous les agents pour aujourd'hui
                 let allTickets = [];
                 
                 for (const agent of agentsList) {
@@ -2128,15 +2052,11 @@
                     return;
                 }
                 
-                // Trier par date (plus récent en premier)
                 allTickets.sort((a, b) => new Date(b.date) - new Date(a.date));
                 
-                // Vider le tableau
                 tbody.innerHTML = '';
                 
-                // Ajouter chaque ticket
-                allTickets.forEach(ticket => {
-                    // Vérifier si le ticket peut être supprimé (moins de 10 minutes)
+                for (const ticket of allTickets) {
                     const ticketDate = new Date(ticket.date);
                     const now = new Date();
                     const minutesDiff = (now - ticketDate) / (1000 * 60);
@@ -2144,17 +2064,10 @@
                     
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>
-                            <strong>#${ticket.number}</strong>
-                        </td>
+                        <td><strong>#${ticket.number}</strong></td>
                         <td>${ticket.agent_name}</td>
                         <td>${ticket.draw} (${ticket.draw_time})</td>
-                        <td>
-                            ${ticketDate.toLocaleTimeString('fr-FR', { 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
-                            })}
-                        </td>
+                        <td>${ticketDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
                         <td>${ticket.total.toLocaleString()} HTG</td>
                         <td>${getTimeAgo(ticketDate)}</td>
                         <td>
@@ -2172,7 +2085,7 @@
                     `;
                     
                     tbody.appendChild(row);
-                });
+                }
                 
                 loading.style.display = 'none';
                 table.style.display = 'table';
@@ -2185,7 +2098,6 @@
             }
         }
         
-        // Charger les tickets récents
         async function loadRecentTickets() {
             const loading = document.getElementById('recent-tickets-loading');
             const table = document.getElementById('recent-tickets-table');
@@ -2197,7 +2109,6 @@
             empty.style.display = 'none';
             
             try {
-                // Récupérer les tickets des 7 derniers jours
                 const sevenDaysAgo = new Date();
                 sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
                 
@@ -2213,7 +2124,6 @@
                     const data = await response.json();
                     
                     if (data.success) {
-                        // Filtrer les tickets des 7 derniers jours
                         const recentTickets = data.tickets.filter(ticket => {
                             const ticketDate = new Date(ticket.date);
                             return ticketDate >= sevenDaysAgo;
@@ -2232,21 +2142,16 @@
                     return;
                 }
                 
-                // Trier par date (plus récent en premier)
                 allTickets.sort((a, b) => new Date(b.date) - new Date(a.date));
                 
-                // Vider le tableau
                 tbody.innerHTML = '';
                 
-                // Ajouter chaque ticket
                 allTickets.slice(0, 50).forEach(ticket => {
                     const ticketDate = new Date(ticket.date);
                     
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>
-                            <strong>#${ticket.number}</strong>
-                        </td>
+                        <td><strong>#${ticket.number}</strong></td>
                         <td>${ticket.agent_name}</td>
                         <td>${ticketDate.toLocaleDateString('fr-FR')}</td>
                         <td>${ticket.draw} (${ticket.draw_time})</td>
@@ -2274,7 +2179,6 @@
             }
         }
         
-        // Confirmer la suppression d'un ticket
         window.confirmDeleteTicket = function(ticketId, ticketNumber) {
             currentTicketToDelete = ticketId;
             
@@ -2283,33 +2187,34 @@
             }
         };
         
-        // Supprimer un ticket
         async function deleteTicket() {
             if (!currentTicketToDelete) return;
             
             try {
-                // Note: Cette route n'existe pas encore dans server.js
-                // Dans une version complète, on utiliserait: DELETE /api/tickets/:id
-                // Pour l'instant, on simule
+                const response = await fetch(`${API_BASE_URL}/api/tickets/${currentTicketToDelete}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
                 
-                showNotification(`Ticket supprimé avec succès`, 'success');
+                const data = await response.json();
                 
-                // Recharger les tickets
-                loadTodayTickets();
-                
-                // Ajouter une notification
-                addNotification('Ticket supprimé', `Un ticket a été supprimé par le superviseur`, 'warning');
-                
-                hideViewTicketModal();
-                currentTicketToDelete = null;
-                
+                if (data.success) {
+                    showNotification('Ticket supprimé avec succès', 'success');
+                    loadTodayTickets();
+                    hideViewTicketModal();
+                } else {
+                    showNotification(data.error || 'Erreur lors de la suppression', 'error');
+                }
             } catch (error) {
                 console.error('Erreur suppression ticket:', error);
-                showNotification('Erreur lors de la suppression du ticket', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
+            } finally {
+                currentTicketToDelete = null;
             }
         }
         
-        // Voir les détails d'un ticket
         window.viewTicketDetails = async function(ticketId) {
             const modal = document.getElementById('view-ticket-modal');
             const loading = document.getElementById('ticket-details-loading');
@@ -2321,110 +2226,33 @@
             details.style.display = 'none';
             
             try {
-                // Récupérer les détails du ticket
-                // Note: Cette route n'existe pas encore, on simule
-                
-                // Trouver le ticket dans la liste
-                let ticketDetails = null;
-                let ticketAgent = '';
-                
-                // Chercher dans les tickets d'aujourd'hui
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                
-                for (const agent of agentsList) {
-                    const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&date=${today.toISOString()}`, {
-                        headers: {
-                            'Authorization': `Bearer ${supervisorToken}`
-                        }
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        const ticket = data.tickets.find(t => t.id === ticketId);
-                        if (ticket) {
-                            ticketDetails = ticket;
-                            ticketAgent = agent.name;
-                            break;
-                        }
+                const response = await fetch(`${API_BASE_URL}/api/tickets/${ticketId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
                     }
-                }
+                });
                 
-                if (!ticketDetails) {
-                    // Chercher dans les tickets récents
-                    for (const agent of agentsList) {
-                        const response = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}`, {
-                            headers: {
-                                'Authorization': `Bearer ${supervisorToken}`
-                            }
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (data.success) {
-                            const ticket = data.tickets.find(t => t.id === ticketId);
-                            if (ticket) {
-                                ticketDetails = ticket;
-                                ticketAgent = agent.name;
-                                break;
-                            }
-                        }
-                    }
-                }
+                const data = await response.json();
                 
-                if (!ticketDetails) {
+                if (!data.success || !data.ticket) {
                     showNotification('Ticket non trouvé', 'error');
                     hideViewTicketModal();
                     return;
                 }
                 
-                // Vérifier si le ticket peut être supprimé
+                const ticketDetails = data.ticket;
                 const ticketDate = new Date(ticketDetails.date);
                 const now = new Date();
                 const minutesDiff = (now - ticketDate) / (1000 * 60);
                 const canDelete = minutesDiff <= 10;
                 
-                // Afficher/masquer le bouton de suppression
                 deleteBtn.style.display = canDelete ? 'block' : 'none';
                 
-                // Compter les paris
                 const betCount = ticketDetails.bets ? ticketDetails.bets.length : 0;
                 
-                // Générer les détails
-                details.innerHTML = `
-                    <div style="margin-bottom: 25px;">
-                        <h3 style="color: var(--dark-color); margin-bottom: 15px;">Ticket #${ticketDetails.number}</h3>
-                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
-                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Agent</div>
-                                <div style="font-weight: bold; color: var(--dark-color);">${ticketAgent}</div>
-                            </div>
-                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tirage</div>
-                                <div style="font-weight: bold; color: var(--dark-color);">${ticketDetails.draw} (${ticketDetails.draw_time})</div>
-                            </div>
-                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Date</div>
-                                <div style="font-weight: bold; color: var(--dark-color);">
-                                    ${new Date(ticketDetails.date).toLocaleString('fr-FR')}
-                                </div>
-                            </div>
-                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
-                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Montant total</div>
-                                <div style="font-weight: bold; color: var(--dark-color);">
-                                    ${ticketDetails.total.toLocaleString()} HTG
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div>
-                        <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails des paris (${betCount})</h4>
-                `;
-                
+                let betsHtml = '';
                 if (betCount > 0 && ticketDetails.bets) {
-                    details.innerHTML += `
+                    betsHtml = `
                         <div style="max-height: 200px; overflow-y: auto;">
                             <table style="width: 100%; border-collapse: collapse;">
                                 <thead>
@@ -2447,7 +2275,7 @@
                         if (typeName === 'grap') typeName = 'Grap';
                         if (typeName === 'marriage') typeName = 'Marriage';
                         
-                        details.innerHTML += `
+                        betsHtml += `
                             <tr style="border-bottom: 1px solid #eee;">
                                 <td style="padding: 8px;">${typeName}</td>
                                 <td style="padding: 8px;">${bet.number}</td>
@@ -2457,18 +2285,47 @@
                         `;
                     });
                     
-                    details.innerHTML += `
+                    betsHtml += `
                                 </tbody>
                             </table>
                         </div>
                     `;
                 } else {
-                    details.innerHTML += `
-                        <p style="color: #6c757d; text-align: center;">Aucun détail de pari disponible</p>
-                    `;
+                    betsHtml = '<p style="color: #6c757d; text-align: center;">Aucun détail de pari disponible</p>';
                 }
                 
-                details.innerHTML += `</div>`;
+                details.innerHTML = `
+                    <div style="margin-bottom: 25px;">
+                        <h3 style="color: var(--dark-color); margin-bottom: 15px;">Ticket #${ticketDetails.number}</h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Agent</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">${ticketDetails.agent_name || 'N/A'}</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Tirage</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">${ticketDetails.draw} (${ticketDetails.draw_time})</div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Date</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">
+                                    ${new Date(ticketDetails.date).toLocaleString('fr-FR')}
+                                </div>
+                            </div>
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Montant total</div>
+                                <div style="font-weight: bold; color: var(--dark-color);">
+                                    ${ticketDetails.total.toLocaleString()} HTG
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails des paris (${betCount})</h4>
+                        ${betsHtml}
+                    </div>
+                `;
                 
                 loading.style.display = 'none';
                 details.style.display = 'block';
@@ -2480,13 +2337,11 @@
             }
         };
         
-        // Cacher le modal de visualisation de ticket
         function hideViewTicketModal() {
             document.getElementById('view-ticket-modal').classList.remove('active');
             currentTicketToDelete = null;
         }
         
-        // Charger les données des gagnants
         async function loadWinnersData() {
             const loading = document.getElementById('winners-loading');
             const table = document.getElementById('winners-table');
@@ -2500,7 +2355,6 @@
             try {
                 let allWinners = [];
                 
-                // Récupérer les gagnants de chaque agent
                 for (const agent of agentsList) {
                     const response = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}`, {
                         headers: {
@@ -2524,13 +2378,10 @@
                     return;
                 }
                 
-                // Trier par date (plus récent en premier)
                 allWinners.sort((a, b) => new Date(b.date) - new Date(a.date));
                 
-                // Vider le tableau
                 tbody.innerHTML = '';
                 
-                // Ajouter chaque gagnant
                 allWinners.forEach(winner => {
                     const winnerDate = new Date(winner.date);
                     const totalSales = winner.agent_sales || 0;
@@ -2538,9 +2389,7 @@
                     
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>
-                            <strong>#${winner.ticket_number}</strong>
-                        </td>
+                        <td><strong>#${winner.ticket_number}</strong></td>
                         <td>${winner.agent_name}</td>
                         <td>${winner.draw} (${winner.draw_time})</td>
                         <td>${winnerDate.toLocaleDateString('fr-FR')}</td>
@@ -2583,31 +2432,32 @@
             }
         }
         
-        // Marquer un gagnant comme payé
         window.markWinnerAsPaid = async function(winnerId) {
-            if (!confirm('Marquer ce ticket gagnant comme payé ?')) {
-                return;
-            }
+            if (!confirm('Marquer ce ticket gagnant comme payé ?')) return;
             
             try {
-                // Note: Cette route n'existe pas encore
-                // Dans une version complète, on utiliserait: PUT /api/winners/:id/pay
+                const response = await fetch(`${API_BASE_URL}/api/winners/${winnerId}/pay`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
                 
-                showNotification('Ticket marqué comme payé', 'success');
+                const data = await response.json();
                 
-                // Recharger les gagnants
-                loadWinnersData();
-                
-                // Ajouter une notification
-                addNotification('Gain payé', `Un ticket gagnant a été marqué comme payé`, 'success');
-                
+                if (data.success) {
+                    showNotification('Ticket marqué comme payé', 'success');
+                    loadWinnersData();
+                } else {
+                    showNotification(data.error || 'Erreur lors du marquage', 'error');
+                }
             } catch (error) {
                 console.error('Erreur marquage comme payé:', error);
-                showNotification('Erreur lors du marquage comme payé', 'error');
+                showNotification('Erreur de connexion au serveur', 'error');
             }
         };
         
-        // Gérer le changement de période du rapport
         function handleReportPeriodChange() {
             const period = document.getElementById('report-period').value;
             const customDates = document.getElementById('custom-dates');
@@ -2615,7 +2465,6 @@
             if (period === 'custom') {
                 customDates.style.display = 'block';
                 
-                // Définir les dates par défaut (hier à aujourd'hui)
                 const today = new Date();
                 const yesterday = new Date();
                 yesterday.setDate(today.getDate() - 1);
@@ -2627,54 +2476,39 @@
             }
         }
         
-        // Générer un rapport
         async function generateReport() {
             const period = document.getElementById('report-period').value;
             const agentId = document.getElementById('report-agent').value;
             const reportType = document.getElementById('report-type').value;
             
             let startDate, endDate;
-            
-            // Déterminer les dates selon la période
             const today = new Date();
             
             switch(period) {
                 case 'today':
-                    startDate = new Date(today);
-                    startDate.setHours(0, 0, 0, 0);
-                    endDate = new Date(today);
-                    endDate.setHours(23, 59, 59, 999);
+                    startDate = new Date(today); startDate.setHours(0,0,0,0);
+                    endDate = new Date(today); endDate.setHours(23,59,59,999);
                     break;
                 case 'yesterday':
-                    startDate = new Date(today);
-                    startDate.setDate(startDate.getDate() - 1);
-                    startDate.setHours(0, 0, 0, 0);
-                    endDate = new Date(startDate);
-                    endDate.setHours(23, 59, 59, 999);
+                    startDate = new Date(today); startDate.setDate(startDate.getDate()-1); startDate.setHours(0,0,0,0);
+                    endDate = new Date(startDate); endDate.setHours(23,59,59,999);
                     break;
                 case 'week':
-                    startDate = new Date(today);
-                    startDate.setDate(startDate.getDate() - 7);
-                    startDate.setHours(0, 0, 0, 0);
-                    endDate = new Date(today);
-                    endDate.setHours(23, 59, 59, 999);
+                    startDate = new Date(today); startDate.setDate(startDate.getDate()-7); startDate.setHours(0,0,0,0);
+                    endDate = new Date(today); endDate.setHours(23,59,59,999);
                     break;
                 case 'month':
-                    startDate = new Date(today);
-                    startDate.setDate(1);
-                    startDate.setHours(0, 0, 0, 0);
-                    endDate = new Date(today);
-                    endDate.setHours(23, 59, 59, 999);
+                    startDate = new Date(today); startDate.setDate(1); startDate.setHours(0,0,0,0);
+                    endDate = new Date(today); endDate.setHours(23,59,59,999);
                     break;
                 case 'custom':
                     startDate = new Date(document.getElementById('report-start-date').value);
                     endDate = new Date(document.getElementById('report-end-date').value);
-                    endDate.setHours(23, 59, 59, 999);
+                    endDate.setHours(23,59,59,999);
                     break;
             }
             
             try {
-                // Récupérer les données pour le rapport
                 const agentsToReport = agentId === 'all' ? agentsList : [agentsList.find(a => a._id === agentId)];
                 
                 let totalTickets = 0;
@@ -2685,7 +2519,6 @@
                 for (const agent of agentsToReport) {
                     if (!agent) continue;
                     
-                    // Récupérer les tickets de l'agent
                     const ticketsResponse = await fetch(`${API_BASE_URL}/api/tickets?agent=${agent._id}&start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
                         headers: {
                             'Authorization': `Bearer ${supervisorToken}`
@@ -2695,7 +2528,6 @@
                     const ticketsData = await ticketsResponse.json();
                     const agentTickets = ticketsData.success ? ticketsData.tickets : [];
                     
-                    // Récupérer les gagnants de l'agent
                     const winnersResponse = await fetch(`${API_BASE_URL}/api/tickets/winning?agent=${agent._id}&start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
                         headers: {
                             'Authorization': `Bearer ${supervisorToken}`
@@ -2724,7 +2556,6 @@
                 
                 const totalBalance = totalSales - totalWinnings;
                 
-                // Générer le rapport
                 let reportHTML = `
                     <div style="margin-bottom: 25px;">
                         <h3 style="color: var(--dark-color); margin-bottom: 15px;">Rapport ${reportType === 'sales' ? 'de ventes' : reportType === 'profits' ? 'de profits' : reportType === 'winners' ? 'des gagnants' : 'complet'}</h3>
@@ -2749,16 +2580,13 @@
                                 <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 5px;">Balance finale</div>
                                 <div style="font-weight: bold; color: ${totalBalance >= 0 ? '#27ae60' : '#e74c3c'}; font-size: 1.2rem;">
                                     ${totalBalance.toLocaleString()} HTG
-                                    <span style="font-size: 0.9rem;">
-                                        (${totalBalance >= 0 ? 'Profit' : 'Perte'})
-                                    </span>
+                                    <span style="font-size: 0.9rem;"> (${totalBalance >= 0 ? 'Profit' : 'Perte'})</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 `;
                 
-                // Détails par agent
                 if (agentId === 'all' && reportDetails.length > 0) {
                     reportHTML += `
                         <h4 style="color: var(--dark-color); margin-bottom: 15px;">Détails par agent</h4>
@@ -2806,7 +2634,6 @@
                 document.getElementById('report-preview').innerHTML = reportHTML;
                 document.getElementById('report-preview').style.display = 'block';
                 
-                // Activer les boutons d'impression et d'export
                 document.getElementById('print-report').disabled = false;
                 document.getElementById('export-report').disabled = false;
                 
@@ -2818,7 +2645,6 @@
             }
         }
         
-        // Imprimer le rapport
         function printReport() {
             const printWindow = window.open('', '_blank');
             printWindow.document.write(`
@@ -2829,35 +2655,12 @@
                         body { font-family: Arial, sans-serif; padding: 20px; }
                         .report-header { text-align: center; margin-bottom: 30px; }
                         .report-summary { margin-bottom: 20px; }
-                        .summary-grid { 
-                            display: grid; 
-                            grid-template-columns: repeat(2, 1fr); 
-                            gap: 15px; 
-                            margin-bottom: 20px; 
-                        }
-                        .summary-item { 
-                            background-color: #f8f9fa; 
-                            padding: 15px; 
-                            border-radius: 8px; 
-                        }
-                        table { 
-                            width: 100%; 
-                            border-collapse: collapse; 
-                            margin-bottom: 20px; 
-                        }
-                        th { 
-                            background-color: #f8f9fa; 
-                            padding: 10px; 
-                            text-align: left; 
-                        }
-                        td { 
-                            padding: 10px; 
-                            border-bottom: 1px solid #eee; 
-                        }
-                        @media print {
-                            body { padding: 0; }
-                            .no-print { display: none; }
-                        }
+                        .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
+                        .summary-item { background-color: #f8f9fa; padding: 15px; border-radius: 8px; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                        th { background-color: #f8f9fa; padding: 10px; text-align: left; }
+                        td { padding: 10px; border-bottom: 1px solid #eee; }
+                        @media print { body { padding: 0; } .no-print { display: none; } }
                     </style>
                 </head>
                 <body>
@@ -2877,14 +2680,10 @@
             printWindow.document.close();
         }
         
-        // Exporter le rapport
         function exportReport() {
-            // Pour l'instant, on ouvre une nouvelle fenêtre avec le rapport
-            // Dans une version complète, on générerait un fichier PDF ou Excel
-            printReport();
+            printReport(); // Pour l'instant, même comportement
         }
         
-        // Charger les notifications
         async function loadNotifications() {
             const loading = document.getElementById('notifications-loading');
             const list = document.getElementById('notifications-list');
@@ -2895,22 +2694,26 @@
             empty.style.display = 'none';
             
             try {
-                // Récupérer les notifications
-                // Note: Cette route n'existe pas encore, on utilise les données en mémoire
+                const response = await fetch(`${API_BASE_URL}/api/notifications`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
                 
-                if (notificationsList.length === 0) {
+                const data = await response.json();
+                
+                if (!data.success || !data.notifications || data.notifications.length === 0) {
                     loading.style.display = 'none';
                     empty.style.display = 'block';
                     return;
                 }
                 
-                // Trier par date (plus récent en premier)
-                notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const notifications = data.notifications;
+                notifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 
-                // Générer la liste
                 list.innerHTML = '';
                 
-                notificationsList.forEach((notification, index) => {
+                notifications.forEach(notification => {
                     const notificationElement = document.createElement('div');
                     notificationElement.className = 'notification-item';
                     notificationElement.style.cssText = `
@@ -2945,11 +2748,11 @@
                             </div>
                         </div>
                         ${!notification.read ? 
-                            `<button onclick="markNotificationAsRead(${index})" style="background: none; border: none; color: #95a5a6; cursor: pointer;" title="Marquer comme lu">
+                            `<button onclick="markNotificationAsRead('${notification.id}')" style="background: none; border: none; color: #95a5a6; cursor: pointer;" title="Marquer comme lu">
                                 <i class="fas fa-check"></i>
                             </button>` : ''
                         }
-                        <button onclick="deleteNotification(${index})" style="background: none; border: none; color: #95a5a6; cursor: pointer;" title="Supprimer">
+                        <button onclick="deleteNotification('${notification.id}')" style="background: none; border: none; color: #95a5a6; cursor: pointer;" title="Supprimer">
                             <i class="fas fa-times"></i>
                         </button>
                     `;
@@ -2967,116 +2770,129 @@
             }
         }
         
-        // Marquer une notification comme lue
-        window.markNotificationAsRead = function(index) {
-            if (notificationsList[index]) {
-                notificationsList[index].read = true;
-                updateNotificationCount();
-                loadNotifications();
-            }
-        };
-        
-        // Supprimer une notification
-        window.deleteNotification = function(index) {
-            if (notificationsList[index]) {
-                notificationsList.splice(index, 1);
-                updateNotificationCount();
-                loadNotifications();
-            }
-        };
-        
-        // Effacer toutes les notifications
-        async function clearNotifications() {
-            if (notificationsList.length === 0) return;
-            
-            if (confirm('Êtes-vous sûr de vouloir effacer toutes les notifications ?')) {
-                notificationsList = [];
-                updateNotificationCount();
-                loadNotifications();
-                showNotification('Toutes les notifications ont été effacées', 'success');
-            }
-        }
-        
-        // Marquer toutes les notifications comme lues
-        async function markAllNotificationsAsRead() {
-            if (notificationsList.length === 0) return;
-            
-            notificationsList.forEach(notification => {
-                notification.read = true;
-            });
-            
-            updateNotificationCount();
-            loadNotifications();
-            showNotification('Toutes les notifications ont été marquées comme lues', 'success');
-        }
-        
-        // Ajouter une notification
-        function addNotification(title, message, type = 'info') {
-            const notification = {
-                title,
-                message,
-                type,
-                timestamp: new Date().toISOString(),
-                read: false
-            };
-            
-            notificationsList.unshift(notification);
-            updateNotificationCount();
-            
-            // Si on est sur la page des notifications, recharger
-            if (document.querySelector('.nav-item[data-section="notifications"]').classList.contains('active')) {
-                loadNotifications();
-            }
-            
-            // Afficher une notification toast si pas déjà sur la page
-            if (!document.querySelector('.nav-item[data-section="notifications"]').classList.contains('active')) {
-                showNotification(title, type);
-            }
-        }
-        
-        // Mettre à jour le compteur de notifications
-        function updateNotificationCount() {
-            const unreadCount = notificationsList.filter(n => !n.read).length;
-            
-            const countElements = document.querySelectorAll('.notification-count');
-            countElements.forEach(el => {
-                if (unreadCount > 0) {
-                    el.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                    el.style.display = 'flex';
-                } else {
-                    el.style.display = 'none';
-                }
-            });
-        }
-        
-        // Démarrer le polling des notifications
-        function startNotificationPolling() {
-            // Vérifier les nouvelles notifications toutes les 30 secondes
-            setInterval(async () => {
-                try {
-                    // Simuler la réception de nouvelles notifications
-                    // Dans une version complète, on utiliserait WebSockets ou une API de notifications
-                    
-                    // Pour l'instant, on simule des notifications aléatoires
-                    if (Math.random() < 0.3 && agentsList.length > 0) {
-                        const randomAgent = agentsList[Math.floor(Math.random() * agentsList.length)];
-                        const events = [
-                            { type: 'info', title: 'Agent connecté', message: `${randomAgent.name} vient de se connecter` },
-                            { type: 'warning', title: 'Agent déconnecté', message: `${randomAgent.name} vient de se déconnecter` },
-                            { type: 'success', title: 'Ticket gagnant', message: `${randomAgent.name} a un ticket gagnant de 5000 HTG` },
-                            { type: 'error', title: 'Balance négative', message: `${randomAgent.name} a une balance négative de -1500 HTG` }
-                        ];
-                        
-                        const event = events[Math.floor(Math.random() * events.length)];
-                        addNotification(event.title, event.message, event.type);
+        window.markNotificationAsRead = async function(notificationId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
                     }
-                } catch (error) {
-                    console.error('Erreur polling notifications:', error);
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadNotifications();
+                    loadNotificationCount();
+                } else {
+                    showNotification('Erreur lors du marquage', 'error');
                 }
-            }, 30000); // 30 secondes
+            } catch (error) {
+                console.error('Erreur marquage notification:', error);
+                showNotification('Erreur de connexion', 'error');
+            }
+        };
+        
+        window.deleteNotification = async function(notificationId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadNotifications();
+                    loadNotificationCount();
+                } else {
+                    showNotification('Erreur lors de la suppression', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur suppression notification:', error);
+                showNotification('Erreur de connexion', 'error');
+            }
+        };
+        
+        async function clearNotifications() {
+            if (!confirm('Êtes-vous sûr de vouloir effacer toutes les notifications ?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/notifications/clear`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadNotifications();
+                    loadNotificationCount();
+                    showNotification('Toutes les notifications ont été effacées', 'success');
+                } else {
+                    showNotification('Erreur lors du nettoyage', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur clear notifications:', error);
+                showNotification('Erreur de connexion', 'error');
+            }
         }
         
-        // Rafraîchir les données
+        async function markAllNotificationsAsRead() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadNotifications();
+                    loadNotificationCount();
+                    showNotification('Toutes les notifications ont été marquées comme lues', 'success');
+                } else {
+                    showNotification('Erreur lors du marquage', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur mark all read:', error);
+                showNotification('Erreur de connexion', 'error');
+            }
+        }
+        
+        async function loadNotificationCount() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/notifications/unread-count`, {
+                    headers: {
+                        'Authorization': `Bearer ${supervisorToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const unreadCount = data.count || 0;
+                    
+                    document.querySelectorAll('.notification-count').forEach(el => {
+                        if (unreadCount > 0) {
+                            el.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                            el.style.display = 'flex';
+                        } else {
+                            el.style.display = 'none';
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Erreur chargement compteur notifications:', error);
+            }
+        }
+        
         function refreshData() {
             const refreshBtn = document.getElementById('refresh-btn');
             const originalHtml = refreshBtn.innerHTML;
@@ -3084,7 +2900,6 @@
             refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             refreshBtn.disabled = true;
             
-            // Recharger les données selon la section active
             const activeSection = document.querySelector('.section-content.active').id;
             
             switch(activeSection) {
@@ -3098,11 +2913,8 @@
                     const activeTab = document.querySelector('.tab.active[data-ticket-tab]');
                     if (activeTab) {
                         const tabId = activeTab.getAttribute('data-ticket-tab');
-                        if (tabId === 'today') {
-                            loadTodayTickets();
-                        } else if (tabId === 'recent') {
-                            loadRecentTickets();
-                        }
+                        if (tabId === 'today') loadTodayTickets();
+                        else if (tabId === 'recent') loadRecentTickets();
                     }
                     break;
                 case 'winners-section':
@@ -3113,7 +2925,8 @@
                     break;
             }
             
-            // Réactiver le bouton après 2 secondes
+            loadNotificationCount();
+            
             setTimeout(() => {
                 refreshBtn.innerHTML = originalHtml;
                 refreshBtn.disabled = false;
@@ -3121,7 +2934,6 @@
             }, 2000);
         }
         
-        // Afficher une notification toast
         function showNotification(message, type = 'info') {
             const container = document.getElementById('notification-container');
             
@@ -3144,15 +2956,11 @@
             
             container.appendChild(notification);
             
-            // Supprimer automatiquement après 5 secondes
             setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.remove();
-                }
+                if (notification.parentNode) notification.remove();
             }, 5000);
         }
         
-        // Obtenir le temps écoulé formaté
         function getTimeAgo(date) {
             const now = new Date();
             const diffMs = now - date;
@@ -3160,20 +2968,13 @@
             const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
             const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
             
-            if (diffMins < 1) {
-                return 'À l\'instant';
-            } else if (diffMins < 60) {
-                return `Il y a ${diffMins} minute${diffMins > 1 ? 's' : ''}`;
-            } else if (diffHours < 24) {
-                return `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}`;
-            } else if (diffDays < 7) {
-                return `Il y a ${diffDays} jour${diffDays > 1 ? 's' : ''}`;
-            } else {
-                return date.toLocaleDateString('fr-FR');
-            }
+            if (diffMins < 1) return 'À l\'instant';
+            else if (diffMins < 60) return `Il y a ${diffMins} minute${diffMins > 1 ? 's' : ''}`;
+            else if (diffHours < 24) return `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}`;
+            else if (diffDays < 7) return `Il y a ${diffDays} jour${diffDays > 1 ? 's' : ''}`;
+            else return date.toLocaleDateString('fr-FR');
         }
         
-        // Déconnexion
         function logout() {
             if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
                 localStorage.removeItem('nova_token');
