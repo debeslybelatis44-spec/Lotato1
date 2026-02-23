@@ -17,7 +17,7 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 
-// Servir les fichiers statiques depuis la racine (index.html, control-level1.html, etc.)
+// Servir les fichiers statiques depuis la racine (index.html, control-level1.html, lotato.html, subsystem-admin.html, master-dashboard.html, etc.)
 app.use(express.static(path.join(__dirname)));
 
 // Connexion à PostgreSQL (Neon)
@@ -112,14 +112,14 @@ app.post('/api/auth/login', async (req, res) => {
     // Déterminer l'URL de redirection en fonction du rôle
     let redirectUrl = '/';
     if (user.role === 'agent') {
-      redirectUrl = '/'; // Les agents restent sur la page principale (index.html)
+      redirectUrl = '/lotato.html'; // Les agents restent sur la page principale (index.html)
     } else if (user.role === 'supervisor') {
       if (user.level === 1) redirectUrl = '/control-level1.html';
       else if (user.level === 2) redirectUrl = '/control-level2.html';
     } else if (user.role === 'subsystem') {
       redirectUrl = '/subsystem-admin.html';
     } else if (user.role === 'master') {
-      redirectUrl = '/master.html'; // À créer si nécessaire, sinon '/'
+      redirectUrl = '/master-dashboard.html'; // À créer si nécessaire, sinon '/'
     }
 
     // Récupérer les infos du sous-système si nécessaire
