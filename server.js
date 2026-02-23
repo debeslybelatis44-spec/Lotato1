@@ -36,7 +36,8 @@ const Subsystem = sequelize.define('Subsystem', {
     contact_email: { type: DataTypes.STRING, allowNull: false },
     contact_phone: DataTypes.STRING,
     max_users: { type: DataTypes.INTEGER, defaultValue: 10 },
-    subscription_type: { type: DataTypes.ENUM('basic','standard','premium','enterprise'), defaultValue: 'standard' },
+    // Remplacé ENUM par STRING
+    subscription_type: { type: DataTypes.STRING, defaultValue: 'standard' },
     subscription_months: { type: DataTypes.INTEGER, defaultValue: 1 },
     subscription_expires: DataTypes.DATE,
     admin_user: { type: DataTypes.INTEGER }, // référence à User
@@ -55,7 +56,8 @@ const User = sequelize.define('User', {
     password: { type: DataTypes.STRING, allowNull: false },
     name: DataTypes.STRING,
     email: DataTypes.STRING,
-    role: { type: DataTypes.ENUM('master','subsystem','supervisor','agent'), allowNull: false },
+    // Remplacé ENUM par STRING
+    role: { type: DataTypes.STRING, allowNull: false },
     level: { type: DataTypes.INTEGER, defaultValue: 1 },
     subsystem_id: { type: DataTypes.INTEGER, references: { model: Subsystem, key: 'id' } },
     supervisor_id: { type: DataTypes.INTEGER, references: { model: 'users', key: 'id' } },
@@ -82,7 +84,8 @@ const Draw = sequelize.define('Draw', {
 const Result = sequelize.define('Result', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     draw: { type: DataTypes.STRING, allowNull: false },
-    draw_time: { type: DataTypes.ENUM('morning','evening'), allowNull: false },
+    // Remplacé ENUM par STRING
+    draw_time: { type: DataTypes.STRING, allowNull: false },
     date: { type: DataTypes.DATEONLY, allowNull: false },
     lot1: { type: DataTypes.STRING(3), allowNull: false },
     lot2: DataTypes.STRING(2),
@@ -115,7 +118,8 @@ const Ticket = sequelize.define('Ticket', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     number: { type: DataTypes.INTEGER, allowNull: false, unique: true },
     draw: { type: DataTypes.STRING, allowNull: false },
-    draw_time: { type: DataTypes.ENUM('morning','evening'), allowNull: false },
+    // Remplacé ENUM par STRING
+    draw_time: { type: DataTypes.STRING, allowNull: false },
     date: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
     total: { type: DataTypes.DECIMAL(10,2), allowNull: false },
     agent_id: { type: DataTypes.INTEGER, references: { model: User, key: 'id' } },
@@ -148,7 +152,8 @@ const Winner = sequelize.define('Winner', {
     ticket_id: { type: DataTypes.INTEGER, references: { model: Ticket, key: 'id' } },
     ticket_number: { type: DataTypes.INTEGER, allowNull: false },
     draw: { type: DataTypes.STRING, allowNull: false },
-    draw_time: { type: DataTypes.ENUM('morning','evening'), allowNull: false },
+    // Remplacé ENUM par STRING
+    draw_time: { type: DataTypes.STRING, allowNull: false },
     date: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
     winning_bets: { type: DataTypes.JSON },
     total_winnings: { type: DataTypes.DECIMAL(10,2), allowNull: false },
@@ -174,7 +179,8 @@ const History = sequelize.define('History', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     date: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
     draw: { type: DataTypes.STRING, allowNull: false },
-    draw_time: { type: DataTypes.ENUM('morning','evening'), allowNull: false },
+    // Remplacé ENUM par STRING
+    draw_time: { type: DataTypes.STRING, allowNull: false },
     bets: { type: DataTypes.JSON },
     total: { type: DataTypes.DECIMAL(10,2), allowNull: false },
     agent_id: { type: DataTypes.INTEGER, references: { model: User, key: 'id' } },
@@ -1501,6 +1507,6 @@ app.listen(PORT, () => {
     console.log(`🚀 Serveur démarré sur le port ${PORT}`);
     console.log(`✅ Compression GZIP activée`);
     console.log(`🌐 CORS activé`);
-    console.log(`📦 Base de données: MySQL (TiDB)`);
+    console.log(`📦 Base de données: PostgreSQL (Neon)`);
     // Afficher les routes disponibles (similaire à avant)
 });
