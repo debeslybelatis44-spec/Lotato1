@@ -1,4 +1,4 @@
-// server.js - Backend complet pour Nova/Lotato
+// server.js - Backend complet pour Nova/Lotato (version finale)
 require('dotenv').config();
 const express = require('express');
 const compression = require('compression');
@@ -17,7 +17,7 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 
-// Servir les fichiers statiques depuis la racine (index.html, control-level1.html, lotato.html, subsystem-admin.html, master-dashboard.html, etc.)
+// Servir les fichiers statiques depuis la racine
 app.use(express.static(path.join(__dirname)));
 
 // Connexion à PostgreSQL (Neon)
@@ -112,14 +112,14 @@ app.post('/api/auth/login', async (req, res) => {
     // Déterminer l'URL de redirection en fonction du rôle
     let redirectUrl = '/';
     if (user.role === 'agent') {
-      redirectUrl = '/lotato.html'; // Les agents restent sur la page principale (index.html)
+      redirectUrl = '/lotato.html';
     } else if (user.role === 'supervisor') {
       if (user.level === 1) redirectUrl = '/control-level1.html';
       else if (user.level === 2) redirectUrl = '/control-level2.html';
     } else if (user.role === 'subsystem') {
       redirectUrl = '/subsystem-admin.html';
     } else if (user.role === 'master') {
-      redirectUrl = '/master-dashboard.html'; // À créer si nécessaire, sinon '/'
+      redirectUrl = '/master-dashboard.html';
     }
 
     // Récupérer les infos du sous-système si nécessaire
@@ -129,12 +129,17 @@ app.post('/api/auth/login', async (req, res) => {
       subsystem = subRes.rows[0];
     }
 
+    // Ajouter _id pour compatibilité avec les clients
+    const userWithId = { ...user, _id: user.id };
+
     res.json({
       success: true,
       token,
       redirectUrl,
+      user: userWithId,
       admin: {
         id: user.id,
+        _id: user.id,
         name: user.name,
         username: user.username,
         email: user.email,
@@ -161,10 +166,13 @@ app.get('/api/auth/check', authenticate, async (req, res) => {
       const subRes = await pool.query('SELECT * FROM subsystems WHERE id = $1', [user.subsystem_id]);
       subsystem = subRes.rows[0];
     }
+    const userWithId = { ...user, _id: user.id };
     res.json({
       success: true,
+      user: userWithId,
       admin: {
         id: user.id,
+        _id: user.id,
         name: user.name,
         username: user.username,
         email: user.email,
@@ -180,7 +188,6 @@ app.get('/api/auth/check', authenticate, async (req, res) => {
 });
 
 // ==================== ROUTES MASTER (admin général) ====================
-// Toutes les routes /api/master/* nécessitent le rôle master
 app.use('/api/master', authenticate, isMaster);
 
 // Récupérer tous les sous-systèmes (avec pagination et recherche)
@@ -228,6 +235,7 @@ app.get('/api/master/subsystems', async (req, res) => {
     );
     subsystems.push({
       ...sub,
+      _id: sub.id,
       stats: stats.rows[0]
     });
   }
@@ -336,6 +344,7 @@ app.get('/api/master/subsystems/:id', async (req, res) => {
       success: true,
       subsystem: {
         ...sub.rows[0],
+        _id: sub.rows[0].id,
         stats: stats.rows[0]
       }
     });
@@ -384,9 +393,11 @@ app.get('/api/master/subsystems/:id/users', async (req, res) => {
       [id, limit, offset]
     );
 
+    const usersWithId = users.rows.map(u => ({ ...u, _id: u.id }));
+
     res.json({
       success: true,
-      users: users.rows,
+      users: usersWithId,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -420,15 +431,193 @@ app.get('/api/master/quick-stats', async (req, res) => {
   }
 });
 
+// Tendances pour le master
+app.get('/api/master/trends', authenticate, isMaster, async (req, res) => {
+  try {
+    const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const currentMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+    const prevMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+    const prevMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0);
+
+    const subsystemsCurrent = await pool.query('SELECT COUNT(*) FROM subsystems WHERE created_at >= $1 AND created_at <= $2', [currentMonthStart, currentMonthEnd]);
+    const subsystemsPrev = await pool.query('SELECT COUNT(*) FROM subsystems WHERE created_at >= $1 AND created_at <= $2', [prevMonthStart, prevMonthEnd]);
+
+    const usersCurrent = await pool.query('SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at <= $2', [currentMonthStart, currentMonthEnd]);
+    const usersPrev = await pool.query('SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at <= $2', [prevMonthStart, prevMonthEnd]);
+
+    const revenueCurrent = await pool.query('SELECT COALESCE(SUM(total), 0) FROM tickets WHERE date >= $1 AND date <= $2', [currentMonthStart, currentMonthEnd]);
+    const revenuePrev = await pool.query('SELECT COALESCE(SUM(total), 0) FROM tickets WHERE date >= $1 AND date <= $2', [prevMonthStart, prevMonthEnd]);
+
+    const activityCurrent = await pool.query('SELECT COUNT(*) FROM tickets WHERE date >= $1 AND date <= $2', [currentMonthStart, currentMonthEnd]);
+    const activityPrev = await pool.query('SELECT COUNT(*) FROM tickets WHERE date >= $1 AND date <= $2', [prevMonthStart, prevMonthEnd]);
+
+    const calcTrend = (current, prev) => {
+      if (prev == 0) return { direction: 'up', percent: 100 };
+      const percent = ((current - prev) / prev) * 100;
+      return {
+        direction: percent >= 0 ? 'up' : 'down',
+        percent: Math.abs(Math.round(percent))
+      };
+    };
+
+    res.json({
+      success: true,
+      subsystems: calcTrend(parseInt(subsystemsCurrent.rows[0].count), parseInt(subsystemsPrev.rows[0].count)),
+      users: calcTrend(parseInt(usersCurrent.rows[0].count), parseInt(usersPrev.rows[0].count)),
+      revenue: calcTrend(parseFloat(revenueCurrent.rows[0].sum || 0), parseFloat(revenuePrev.rows[0].sum || 0)),
+      activity: calcTrend(parseInt(activityCurrent.rows[0].count), parseInt(activityPrev.rows[0].count))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Revenu mensuel pour le master
+app.get('/api/master/revenue/month', authenticate, isMaster, async (req, res) => {
+  try {
+    const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const result = await pool.query('SELECT COALESCE(SUM(total), 0) as revenue FROM tickets WHERE date >= $1', [currentMonthStart]);
+    res.json({ success: true, revenue: parseFloat(result.rows[0].revenue) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Revenu quotidien pour le master
+app.get('/api/master/revenue/daily', authenticate, isMaster, async (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+  try {
+    const result = await pool.query(`
+      SELECT DATE(date) as day, COALESCE(SUM(total), 0) as total
+      FROM tickets
+      WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+      GROUP BY day
+      ORDER BY day ASC
+    `, [days]);
+    const labels = result.rows.map(r => r.day.toISOString().split('T')[0]);
+    const values = result.rows.map(r => parseFloat(r.total));
+    res.json({ success: true, labels, values });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Profit global quotidien pour le master
+app.get('/api/master/global/profit/daily', authenticate, isMaster, async (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+  try {
+    const result = await pool.query(`
+      SELECT 
+        DATE(t.date) as day,
+        COALESCE(SUM(t.total), 0) as sales,
+        COALESCE(SUM(wr.total_winnings), 0) as winnings
+      FROM tickets t
+      LEFT JOIN winning_records wr ON t.id = wr.ticket_id
+      WHERE t.date >= CURRENT_DATE - INTERVAL '1 day' * $1
+      GROUP BY day
+      ORDER BY day ASC
+    `, [days]);
+    const labels = result.rows.map(r => r.day.toISOString().split('T')[0]);
+    const values = result.rows.map(r => parseFloat(r.sales) - parseFloat(r.winnings));
+    res.json({ success: true, labels, values });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Distribution des jeux pour le master
+app.get('/api/games/distribution', authenticate, isMaster, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT type, SUM(amount) as total
+      FROM bets
+      GROUP BY type
+    `);
+    const games = result.rows.map(r => r.type);
+    const sales = result.rows.map(r => parseFloat(r.total));
+    res.json({ success: true, games, sales });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Rapport consolidé pour le master
+app.get('/api/master/consolidated-report', authenticate, isMaster, async (req, res) => {
+  const { start_date, end_date, group_by = 'day' } = req.query;
+  if (!start_date || !end_date) {
+    return res.status(400).json({ success: false, error: 'start_date et end_date requis' });
+  }
+
+  try {
+    const period = { start_date, end_date };
+
+    const summaryRes = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT t.id) as total_tickets,
+        COALESCE(SUM(t.total), 0) as total_sales,
+        COALESCE(SUM(wr.total_winnings), 0) as total_payout,
+        COUNT(DISTINCT t.subsystem_id) as total_subsystems
+      FROM tickets t
+      LEFT JOIN winning_records wr ON t.id = wr.ticket_id
+      WHERE t.date >= $1 AND t.date <= $2
+    `, [start_date, end_date + ' 23:59:59']);
+    const summary = summaryRes.rows[0];
+    summary.total_profit = summary.total_sales - summary.total_payout;
+
+    const subsystemsDetail = await pool.query(`
+      SELECT 
+        s.id as subsystem_id,
+        s.name as subsystem_name,
+        COUNT(DISTINCT t.id) as tickets_count,
+        COALESCE(SUM(t.total), 0) as total_sales,
+        COALESCE(SUM(wr.total_winnings), 0) as total_payout,
+        COALESCE(SUM(t.total), 0) - COALESCE(SUM(wr.total_winnings), 0) as profit
+      FROM subsystems s
+      LEFT JOIN tickets t ON s.id = t.subsystem_id AND t.date >= $1 AND t.date <= $2
+      LEFT JOIN winning_records wr ON t.id = wr.ticket_id
+      GROUP BY s.id, s.name
+    `, [start_date, end_date + ' 23:59:59']);
+
+    const dailyBreakdown = await pool.query(`
+      SELECT 
+        DATE(t.date) as date,
+        COUNT(DISTINCT t.id) as ticket_count,
+        COALESCE(SUM(t.total), 0) as total_amount
+      FROM tickets t
+      WHERE t.date >= $1 AND t.date <= $2
+      GROUP BY date
+      ORDER BY date ASC
+    `, [start_date, end_date + ' 23:59:59']);
+
+    res.json({
+      success: true,
+      report: {
+        period,
+        summary,
+        subsystems_detail: subsystemsDetail.rows,
+        daily_breakdown: dailyBreakdown.rows
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
 // ==================== ROUTES SOUS-SYSTÈME (admin subsystem) ====================
-// Toutes les routes /api/subsystem/* nécessitent le rôle subsystem
 app.use('/api/subsystem', authenticate, isSubsystem);
 
 // Récupérer les informations du sous-système de l'utilisateur connecté
 app.get('/api/subsystem/mine', async (req, res) => {
   try {
     const sub = await pool.query('SELECT * FROM subsystems WHERE id = $1', [req.user.subsystem_id]);
-    res.json({ success: true, subsystems: sub.rows });
+    const subWithId = sub.rows.map(s => ({ ...s, _id: s.id }));
+    res.json({ success: true, subsystems: subWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -453,7 +642,8 @@ app.get('/api/subsystem/stats', async (req, res) => {
         (SELECT COUNT(*) FROM tickets WHERE subsystem_id = $1 AND date >= date_trunc('month', CURRENT_DATE)) as monthly_tickets,
         (SELECT COALESCE(SUM(total_winnings), 0) FROM winning_records wr JOIN tickets t ON wr.ticket_id = t.id WHERE t.subsystem_id = $1 AND wr.paid = false) as pending_payout,
         (SELECT COUNT(*) FROM tickets WHERE subsystem_id = $1 AND is_synced = false) as pending_issues,
-        (SELECT max_users FROM subsystems WHERE id = $1) as max_users
+        (SELECT max_users FROM subsystems WHERE id = $1) as max_users,
+        (SELECT name FROM subsystems WHERE id = $1) as subsystem_name
       `, [subId]
     );
     const usage_percentage = stats.rows[0].max_users ? Math.round((stats.rows[0].active_users / stats.rows[0].max_users) * 100) : 0;
@@ -467,27 +657,54 @@ app.get('/api/subsystem/stats', async (req, res) => {
   }
 });
 
-// Récupérer les utilisateurs du sous-système avec filtres
-app.get('/api/subsystem/users', async (req, res) => {
+// Récupérer les utilisateurs du sous-système avec filtres (version enrichie)
+app.get('/api/subsystem/users', authenticate, async (req, res) => {
   const subId = req.user.subsystem_id;
-  const { role, search, supervisor_id, limit = 50 } = req.query;
+  let { role, search, supervisor_id, limit = 50, supervisor, level } = req.query;
+
+  // Gestion des alias de rôle (supervisor1, supervisor2)
+  let actualRole = role;
+  let actualLevel = level;
+  if (role === 'supervisor1') {
+    actualRole = 'supervisor';
+    actualLevel = 1;
+  } else if (role === 'supervisor2') {
+    actualRole = 'supervisor';
+    actualLevel = 2;
+  }
+
   let query = 'SELECT * FROM users WHERE subsystem_id = $1';
   const params = [subId];
   let paramIndex = 2;
 
-  if (role) {
+  if (actualRole) {
     query += ` AND role = $${paramIndex}`;
-    params.push(role);
+    params.push(actualRole);
     paramIndex++;
   }
+
+  if (actualLevel !== undefined) {
+    query += ` AND level = $${paramIndex}`;
+    params.push(parseInt(actualLevel));
+    paramIndex++;
+  }
+
   if (search) {
     query += ` AND (name ILIKE $${paramIndex} OR username ILIKE $${paramIndex})`;
     params.push(`%${search}%`);
     paramIndex++;
   }
+
   if (supervisor_id) {
     query += ` AND (supervisor1_id = $${paramIndex} OR supervisor2_id = $${paramIndex})`;
     params.push(supervisor_id);
+    paramIndex++;
+  }
+
+  // Filtre spécial : supervisor = '1' pour les agents du superviseur connecté
+  if (supervisor === '1') {
+    query += ` AND (supervisor1_id = $${paramIndex} OR supervisor2_id = $${paramIndex})`;
+    params.push(req.user.id);
     paramIndex++;
   }
 
@@ -499,7 +716,26 @@ app.get('/api/subsystem/users', async (req, res) => {
 
   try {
     const users = await pool.query(query, params);
-    res.json({ success: true, users: users.rows });
+    const usersWithId = users.rows.map(u => ({ ...u, _id: u.id }));
+    res.json({ success: true, users: usersWithId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Récupérer un utilisateur par ID
+app.get('/api/subsystem/users/:id', authenticate, async (req, res) => {
+  const { id } = req.params;
+  const subId = req.user.subsystem_id;
+
+  try {
+    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2', [id, subId]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
+    }
+    const userWithId = { ...user.rows[0], _id: user.rows[0].id };
+    res.json({ success: true, user: userWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -519,7 +755,6 @@ app.post('/api/subsystem/users/create', async (req, res) => {
   }
 
   try {
-    // Vérifier si username existe déjà
     const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ success: false, error: 'Nom d\'utilisateur déjà pris' });
@@ -533,7 +768,7 @@ app.post('/api/subsystem/users/create', async (req, res) => {
       [name, username, hashedPassword, role, level || null, subId, supervisor1Id || null, supervisor2Id || null]
     );
 
-    res.json({ success: true, userId: result.rows[0].id });
+    res.json({ success: true, userId: result.rows[0].id, _id: result.rows[0].id });
     await logActivity(req.user.id, req.user.name, 'Création utilisateur', `Utilisateur ${username} créé`);
   } catch (err) {
     console.error(err);
@@ -548,7 +783,6 @@ app.put('/api/subsystem/users/:id', async (req, res) => {
   const subId = req.user.subsystem_id;
 
   try {
-    // Vérifier que l'utilisateur appartient bien au sous-système
     const user = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2', [id, subId]);
     if (user.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
@@ -613,6 +847,44 @@ app.delete('/api/subsystem/users/:id', async (req, res) => {
   }
 });
 
+// Assigner un superviseur à un agent
+app.post('/api/subsystem/assign', authenticate, isSubsystem, async (req, res) => {
+  const { userId, supervisorId, supervisorType } = req.body;
+  const subId = req.user.subsystem_id;
+
+  if (!userId || !supervisorId || !supervisorType) {
+    return res.status(400).json({ success: false, error: 'Paramètres manquants' });
+  }
+
+  try {
+    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2', [userId, subId]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
+    }
+
+    const supervisor = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2 AND role = $3', [supervisorId, subId, 'supervisor']);
+    if (supervisor.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Superviseur non trouvé' });
+    }
+
+    let updateField = '';
+    if (supervisorType === 'supervisor1') {
+      updateField = 'supervisor1_id';
+    } else if (supervisorType === 'supervisor2') {
+      updateField = 'supervisor2_id';
+    } else {
+      return res.status(400).json({ success: false, error: 'Type de superviseur invalide' });
+    }
+
+    await pool.query(`UPDATE users SET ${updateField} = $1 WHERE id = $2`, [supervisorId, userId]);
+    res.json({ success: true });
+    await logActivity(req.user.id, req.user.name, 'Assignation superviseur', `Superviseur ${supervisorId} assigné à l'agent ${userId} comme ${supervisorType}`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
 // Récupérer les tickets du sous-système avec filtres
 app.get('/api/subsystem/tickets', async (req, res) => {
   const subId = req.user.subsystem_id;
@@ -653,7 +925,8 @@ app.get('/api/subsystem/tickets', async (req, res) => {
 
   try {
     const tickets = await pool.query(query, params);
-    res.json({ success: true, tickets: tickets.rows });
+    const ticketsWithId = tickets.rows.map(t => ({ ...t, _id: t.id }));
+    res.json({ success: true, tickets: ticketsWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -661,12 +934,9 @@ app.get('/api/subsystem/tickets', async (req, res) => {
 });
 
 // ==================== ROUTES TICKETS (pour agents et superviseurs) ====================
-// Routes générales pour les tickets, accessibles selon rôle
-
 // Créer un ticket (agent)
 app.post('/api/tickets', authenticate, async (req, res) => {
   const { number, draw, draw_time, bets, total, agent_id, agent_name, subsystem_id, date } = req.body;
-  // Vérifier que l'utilisateur est bien un agent ou a le droit
   if (req.user.role !== 'agent' && req.user.role !== 'subsystem' && req.user.role !== 'master') {
     return res.status(403).json({ success: false, error: 'Seuls les agents peuvent créer des tickets' });
   }
@@ -685,7 +955,6 @@ app.post('/api/tickets', authenticate, async (req, res) => {
     );
     const ticketId = ticketResult.rows[0].id;
 
-    // Insérer les paris
     for (const bet of bets) {
       await client.query(
         `INSERT INTO bets (ticket_id, type, name, number, amount, multiplier, options, is_group, details, per_option_amount, is_lotto4, is_lotto5)
@@ -717,7 +986,6 @@ app.get('/api/tickets', authenticate, async (req, res) => {
     query += ' AND t.agent_id = $' + (params.length + 1);
     params.push(req.user.id);
   } else if (req.user.role === 'supervisor') {
-    // Superviseur voit les tickets des agents qu'il supervise
     query += ' AND t.agent_id IN (SELECT id FROM users WHERE (supervisor1_id = $' + (params.length + 1) + ' OR supervisor2_id = $' + (params.length + 2) + '))';
     params.push(req.user.id, req.user.id);
   } else if (req.user.role === 'subsystem') {
@@ -741,7 +1009,8 @@ app.get('/api/tickets', authenticate, async (req, res) => {
 
   try {
     const tickets = await pool.query(query, params);
-    res.json({ success: true, tickets: tickets.rows });
+    const ticketsWithId = tickets.rows.map(t => ({ ...t, _id: t.id }));
+    res.json({ success: true, tickets: ticketsWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -769,10 +1038,9 @@ app.get('/api/tickets/:id', authenticate, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Accès interdit' });
     }
 
-    // Récupérer les paris
     const bets = await pool.query('SELECT * FROM bets WHERE ticket_id = $1', [id]);
 
-    res.json({ success: true, ticket: { ...ticket.rows[0], bets: bets.rows } });
+    res.json({ success: true, ticket: { ...ticket.rows[0], _id: ticket.rows[0].id, bets: bets.rows } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -786,7 +1054,6 @@ app.delete('/api/tickets/:id', authenticate, async (req, res) => {
     const ticket = await pool.query('SELECT * FROM tickets WHERE id = $1', [id]);
     if (ticket.rows.length === 0) return res.status(404).json({ success: false, error: 'Ticket non trouvé' });
 
-    // Vérifier les droits (agent propriétaire ou superviseur/subsystem)
     let allowed = false;
     if (req.user.role === 'agent' && ticket.rows[0].agent_id === req.user.id) allowed = true;
     else if (req.user.role === 'supervisor') {
@@ -797,7 +1064,6 @@ app.delete('/api/tickets/:id', authenticate, async (req, res) => {
 
     if (!allowed) return res.status(403).json({ success: false, error: 'Accès interdit' });
 
-    // Vérifier le délai de 5 minutes
     const diff = (new Date() - new Date(ticket.rows[0].date)) / (1000 * 60);
     if (diff > 5 && req.user.role !== 'master' && req.user.role !== 'subsystem') {
       return res.status(400).json({ success: false, error: 'Ticket trop ancien pour être supprimé (plus de 5 min)' });
@@ -819,7 +1085,6 @@ app.put('/api/tickets/:id/sync', authenticate, async (req, res) => {
     const ticket = await pool.query('SELECT * FROM tickets WHERE id = $1', [id]);
     if (ticket.rows.length === 0) return res.status(404).json({ success: false, error: 'Ticket non trouvé' });
 
-    // Seul subsystem ou master peut synchroniser
     if (req.user.role !== 'subsystem' && req.user.role !== 'master') {
       return res.status(403).json({ success: false, error: 'Seul l\'admin peut synchroniser' });
     }
@@ -855,7 +1120,6 @@ app.get('/api/tickets/winning', authenticate, async (req, res) => {
     query += ' AND t.subsystem_id = $' + (params.length + 1);
     params.push(req.user.subsystem_id);
   } else if (req.user.role === 'supervisor') {
-    // superviseur voit les tickets gagnants des agents qu'il supervise
     query += ' AND t.agent_id IN (SELECT id FROM users WHERE supervisor1_id = $' + (params.length + 1) + ' OR supervisor2_id = $' + (params.length + 2) + ')';
     params.push(req.user.id, req.user.id);
   } else if (req.user.role === 'agent') {
@@ -872,7 +1136,8 @@ app.get('/api/tickets/winning', authenticate, async (req, res) => {
 
   try {
     const winners = await pool.query(query, params);
-    res.json({ success: true, tickets: winners.rows });
+    const winnersWithId = winners.rows.map(w => ({ ...w, _id: w.id }));
+    res.json({ success: true, tickets: winnersWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -886,7 +1151,6 @@ app.put('/api/winners/:id/pay', authenticate, async (req, res) => {
     const winner = await pool.query('SELECT * FROM winning_records WHERE id = $1', [id]);
     if (winner.rows.length === 0) return res.status(404).json({ success: false, error: 'Enregistrement non trouvé' });
 
-    // Vérifier les droits (subsystem ou master)
     if (req.user.role !== 'subsystem' && req.user.role !== 'master') {
       return res.status(403).json({ success: false, error: 'Seul l\'admin peut marquer comme payé' });
     }
@@ -907,9 +1171,10 @@ app.get('/api/results', async (req, res) => {
   try {
     const results = await pool.query(
       'SELECT * FROM results WHERE subsystem_id = $1 ORDER BY date DESC, time DESC LIMIT 20',
-      [subsystem_id || 1] // par défaut sous-système 1
+      [subsystem_id || 1]
     );
-    res.json({ success: true, results: results.rows });
+    const resultsWithId = results.rows.map(r => ({ ...r, _id: r.id }));
+    res.json({ success: true, results: resultsWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -929,7 +1194,6 @@ app.post('/api/results', authenticate, isSubsystem, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Insérer ou remplacer
     await client.query(
       `INSERT INTO results (draw, time, date, lot1, lot2, lot3, verified, subsystem_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -942,7 +1206,6 @@ app.post('/api/results', authenticate, isSubsystem, async (req, res) => {
       [draw, time, date, lot1, lot2, lot3, verified, subId]
     );
 
-    // Déclencher le calcul des gagnants
     await calculateWinnersForDraw(client, draw, time, date, subId);
 
     await client.query('COMMIT');
@@ -957,9 +1220,8 @@ app.post('/api/results', authenticate, isSubsystem, async (req, res) => {
   }
 });
 
-// Fonction pour calculer les gagnants d'un tirage
+// Fonction pour calculer les gagnants d'un tirage (identique à l'original)
 async function calculateWinnersForDraw(client, draw, time, date, subsystemId) {
-  // Récupérer tous les tickets pour ce tirage et cette date
   const tickets = await client.query(
     'SELECT * FROM tickets WHERE draw = $1 AND draw_time = $2 AND DATE(date) = $3 AND subsystem_id = $4',
     [draw, time, date, subsystemId]
@@ -974,14 +1236,11 @@ async function calculateWinnersForDraw(client, draw, time, date, subsystemId) {
     if (result.rows.length === 0) continue;
     const resData = result.rows[0];
 
-    // Logique de calcul des gains (simplifiée, à adapter selon les règles)
     const winningBets = [];
     let totalWinnings = 0;
 
     for (const bet of bets.rows) {
       let winAmount = 0;
-      // Implémenter la logique selon le type de jeu
-      // Pour l'exemple, on va faire un calcul basique pour borlette
       if (bet.type === 'borlette' && bet.number === resData.lot1?.slice(-2)) {
         winAmount = bet.amount * 60;
       } else if (bet.type === 'borlette' && bet.number === resData.lot2) {
@@ -1008,7 +1267,6 @@ async function calculateWinnersForDraw(client, draw, time, date, subsystemId) {
 }
 
 // ==================== ROUTES TIRAGES (draws) ====================
-// Obtenir les tirages (public ou selon sous-système)
 app.get('/api/draws', async (req, res) => {
   const { subsystem_id } = req.query;
   try {
@@ -1016,7 +1274,6 @@ app.get('/api/draws', async (req, res) => {
       'SELECT * FROM draws WHERE subsystem_id = $1 AND is_active = true',
       [subsystem_id || 1]
     );
-    // Formater pour le frontend
     const formatted = {};
     draws.rows.forEach(d => {
       formatted[d.name.toLowerCase().replace(' ', '')] = {
@@ -1032,21 +1289,20 @@ app.get('/api/draws', async (req, res) => {
 });
 
 // ==================== ROUTES RESTRICTIONS ====================
-// Obtenir les restrictions d'un sous-système
 app.get('/api/restrictions', authenticate, async (req, res) => {
   const subsystemId = req.user.subsystem_id || req.query.subsystemId;
   if (!subsystemId) return res.status(400).json({ success: false, error: 'subsystemId requis' });
 
   try {
     const restrictions = await pool.query('SELECT * FROM restrictions WHERE subsystem_id = $1 ORDER BY created_at DESC', [subsystemId]);
-    res.json({ success: true, restrictions: restrictions.rows });
+    const restrictionsWithId = restrictions.rows.map(r => ({ ...r, _id: r.id }));
+    res.json({ success: true, restrictions: restrictionsWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
   }
 });
 
-// Créer une restriction
 app.post('/api/restrictions', authenticate, isSubsystem, async (req, res) => {
   const { number, type, limitAmount, draw, time } = req.body;
   const subId = req.user.subsystem_id;
@@ -1069,7 +1325,6 @@ app.post('/api/restrictions', authenticate, isSubsystem, async (req, res) => {
   }
 });
 
-// Modifier une restriction
 app.put('/api/restrictions/:id', authenticate, isSubsystem, async (req, res) => {
   const { id } = req.params;
   const { number, type, limitAmount, draw, time } = req.body;
@@ -1092,7 +1347,6 @@ app.put('/api/restrictions/:id', authenticate, isSubsystem, async (req, res) => 
   }
 });
 
-// Supprimer une restriction
 app.delete('/api/restrictions/:id', authenticate, isSubsystem, async (req, res) => {
   const { id } = req.params;
   const subId = req.user.subsystem_id;
@@ -1111,21 +1365,20 @@ app.delete('/api/restrictions/:id', authenticate, isSubsystem, async (req, res) 
 });
 
 // ==================== ROUTES NOTIFICATIONS ====================
-// Obtenir les notifications de l'utilisateur connecté
 app.get('/api/notifications', authenticate, async (req, res) => {
   try {
     const notifs = await pool.query(
       'SELECT * FROM notifications WHERE user_id = $1 ORDER BY timestamp DESC',
       [req.user.id]
     );
-    res.json({ success: true, notifications: notifs.rows });
+    const notifsWithId = notifs.rows.map(n => ({ ...n, _id: n.id }));
+    res.json({ success: true, notifications: notifsWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
   }
 });
 
-// Compter les notifications non lues
 app.get('/api/notifications/unread-count', authenticate, async (req, res) => {
   try {
     const count = await pool.query(
@@ -1139,7 +1392,6 @@ app.get('/api/notifications/unread-count', authenticate, async (req, res) => {
   }
 });
 
-// Marquer une notification comme lue
 app.put('/api/notifications/:id/read', authenticate, async (req, res) => {
   const { id } = req.params;
   try {
@@ -1151,7 +1403,6 @@ app.put('/api/notifications/:id/read', authenticate, async (req, res) => {
   }
 });
 
-// Supprimer une notification
 app.delete('/api/notifications/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   try {
@@ -1163,7 +1414,6 @@ app.delete('/api/notifications/:id', authenticate, async (req, res) => {
   }
 });
 
-// Tout marquer comme lu
 app.put('/api/notifications/read-all', authenticate, async (req, res) => {
   try {
     await pool.query('UPDATE notifications SET read = true WHERE user_id = $1', [req.user.id]);
@@ -1174,7 +1424,6 @@ app.put('/api/notifications/read-all', authenticate, async (req, res) => {
   }
 });
 
-// Tout effacer
 app.delete('/api/notifications/clear', authenticate, async (req, res) => {
   try {
     await pool.query('DELETE FROM notifications WHERE user_id = $1', [req.user.id]);
@@ -1186,7 +1435,6 @@ app.delete('/api/notifications/clear', authenticate, async (req, res) => {
 });
 
 // ==================== ROUTES ACTIVITÉS ====================
-// Obtenir les activités (pour subsystem)
 app.get('/api/subsystem/activities', authenticate, isSubsystem, async (req, res) => {
   const subId = req.user.subsystem_id;
   try {
@@ -1197,7 +1445,8 @@ app.get('/api/subsystem/activities', authenticate, isSubsystem, async (req, res)
        ORDER BY a.timestamp DESC LIMIT 50`,
       [subId]
     );
-    res.json({ success: true, activities: activities.rows });
+    const activitiesWithId = activities.rows.map(a => ({ ...a, _id: a.id }));
+    res.json({ success: true, activities: activitiesWithId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -1205,7 +1454,6 @@ app.get('/api/subsystem/activities', authenticate, isSubsystem, async (req, res)
 });
 
 // ==================== ROUTES RAPPORTS (simplifiées) ====================
-// Rapport quotidien (subsystem)
 app.get('/api/reports/daily', authenticate, isSubsystem, async (req, res) => {
   const { date } = req.query;
   const subId = req.user.subsystem_id;
@@ -1222,7 +1470,6 @@ app.get('/api/reports/daily', authenticate, isSubsystem, async (req, res) => {
     const totalTickets = tickets.rows.length;
     const totalSales = tickets.rows.reduce((sum, t) => sum + t.total, 0);
 
-    // Grouper par agent
     const agentsMap = {};
     tickets.rows.forEach(t => {
       if (!agentsMap[t.agent_name]) {
@@ -1248,9 +1495,8 @@ app.get('/api/reports/daily', authenticate, isSubsystem, async (req, res) => {
   }
 });
 
-// Rapport mensuel (subsystem)
 app.get('/api/reports/monthly', authenticate, isSubsystem, async (req, res) => {
-  const { month } = req.query; // format YYYY-MM
+  const { month } = req.query;
   const subId = req.user.subsystem_id;
   if (!month) return res.status(400).json({ success: false, error: 'Mois requis' });
 
@@ -1267,7 +1513,6 @@ app.get('/api/reports/monthly', authenticate, isSubsystem, async (req, res) => {
     const totalTickets = tickets.rows.length;
     const totalSales = tickets.rows.reduce((sum, t) => sum + t.total, 0);
 
-    // Regrouper par jour
     const dailyMap = {};
     tickets.rows.forEach(t => {
       const day = new Date(t.date).toISOString().split('T')[0];
@@ -1294,9 +1539,8 @@ app.get('/api/reports/monthly', authenticate, isSubsystem, async (req, res) => {
   }
 });
 
-// Rapport par agent
 app.get('/api/reports/agent', authenticate, isSubsystem, async (req, res) => {
-  const { agentId, period } = req.query; // period: today, week, month
+  const { agentId, period } = req.query;
   const subId = req.user.subsystem_id;
   if (!agentId) return res.status(400).json({ success: false, error: 'agentId requis' });
 
@@ -1343,14 +1587,94 @@ app.get('/api/reports/agent', authenticate, isSubsystem, async (req, res) => {
   }
 });
 
+// ==================== ROUTES POUR L'AGENT (lotato.js) ====================
+// Historique des paris
+app.post('/api/history', authenticate, async (req, res) => {
+  const { draw, drawTime, bets, total } = req.body;
+  const userId = req.user.id;
+  const userName = req.user.name;
+  const subsystemId = req.user.subsystem_id;
+
+  try {
+    await pool.query(
+      `INSERT INTO bet_history (user_id, user_name, subsystem_id, draw, draw_time, bets, total, date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [userId, userName, subsystemId, draw, drawTime, JSON.stringify(bets), total]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Multi-draw tickets
+app.post('/api/multi-draw-tickets', authenticate, async (req, res) => {
+  const { bets, draws, totalAmount } = req.body.ticket;
+  const agentId = req.user.id;
+  const agentName = req.user.name;
+  const subsystemId = req.user.subsystem_id;
+
+  try {
+    const numberRes = await pool.query('SELECT nextval(\'ticket_number_seq\') as num');
+    const ticketNumber = numberRes.rows[0].num;
+
+    const result = await pool.query(
+      `INSERT INTO multi_draw_tickets (ticket_number, bets, draws, total_amount, agent_id, agent_name, subsystem_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [ticketNumber, JSON.stringify(bets), JSON.stringify(draws), totalAmount, agentId, agentName, subsystemId]
+    );
+    res.json({ success: true, ticket: { id: result.rows[0].id, number: ticketNumber, ...req.body.ticket } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+app.get('/api/multi-draw-tickets', authenticate, async (req, res) => {
+  const subsystemId = req.user.subsystem_id;
+  try {
+    const tickets = await pool.query(
+      'SELECT * FROM multi_draw_tickets WHERE subsystem_id = $1 ORDER BY date DESC',
+      [subsystemId]
+    );
+    const ticketsWithId = tickets.rows.map(t => ({ ...t, _id: t.id }));
+    res.json({ success: true, tickets: ticketsWithId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// Informations entreprise
+app.get('/api/company-info', async (req, res) => {
+  // À améliorer : lire depuis une table settings
+  res.json({
+    success: true,
+    name: "Nova Lotto",
+    phone: "+509 32 53 49 58",
+    address: "Cap Haïtien",
+    reportTitle: "Nova Lotto",
+    reportPhone: "40104585"
+  });
+});
+
+// Logo
+app.get('/api/logo', async (req, res) => {
+  // À améliorer
+  res.json({ success: true, logoUrl: '/logo.png' });
+});
+
+// Check winners (simple)
+app.get('/api/check-winners', authenticate, async (req, res) => {
+  res.json({ success: true });
+});
+
 // ==================== GESTION DES ERREURS 404 ====================
-// Cette route doit être placée après toutes les routes API
 app.use((req, res) => {
-  // Si la requête commence par /api, c'est une API introuvable → erreur JSON
   if (req.url.startsWith('/api/')) {
     return res.status(404).json({ success: false, error: 'Route API non trouvée' });
   }
-  // Sinon, on renvoie une page 404 personnalisée (ou un simple message)
   res.status(404).send(`
     <html>
       <head><title>404 - Page non trouvée</title></head>
@@ -1367,7 +1691,6 @@ app.use((req, res) => {
 async function createTestUsers() {
   const client = await pool.connect();
   try {
-    // Vérifier si des utilisateurs existent déjà
     const count = await client.query('SELECT COUNT(*) FROM users');
     if (parseInt(count.rows[0].count) > 0) {
       console.log('Des utilisateurs existent déjà, pas de création de test.');
@@ -1376,14 +1699,11 @@ async function createTestUsers() {
 
     console.log('Création des utilisateurs de test...');
 
-    // Mot de passe par défaut : 1111 (hashé)
     const defaultPassword = await bcrypt.hash('1111', 10);
 
-    // Sous-système par défaut (déjà créé dans le SQL)
     const subRes = await client.query('SELECT id FROM subsystems LIMIT 1');
     const subId = subRes.rows[0].id;
 
-    // Créer les utilisateurs
     const users = [
       { name: 'Master Admin', username: 'master001', password: defaultPassword, role: 'master', subsystem_id: null },
       { name: 'Subsystem Admin', username: 'subsystem001', password: defaultPassword, role: 'subsystem', subsystem_id: subId },
@@ -1411,9 +1731,8 @@ async function createTestUsers() {
 // ==================== DÉMARRAGE DU SERVEUR ====================
 app.listen(PORT, async () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
-  // Initialiser la base de données (créer les tables si nécessaire)
   try {
-    await pool.query('SELECT 1'); // test connexion
+    await pool.query('SELECT 1');
     console.log('Connexion à la base de données réussie');
     await createTestUsers();
   } catch (err) {
@@ -1421,7 +1740,6 @@ app.listen(PORT, async () => {
   }
 });
 
-// Gestion propre de l'arrêt
 process.on('SIGINT', async () => {
   await pool.end();
   process.exit(0);
