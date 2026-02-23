@@ -4,26 +4,21 @@ const express = require('express');
 const compression = require('compression');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs'); // Remplacé bcrypt par bcryptjs
+const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
-const path = require('path'); // Ajouté pour les chemins statiques
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_difficile_a_deviner';
 
 // Middleware
-app.use(compression()); // Active la compression gzip
+app.use(compression());
 app.use(cors());
 app.use(express.json());
 
-// Servir les fichiers statiques depuis la racine du projet
+// Servir les fichiers statiques depuis la racine (index.html, control-level1.html, etc.)
 app.use(express.static(path.join(__dirname)));
-
-// Route explicite pour la racine (optionnelle mais sécurise)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
 
 // Connexion à PostgreSQL (Neon)
 const pool = new Pool({
@@ -114,6 +109,19 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    // Déterminer l'URL de redirection en fonction du rôle
+    let redirectUrl = '/';
+    if (user.role === 'agent') {
+      redirectUrl = '/'; // Les agents restent sur la page principale (index.html)
+    } else if (user.role === 'supervisor') {
+      if (user.level === 1) redirectUrl = '/control-level1.html';
+      else if (user.level === 2) redirectUrl = '/control-level2.html';
+    } else if (user.role === 'subsystem') {
+      redirectUrl = '/subsystem-admin.html';
+    } else if (user.role === 'master') {
+      redirectUrl = '/master.html'; // À créer si nécessaire, sinon '/'
+    }
+
     // Récupérer les infos du sous-système si nécessaire
     let subsystem = null;
     if (user.subsystem_id) {
@@ -124,6 +132,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({
       success: true,
       token,
+      redirectUrl,
       admin: {
         id: user.id,
         name: user.name,
@@ -586,7 +595,7 @@ app.put('/api/subsystem/users/:id/status', async (req, res) => {
   }
 });
 
-// Supprimer un utilisateur (soft delete ou hard ? On va faire hard delete)
+// Supprimer un utilisateur (hard delete)
 app.delete('/api/subsystem/users/:id', async (req, res) => {
   const { id } = req.params;
   const subId = req.user.subsystem_id;
@@ -1332,6 +1341,26 @@ app.get('/api/reports/agent', authenticate, isSubsystem, async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
   }
+});
+
+// ==================== GESTION DES ERREURS 404 ====================
+// Cette route doit être placée après toutes les routes API
+app.use((req, res) => {
+  // Si la requête commence par /api, c'est une API introuvable → erreur JSON
+  if (req.url.startsWith('/api/')) {
+    return res.status(404).json({ success: false, error: 'Route API non trouvée' });
+  }
+  // Sinon, on renvoie une page 404 personnalisée (ou un simple message)
+  res.status(404).send(`
+    <html>
+      <head><title>404 - Page non trouvée</title></head>
+      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h1>404</h1>
+        <p>La page que vous cherchez n'existe pas.</p>
+        <a href="/">Retour à l'accueil</a>
+      </body>
+    </html>
+  `);
 });
 
 // ==================== CRÉATION DES UTILISATEURS DE TEST AU DÉMARRAGE ====================
