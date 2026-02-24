@@ -44,15 +44,17 @@ function vérifierToken(req, res, next) {
         token = req.headers.authorization.substring(7);
     }
 
-    console.log('Token reçu:', token);
+    console.log('Token reçu dans vérifierToken:', token);
 
     if (!token || !token.startsWith('nova_')) {
-        return req.path.startsWith('/api/') 
-            ? res.status(401).json({ success: false, error: 'Token manquant ou invalide' })
-            : next();
+        if (req.path.startsWith('/api/')) {
+            return res.status(401).json({ success: false, error: 'Token manquant ou invalide' });
+        }
+        return next();
     }
 
     const parts = token.split('_');
+    console.log('Parts du token:', parts);
     if (parts.length >= 5) {
         req.tokenInfo = {
             token,
@@ -64,40 +66,56 @@ function vérifierToken(req, res, next) {
     next();
 }
 
-// =================== ROUTES DE CONNEXION ===================
+// =================== ROUTES DE CONNEXION (copie logique ancien code) ===================
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { username, password, role } = req.body;
         console.log('--- Tentative de connexion ---');
-        console.log({ username, password, role });
+        console.log('Données reçues:', { username, password, role });
 
+        // Conversion des rôles spéciaux (supervisor1, supervisor2)
         let dbRole = role;
         let level = 1;
-        if (role === 'supervisor1') { dbRole = 'supervisor'; level = 1; }
-        else if (role === 'supervisor2') { dbRole = 'supervisor'; level = 2; }
+        if (role === 'supervisor1') {
+            dbRole = 'supervisor';
+            level = 1;
+        } else if (role === 'supervisor2') {
+            dbRole = 'supervisor';
+            level = 2;
+        }
 
-        const query = `
-            SELECT id, name, username, password, role, level, subsystem_id
-            FROM users
-            WHERE username = $1 AND password = $2 AND role = $3
-            ${dbRole === 'supervisor' ? 'AND level = $4' : ''}
-        `;
-        const params = dbRole === 'supervisor' 
-            ? [username, password, dbRole, level]
-            : [username, password, dbRole];
+        // Construction de la requête SQL (comme la recherche MongoDB)
+        let query = 'SELECT id, name, username, password, role, level, subsystem_id FROM users WHERE username = $1 AND password = $2 AND role = $3';
+        let params = [username, password, dbRole];
+        let paramIndex = 4;
+
+        // Ajouter la condition sur le niveau pour les superviseurs
+        if (dbRole === 'supervisor') {
+            query += ` AND level = $${paramIndex}`;
+            params.push(level);
+        }
+
+        console.log('Requête SQL exécutée:', query);
+        console.log('Paramètres:', params);
 
         const result = await pool.query(query, params);
+        console.log('Nombre de lignes retournées:', result.rowCount);
+        if (result.rows.length > 0) {
+            console.log('Utilisateur trouvé:', result.rows[0]);
+        } else {
+            console.log('Aucun utilisateur trouvé avec ces critères');
+        }
+
         const user = result.rows[0];
 
         if (!user) {
-            console.log('Échec : utilisateur non trouvé');
             return res.status(401).json({ success: false, error: 'Identifiants ou rôle incorrect' });
         }
 
-        console.log('Utilisateur trouvé:', user);
-
+        // Génération du token (identique à l'ancien code)
         const token = `nova_${Date.now()}_${user.id}_${user.role}_${user.level || 1}`;
 
+        // Déterminer l'URL de redirection
         let redirectUrl;
         switch (user.role) {
             case 'agent': redirectUrl = '/lotato.html'; break;
@@ -441,9 +459,9 @@ app.post('/api/tickets/multi-draw', vérifierToken, async (req, res) => {
         const userId = userResult.rows[0].id;
         const userName = userResult.rows[0].name;
 
-        // Générer un numéro de ticket (on peut utiliser une autre séquence ou un préfixe)
+        // Générer un numéro de ticket (avec préfixe M)
         const seqResult = await pool.query("SELECT nextval('ticket_number_seq') as next");
-        const ticketNumber = 'M' + seqResult.rows[0].next; // préfixe pour multi
+        const ticketNumber = 'M' + seqResult.rows[0].next;
 
         const insertResult = await pool.query(`
             INSERT INTO multi_draw_tickets (ticket_number, bets, draws, total_amount, agent_id, agent_name, subsystem_id, date)
@@ -501,7 +519,7 @@ app.post('/api/history', vérifierToken, async (req, res) => {
     }
 });
 
-// Récupérer l'historique (optionnel)
+// Récupérer l'historique
 app.get('/api/history', vérifierToken, async (req, res) => {
     try {
         const userResult = await pool.query('SELECT id FROM users WHERE id = $1', [req.tokenInfo.userId]);
@@ -548,9 +566,9 @@ app.get('/api/history', vérifierToken, async (req, res) => {
     }
 });
 
-// Récupérer les tickets gagnants (simplifié pour l'instant)
+// Récupérer les tickets gagnants (simplifié)
 app.get('/api/tickets/winning', vérifierToken, async (req, res) => {
-    // À implémenter avec une table winning_records
+    // À implémenter avec la table winning_records si nécessaire
     res.json({ success: true, tickets: [] });
 });
 
@@ -559,9 +577,6 @@ app.post('/api/check-winners', vérifierToken, async (req, res) => {
     // À implémenter
     res.json({ success: true, winningTickets: [] });
 });
-
-// =================== ROUTES POUR MASTER / SOUS-SYSTÈMES ===================
-// (à compléter si nécessaire, mais l'essentiel pour lotato est déjà là)
 
 // =================== ROUTES HTML ===================
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
