@@ -20,36 +20,35 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Servir les fichiers statiques (CSS, JS, Images)
-app.use(express.static(__dirname));
+// On utilise une option pour ne pas servir les .html automatiquement ici si on veut tout contrôler,
+// mais par défaut express.static suffit pour les fichiers existants.
+app.use(express.static(__dirname, { extensions: ['html'] }));
 
 // ==================== ROUTES POUR LES FICHIERS HTML ====================
-// Liste des pages HTML disponibles
-const pages = [
-    'index',
-    'control-level1',
-    'control-level2',
-    'master-dashboard',
-    'subsystem-admin',
-    'agent-dashboard',
-    'supervisor-dashboard',
-    'login'
-];
-
-// Route pour servir les pages sans extension .html ou avec
-pages.forEach(page => {
-    const routeHandler = (req, res) => {
-        const filePath = path.join(__dirname, `${page}.html`);
-        if (fs.existsSync(filePath)) {
-            res.sendFile(filePath);
-        } else {
-            // Si le fichier spécifique n'existe pas, on laisse passer au middleware 404
-            console.warn(`Tentative d'accès à une page inexistante : ${page}.html`);
+// Cette fonction gère le service des fichiers HTML de manière sécurisée
+const serveHTML = (pageName) => (req, res) => {
+    const filePath = path.join(__dirname, pageName.endsWith('.html') ? pageName : `${pageName}.html`);
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error(`Erreur lors de l'envoi de ${pageName}:`, err);
             res.status(404).json({ success: false, error: 'Page non trouvée' });
         }
-    };
-    app.get(`/${page}`, routeHandler);
-    app.get(`/${page}.html`, routeHandler);
-});
+    });
+};
+
+// Routes explicites pour chaque page
+app.get('/index', serveHTML('index'));
+app.get('/login', serveHTML('login'));
+app.get('/master-dashboard', serveHTML('master-dashboard'));
+app.get('/subsystem-admin', serveHTML('subsystem-admin'));
+app.get('/control-level1', serveHTML('control-level1'));
+app.get('/control-level2', serveHTML('control-level2'));
+app.get('/agent-dashboard', serveHTML('agent-dashboard'));
+app.get('/supervisor-dashboard', serveHTML('supervisor-dashboard'));
+app.get('/lotato', serveHTML('lotato'));
+
+// Rediriger la racine vers index.html
+app.get('/', serveHTML('index'));
 
 // Route de débogage (optionnelle)
 app.get('/debug-files', (req, res) => {
@@ -1487,9 +1486,6 @@ app.get('/api/logo', async (req, res) => {
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
-
-// Rediriger la racine vers index.html
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 // ==================== GESTION DES ERREURS 404 ====================
 app.use((req, res) => {
