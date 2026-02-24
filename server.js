@@ -19,8 +19,37 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Servir les fichiers statiques
+// Servir les fichiers statiques (CSS, JS, Images)
 app.use(express.static(__dirname));
+
+// ==================== ROUTES POUR LES FICHIERS HTML ====================
+// Liste des pages HTML disponibles
+const pages = [
+    'index',
+    'control-level1',
+    'control-level2',
+    'master-dashboard',
+    'subsystem-admin',
+    'agent-dashboard',
+    'supervisor-dashboard',
+    'login'
+];
+
+// Route pour servir les pages sans extension .html ou avec
+pages.forEach(page => {
+    const routeHandler = (req, res) => {
+        const filePath = path.join(__dirname, `${page}.html`);
+        if (fs.existsSync(filePath)) {
+            res.sendFile(filePath);
+        } else {
+            // Si le fichier spécifique n'existe pas, on laisse passer au middleware 404
+            console.warn(`Tentative d'accès à une page inexistante : ${page}.html`);
+            res.status(404).json({ success: false, error: 'Page non trouvée' });
+        }
+    };
+    app.get(`/${page}`, routeHandler);
+    app.get(`/${page}.html`, routeHandler);
+});
 
 // Route de débogage (optionnelle)
 app.get('/debug-files', (req, res) => {
@@ -1458,14 +1487,6 @@ app.get('/api/logo', async (req, res) => {
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
-
-// ==================== ROUTES POUR LES FICHIERS STATIQUES (solution de secours) ====================
-app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/control-level1.html', (req, res) => res.sendFile(path.join(__dirname, 'control-level1.html')));
-app.get('/control-level2.html', (req, res) => res.sendFile(path.join(__dirname, 'control-level2.html')));
-app.get('/master-dashboard.html', (req, res) => res.sendFile(path.join(__dirname, 'master-dashboard.html')));
-app.get('/subsystem-admin.html', (req, res) => res.sendFile(path.join(__dirname, 'subsystem-admin.html')));
-app.get('/lotato.js', (req, res) => res.sendFile(path.join(__dirname, 'lotato.js')));
 
 // Rediriger la racine vers index.html
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
