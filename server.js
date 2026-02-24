@@ -1,4 +1,5 @@
 // server.js - Backend complet pour Nova/Lotato (version finale)
+// Modification : génération automatique du numéro de ticket si non fourni
 require('dotenv').config();
 const express = require('express');
 const compression = require('compression');
@@ -934,13 +935,14 @@ app.get('/api/subsystem/tickets', async (req, res) => {
 });
 
 // ==================== ROUTES TICKETS (pour agents et superviseurs) ====================
-// Créer un ticket (agent)
+// Créer un ticket (agent) - MODIFIÉ : numéro optionnel
 app.post('/api/tickets', authenticate, async (req, res) => {
   const { number, draw, draw_time, bets, total, agent_id, agent_name, subsystem_id, date } = req.body;
   if (req.user.role !== 'agent' && req.user.role !== 'subsystem' && req.user.role !== 'master') {
     return res.status(403).json({ success: false, error: 'Seuls les agents peuvent créer des tickets' });
   }
-  if (!number || !draw || !draw_time || !bets || !total || !agent_id || !subsystem_id || !date) {
+  // Le champ number est optionnel : s'il n'est pas fourni, on le génère
+  if (!draw || !draw_time || !bets || !total || !agent_id || !subsystem_id || !date) {
     return res.status(400).json({ success: false, error: 'Données incomplètes' });
   }
 
@@ -948,10 +950,17 @@ app.post('/api/tickets', authenticate, async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Générer le numéro de ticket si non fourni
+    let ticketNumber = number;
+    if (!ticketNumber) {
+      const numRes = await client.query('SELECT nextval(\'ticket_number_seq\') as num');
+      ticketNumber = numRes.rows[0].num;
+    }
+
     const ticketResult = await client.query(
       `INSERT INTO tickets (number, draw, draw_time, total, agent_id, agent_name, subsystem_id, date)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [number, draw, draw_time, total, agent_id, agent_name, subsystem_id, date]
+      [ticketNumber, draw, draw_time, total, agent_id, agent_name, subsystem_id, date]
     );
     const ticketId = ticketResult.rows[0].id;
 
@@ -965,8 +974,8 @@ app.post('/api/tickets', authenticate, async (req, res) => {
 
     await client.query('COMMIT');
 
-    res.json({ success: true, ticket: { id: ticketId, number, total, agent_name, date, bets } });
-    await logActivity(req.user.id, req.user.name, 'Création ticket', `Ticket #${number} créé`);
+    res.json({ success: true, ticket: { id: ticketId, number: ticketNumber, total, agent_name, date, bets } });
+    await logActivity(req.user.id, req.user.name, 'Création ticket', `Ticket #${ticketNumber} créé`);
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);
