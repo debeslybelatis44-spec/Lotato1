@@ -1,5 +1,10 @@
 // lotato.js – Version sans données simulées (uniquement API réelle)
 // Correction : génération du numéro de ticket côté serveur pour éviter les collisions
+// Modifications :
+// - checkAuth() priorise le token de l'URL et l'écrase dans le localStorage
+// - Vérification de subsystem_id avant sauvegarde
+// - Logs détaillés pour diagnostic
+// - Gestion améliorée des erreurs API
 
 // ==========================================
 // Configuration de base
@@ -160,7 +165,10 @@ async function apiCall(url, method = 'GET', body = null) {
         if (contentType && contentType.indexOf("application/json") !== -1) {
             return await response.json();
         } else {
-            return { success: response.ok };
+            // Tenter de lire le texte de l'erreur
+            const text = await response.text();
+            console.error("Réponse non JSON :", text);
+            return { success: false, error: text || "Erreur serveur" };
         }
     } catch (error) {
         console.error('Erreur API:', error);
@@ -176,29 +184,47 @@ async function checkAuth() {
     const urlParams = new URLSearchParams(window.location.search);
     const tokenFromUrl = urlParams.get('token');
     const tokenFromStorage = localStorage.getItem('nova_token');
-    const token = tokenFromUrl || tokenFromStorage;
+
+    console.log("Token from URL:", tokenFromUrl);
+    console.log("Token from storage:", tokenFromStorage);
+
+    let token = tokenFromUrl || tokenFromStorage;
 
     if (!token) {
         window.location.href = '/index.html';
         return false;
     }
 
-    authToken = token;
-    if (tokenFromUrl && !tokenFromStorage) {
+    // Si un token est présent dans l'URL, on le priorise et on le sauvegarde
+    if (tokenFromUrl) {
         localStorage.setItem('nova_token', tokenFromUrl);
+        token = tokenFromUrl;
+        // Nettoyer l'URL
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
     }
 
+    authToken = token;
+
     try {
         const response = await apiCall(APP_CONFIG.authCheck);
+        console.log("Réponse authCheck:", response);
         if (response && response.success && response.admin) {
             currentUser = response.admin;
+            console.log("Utilisateur connecté:", currentUser);
+
+            // Vérification subsystem_id pour les agents
+            if (currentUser.role === 'agent' && !currentUser.subsystem_id) {
+                console.warn("L'agent n'a pas de subsystem_id !");
+                showNotification("Attention : votre compte n'est pas lié à un sous-système. Vous ne pourrez pas enregistrer de tickets.", "warning");
+            }
+
             document.getElementById('login-screen').style.display = 'none';
             showMainApp();
             updateUserDisplay();
             return true;
         } else {
+            console.error("Échec vérification auth :", response);
             handleLogout();
             return false;
         }
@@ -344,7 +370,7 @@ async function saveTicketAPI(ticketData) {
         // Ne pas envoyer le numéro, il sera généré par le serveur
         const requestData = {
             draw: ticketData.draw,
-            draw_time: ticketData.drawTime,
+            draw_time: ticketData.drawTime, // important : le serveur attend draw_time
             bets: ticketData.bets,
             total: ticketData.total,
             agent_id: ticketData.agent_id,
@@ -352,6 +378,7 @@ async function saveTicketAPI(ticketData) {
             subsystem_id: ticketData.subsystem_id,
             date: ticketData.date
         };
+        console.log("Envoi à l'API tickets:", requestData);
         return await apiCall(APP_CONFIG.tickets, 'POST', requestData);
     } catch (error) {
         console.error('❌ Erreur sauvegarde ticket:', error);
@@ -365,21 +392,26 @@ async function saveTicket() {
         return;
     }
 
-    if (currentDraw && currentDrawTime && isDrawBlocked(currentDraw, currentDrawTime)) {
-        const drawTime = drawsData[currentDraw].times[currentDrawTime].time;
-        showNotification(`Tiraj sa a bloke! Li fèt à ${drawTime} epi ou pa kapab sove fiche 5 minit avan.`, "error");
-        return;
-    }
-
     if (!currentUser) {
         showNotification("Ou pa konekte. Tanpri rekonekte.", "error");
         handleLogout();
         return;
     }
 
+    // Vérification subsystem_id
+    if (!currentUser.subsystem_id) {
+        showNotification("Votre compte n'est pas rattaché à un sous-système. Contactez l'administrateur.", "error");
+        return;
+    }
+
+    if (currentDraw && currentDrawTime && isDrawBlocked(currentDraw, currentDrawTime)) {
+        const drawTime = drawsData[currentDraw].times[currentDrawTime].time;
+        showNotification(`Tiraj sa a bloke! Li fèt à ${drawTime} epi ou pa kapab sove fiche 5 minit avan.`, "error");
+        return;
+    }
+
     const total = activeBets.reduce((sum, bet) => sum + bet.amount, 0);
     const ticket = {
-        // number: ticketNumber,  // Supprimé : le serveur générera le numéro
         draw: currentDraw,
         drawTime: currentDrawTime,
         bets: activeBets,
@@ -390,24 +422,27 @@ async function saveTicket() {
         date: new Date().toISOString()
     };
 
+    console.log("Ticket à envoyer:", ticket);
+
     try {
         const response = await saveTicketAPI(ticket);
+        console.log("Réponse saveTicketAPI:", response);
         if (response && response.success) {
-            // Le serveur retourne le ticket créé avec son numéro
             const savedTicket = { ...response.ticket, id: response.ticket.id || Date.now().toString() };
             savedTickets.push(savedTicket);
-            // Mettre à jour le compteur local pour le prochain ticket
             ticketNumber = savedTicket.number + 1;
-            showNotification("Fiche sove avèk siksè!", "success");
+            showNotification(`Fiche #${savedTicket.number} sove avèk siksè!`, "success");
             activeBets = [];
             updateBetsList();
             return savedTicket;
         } else {
-            showNotification(`Erreur: ${response?.error || "inconnue"}`, "error");
+            const errorMsg = response?.error || "Erreur inconnue";
+            showNotification(`Erreur: ${errorMsg}`, "error");
             return null;
         }
     } catch (error) {
-        showNotification("Erreur lors de la sauvegarde", "error");
+        console.error("Exception dans saveTicket:", error);
+        showNotification("Erreur réseau ou serveur", "error");
         throw error;
     }
 }

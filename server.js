@@ -1,1755 +1,2905 @@
-// server.js - Backend complet pour Nova/Lotato (version finale)
-// Modification : génération automatique du numéro de ticket si non fourni
-require('dotenv').config();
 const express = require('express');
-const compression = require('compression');
-const cors = require('cors');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const { Pool } = require('pg');
+const mongoose = require('mongoose');
 const path = require('path');
+const compression = require('compression');
+const fs = require('fs');
+const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_difficile_a_deviner';
 
-// Middleware
-app.use(compression());
+// === MIDDLEWARE GZIP COMPRESSION ===
+app.use(compression({
+    level: 6,
+    threshold: 1024,
+    filter: (req, res) => {
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        return compression.filter(req, res);
+    }
+}));
+
+// Middleware CORS
 app.use(cors());
+
+// Middleware standard
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Servir les fichiers statiques depuis la racine
-app.use(express.static(path.join(__dirname)));
+// Serve tous les fichiers statiques à la racine avec compression GZIP
+app.use(express.static(__dirname, {
+    maxAge: '1d',
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+        }
+    }
+}));
 
-// Connexion à PostgreSQL (Neon)
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+// Connexion MongoDB
+mongoose.connect(process.env.MONGO_URL || 'mongodb://localhost:27017/lottodb', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
 });
 
-// ==================== MIDDLEWARE D'AUTHENTIFICATION ====================
-const authenticate = async (req, res, next) => {
-  const token = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ success: false, error: 'Accès non autorisé' });
+const db = mongoose.connection;
+db.on('error', console.error.bind(console, '❌ Connexion MongoDB échouée'));
+db.once('open', () => {
+  console.log('✅ MongoDB connecté avec succès !');
+});
 
+// =================== SCHÉMAS SIMPLES ===================
+
+// Schema utilisateur simple
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  name: { type: String },
+  email: { type: String },
+  role: {
+    type: String,
+    enum: ['master', 'subsystem', 'supervisor', 'agent'],
+    required: true
+  },
+  level: { type: Number, default: 1 },
+  subsystem_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Subsystem' },
+  supervisor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  supervisor2_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  is_active: { type: Boolean, default: true },
+  dateCreation: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', userSchema);
+
+// =================== SCHÉMAS POUR LES SOUS-SYSTÈMES ===================
+
+const subsystemSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  subdomain: { type: String, required: true, unique: true },
+  contact_email: { type: String, required: true },
+  contact_phone: { type: String },
+  max_users: { type: Number, default: 10 },
+  subscription_type: { 
+    type: String, 
+    enum: ['basic', 'standard', 'premium', 'enterprise'], 
+    default: 'standard' 
+  },
+  subscription_months: { type: Number, default: 1 },
+  subscription_expires: { type: Date },
+  admin_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  is_active: { type: Boolean, default: true },
+  created_at: { type: Date, default: Date.now },
+  stats: {
+    active_users: { type: Number, default: 0 },
+    today_sales: { type: Number, default: 0 },
+    today_tickets: { type: Number, default: 0 },
+    usage_percentage: { type: Number, default: 0 }
+  }
+});
+
+const Subsystem = mongoose.model('Subsystem', subsystemSchema);
+
+// =================== NOUVEAUX SCHÉMAS POUR LOTATO ===================
+
+const drawSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  code: { type: String, required: true, unique: true },
+  icon: { type: String, default: 'fas fa-dice' },
+  times: {
+    morning: { type: String, required: true },
+    evening: { type: String, required: true }
+  },
+  is_active: { type: Boolean, default: true },
+  order: { type: Number, default: 0 },
+  created_at: { type: Date, default: Date.now }
+});
+
+const Draw = mongoose.model('Draw', drawSchema);
+
+const resultSchema = new mongoose.Schema({
+  draw: { type: String, required: true },
+  draw_time: { type: String, enum: ['morning', 'evening'], required: true },
+  date: { type: Date, required: true },
+  lot1: { type: String, required: true },
+  lot2: { type: String },
+  lot3: { type: String },
+  verified: { type: Boolean, default: false },
+  verified_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  verified_at: { type: Date }
+});
+
+const Result = mongoose.model('Result', resultSchema);
+
+const betSchema = new mongoose.Schema({
+  type: { type: String, required: true },
+  name: { type: String, required: true },
+  number: { type: String, required: true },
+  amount: { type: Number, required: true },
+  multiplier: { type: Number, required: true },
+  options: { type: mongoose.Schema.Types.Mixed },
+  perOptionAmount: { type: Number },
+  isLotto4: { type: Boolean, default: false },
+  isLotto5: { type: Boolean, default: false },
+  isAuto: { type: Boolean, default: false },
+  isGroup: { type: Boolean, default: false },
+  details: { type: mongoose.Schema.Types.Mixed }
+});
+
+const ticketSchema = new mongoose.Schema({
+  number: { type: Number, required: true, unique: true },
+  draw: { type: String, required: true },
+  draw_time: { type: String, enum: ['morning', 'evening'], required: true },
+  date: { type: Date, default: Date.now },
+  bets: [betSchema],
+  total: { type: Number, required: true },
+  agent_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  agent_name: { type: String, required: true },
+  subsystem_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Subsystem' },
+  is_printed: { type: Boolean, default: false },
+  printed_at: { type: Date },
+  is_synced: { type: Boolean, default: false },
+  synced_at: { type: Date }
+});
+
+const Ticket = mongoose.model('Ticket', ticketSchema);
+
+const multiDrawTicketSchema = new mongoose.Schema({
+  number: { type: Number, required: true, unique: true },
+  date: { type: Date, default: Date.now },
+  bets: [{
+    gameType: { type: String, required: true },
+    name: { type: String, required: true },
+    number: { type: String, required: true },
+    amount: { type: Number, required: true },
+    multiplier: { type: Number, required: true },
+    draws: [{ type: String }],
+    options: { type: mongoose.Schema.Types.Mixed }
+  }],
+  draws: [{ type: String }],
+  total: { type: Number, required: true },
+  agent_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  agent_name: { type: String, required: true },
+  subsystem_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Subsystem' },
+  is_printed: { type: Boolean, default: false },
+  printed_at: { type: Date }
+});
+
+const MultiDrawTicket = mongoose.model('MultiDrawTicket', multiDrawTicketSchema);
+
+const winnerSchema = new mongoose.Schema({
+  ticket_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Ticket' },
+  ticket_number: { type: Number, required: true },
+  draw: { type: String, required: true },
+  draw_time: { type: String, enum: ['morning', 'evening'], required: true },
+  date: { type: Date, default: Date.now },
+  winning_bets: [{
+    type: { type: String },
+    name: { type: String },
+    number: { type: String },
+    matched_number: { type: String },
+    win_type: { type: String },
+    win_amount: { type: Number }
+  }],
+  total_winnings: { type: Number, required: true },
+  paid: { type: Boolean, default: false },
+  paid_at: { type: Date },
+  paid_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  agent_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+});
+
+const Winner = mongoose.model('Winner', winnerSchema);
+
+const configSchema = new mongoose.Schema({
+  company_name: { type: String, default: 'Nova Lotto' },
+  company_phone: { type: String, default: '+509 32 53 49 58' },
+  company_address: { type: String, default: 'Cap Haïtien' },
+  report_title: { type: String, default: 'Nova Lotto' },
+  report_phone: { type: String, default: '40104585' },
+  logo_url: { type: String, default: 'logo-borlette.jpg' }
+});
+
+const Config = mongoose.model('Config', configSchema);
+
+const historySchema = new mongoose.Schema({
+  date: { type: Date, default: Date.now },
+  draw: { type: String, required: true },
+  draw_time: { type: String, enum: ['morning', 'evening'], required: true },
+  bets: [betSchema],
+  total: { type: Number, required: true },
+  agent_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  agent_name: { type: String, required: true }
+});
+
+const History = mongoose.model('History', historySchema);
+
+// =================== MIDDLEWARE DE VÉRIFICATION DE TOKEN ===================
+
+function vérifierToken(req, res, next) {
+  let token = req.query.token;
+  
+  if (!token && req.body) {
+    token = req.body.token;
+  }
+  
+  if (!token) {
+    token = req.headers['x-auth-token'];
+  }
+  
+  if (!token && req.headers.authorization) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+  }
+  
+  console.log('Token reçu dans vérifierToken:', token);
+  
+  if (!token || !token.startsWith('nova_')) {
+    if (req.path.startsWith('/api/')) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Token manquant ou invalide' 
+      });
+    }
+  }
+  
+  if (token && token.startsWith('nova_')) {
+    const parts = token.split('_');
+    console.log('Parts du token:', parts);
+    if (parts.length >= 5) {
+      req.tokenInfo = {
+        token: token,
+        userId: parts[2],
+        role: parts[3],
+        level: parts[4] || '1'
+      };
+    }
+  }
+  
+  next();
+}
+
+// =================== MIDDLEWARE POUR L'ACCÈS AUX SOUS-SYSTÈMES ===================
+
+async function vérifierAccèsSubsystem(req, res, next) {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
-    if (user.rows.length === 0) throw new Error();
-    req.user = user.rows[0];
+    if (!req.tokenInfo) {
+      return res.status(401).json({
+        success: false,
+        error: 'Non authentifié'
+      });
+    }
+
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    if (user.role === 'subsystem' || (user.role === 'supervisor' && user.level === 2)) {
+      req.currentUser = user;
+      next();
+    } else {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle subsystem ou superviseur level 2 requis.'
+      });
+    }
+  } catch (error) {
+    console.error('Erreur vérification accès sous-système:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la vérification des droits d\'accès'
+    });
+  }
+}
+
+// =================== MIDDLEWARE POUR LES AGENTS ===================
+
+async function vérifierAgent(req, res, next) {
+  try {
+    if (!req.tokenInfo) {
+      return res.status(401).json({
+        success: false,
+        error: 'Non authentifié'
+      });
+    }
+
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    if (user.role !== 'agent') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle agent requis.'
+      });
+    }
+
+    req.currentUser = user;
     next();
-  } catch (err) {
-    res.status(401).json({ success: false, error: 'Token invalide' });
+  } catch (error) {
+    console.error('Erreur vérification agent:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la vérification des droits'
+    });
   }
-};
+}
 
-// Middleware pour vérifier le rôle master
-const isMaster = (req, res, next) => {
-  if (req.user.role !== 'master') {
-    return res.status(403).json({ success: false, error: 'Accès réservé au master' });
-  }
-  next();
-};
+// =================== ROUTES DE CONNEXION ===================
 
-// Middleware pour vérifier le rôle subsystem (admin de sous-système)
-const isSubsystem = (req, res, next) => {
-  if (req.user.role !== 'subsystem') {
-    return res.status(403).json({ success: false, error: 'Accès réservé aux administrateurs de sous-système' });
-  }
-  next();
-};
-
-// Middleware pour vérifier que l'utilisateur appartient au bon sous-système
-const belongsToSubsystem = (req, res, next) => {
-  const subsystemId = parseInt(req.params.subsystemId || req.body.subsystemId || req.query.subsystemId);
-  if (req.user.role === 'master') return next(); // master a accès à tout
-  if (req.user.subsystem_id !== subsystemId) {
-    return res.status(403).json({ success: false, error: 'Accès interdit à ce sous-système' });
-  }
-  next();
-};
-
-// ==================== FONCTIONS UTILES ====================
-const logActivity = async (userId, userName, action, details) => {
-  try {
-    await pool.query(
-      'INSERT INTO activities (user_id, user_name, action, details) VALUES ($1, $2, $3, $4)',
-      [userId, userName, action, details]
-    );
-  } catch (err) {
-    console.error('Erreur logActivity:', err);
-  }
-};
-
-// ==================== ROUTES PUBLIQUES ====================
-app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'Serveur opérationnel' });
-});
-
-// Connexion
 app.post('/api/auth/login', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ success: false, error: 'Identifiant et mot de passe requis' });
-  }
-
   try {
-    const userQuery = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    const user = userQuery.rows[0];
-    if (!user) return res.status(401).json({ success: false, error: 'Identifiants incorrects' });
+    const { username, password, role } = req.body;
+    
+    console.log('--- Tentative de connexion ---');
+    console.log('Body reçu:', { username, password, role });
+    
+    let dbRole = role;
+    let level = 1;
+    
+    if (role === 'supervisor1') {
+      dbRole = 'supervisor';
+      level = 1;
+    } else if (role === 'supervisor2') {
+      dbRole = 'supervisor';
+      level = 2;
+    }
+    
+    let query = {
+      username,
+      password,
+      role: dbRole
+    };
+    
+    if (dbRole === 'supervisor') {
+      query.level = level;
+    }
+    
+    console.log('Requête MongoDB:', query);
+    const user = await User.findOne(query);
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ success: false, error: 'Identifiants incorrects' });
-
-    // Mettre à jour la connexion
-    await pool.query('UPDATE users SET last_login = NOW(), is_online = true WHERE id = $1', [user.id]);
-
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, level: user.level, subsystem_id: user.subsystem_id },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // Déterminer l'URL de redirection en fonction du rôle
-    let redirectUrl = '/';
-    if (user.role === 'agent') {
-      redirectUrl = '/lotato.html';
-    } else if (user.role === 'supervisor') {
-      if (user.level === 1) redirectUrl = '/control-level1.html';
-      else if (user.level === 2) redirectUrl = '/control-level2.html';
-    } else if (user.role === 'subsystem') {
-      redirectUrl = '/subsystem-admin.html';
-    } else if (user.role === 'master') {
-      redirectUrl = '/master-dashboard.html';
+    if (!user) {
+      console.log('Utilisateur non trouvé ou informations incorrectes');
+      return res.status(401).json({
+        success: false,
+        error: 'Identifiants ou rôle incorrect'
+      });
     }
 
-    // Récupérer les infos du sous-système si nécessaire
-    let subsystem = null;
-    if (user.subsystem_id) {
-      const subRes = await pool.query('SELECT * FROM subsystems WHERE id = $1', [user.subsystem_id]);
-      subsystem = subRes.rows[0];
+    console.log('Utilisateur trouvé:', user.username, user.role, user.level, 'subsystem_id:', user.subsystem_id);
+
+    const token = `nova_${Date.now()}_${user._id}_${user.role}_${user.level || 1}`;
+
+    let redirectUrl;
+    switch (user.role) {
+      case 'agent':
+        redirectUrl = '/lotato.html';
+        break;
+      case 'supervisor':
+        if (user.level === 1) {
+          redirectUrl = '/control-level1.html';
+        } else if (user.level === 2) {
+          redirectUrl = '/control-level2.html';
+        } else {
+          redirectUrl = '/supervisor-control.html';
+        }
+        break;
+      case 'subsystem':
+        redirectUrl = '/subsystem-admin.html';
+        break;
+      case 'master':
+        redirectUrl = '/master-dashboard.html';
+        break;
+      default:
+        redirectUrl = '/';
     }
 
-    // Ajouter _id pour compatibilité avec les clients
-    const userWithId = { ...user, _id: user.id };
+    redirectUrl += `?token=${encodeURIComponent(token)}`;
+
+    console.log('Token généré:', token);
+    console.log('Redirection vers:', redirectUrl);
 
     res.json({
       success: true,
-      token,
-      redirectUrl,
-      user: userWithId,
-      admin: {
-        id: user.id,
-        _id: user.id,
-        name: user.name,
+      redirectUrl: redirectUrl,
+      token: token,
+      user: {
+        id: user._id,
         username: user.username,
-        email: user.email,
+        name: user.name,
         role: user.role,
         level: user.level,
-        subsystem_id: user.subsystem_id,
-        subsystem_name: subsystem ? subsystem.name : null
+        email: user.email,
+        subsystem_id: user.subsystem_id
       }
     });
 
-    await logActivity(user.id, user.name, 'Connexion', `Utilisateur connecté`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  } catch (error) {
+    console.error('Erreur login:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la connexion'
+    });
   }
 });
 
-// Vérification du token
-app.get('/api/auth/check', authenticate, async (req, res) => {
+// =================== ROUTES POUR LOTATO ===================
+
+app.post('/api/history', vérifierToken, async (req, res) => {
   try {
-    const user = req.user;
-    let subsystem = null;
-    if (user.subsystem_id) {
-      const subRes = await pool.query('SELECT * FROM subsystems WHERE id = $1', [user.subsystem_id]);
-      subsystem = subRes.rows[0];
+    const { draw, drawTime, bets, total } = req.body;
+
+    if (!draw || !drawTime || !bets || total === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'Données manquantes pour l\'historique'
+      });
     }
-    const userWithId = { ...user, _id: user.id };
+
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const history = new History({
+      date: new Date(),
+      draw: draw,
+      draw_time: drawTime,
+      bets: bets,
+      total: total,
+      agent_id: user._id,
+      agent_name: user.name
+    });
+
+    await history.save();
+
     res.json({
       success: true,
-      user: userWithId,
-      admin: {
-        id: user.id,
-        _id: user.id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        level: user.level,
-        subsystem_id: user.subsystem_id,
-        subsystem_name: subsystem ? subsystem.name : null
-      }
+      message: 'Historique enregistré avec succès'
     });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  } catch (error) {
+    console.error('Erreur enregistrement historique:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de l\'enregistrement de l\'historique'
+    });
   }
 });
 
-// ==================== ROUTES MASTER (admin général) ====================
-app.use('/api/master', authenticate, isMaster);
-
-// Récupérer tous les sous-systèmes (avec pagination et recherche)
-app.get('/api/master/subsystems', async (req, res) => {
-  const { page = 1, limit = 10, search = '', status } = req.query;
-  const offset = (page - 1) * limit;
-  let whereClause = '';
-  const params = [];
-  let paramIndex = 1;
-
-  if (search) {
-    whereClause += `WHERE (name ILIKE $${paramIndex} OR subdomain ILIKE $${paramIndex})`;
-    params.push(`%${search}%`);
-    paramIndex++;
-  }
-  if (status && status !== 'all') {
-    whereClause += whereClause ? ' AND' : 'WHERE';
-    if (status === 'active') {
-      whereClause += ` is_active = true`;
-    } else if (status === 'inactive') {
-      whereClause += ` is_active = false`;
-    } else if (status === 'expired') {
-      whereClause += ` subscription_expires < NOW()`;
+app.get('/api/history', vérifierToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
     }
-  }
 
-  const countQuery = await pool.query(`SELECT COUNT(*) FROM subsystems ${whereClause}`, params);
-  const total = parseInt(countQuery.rows[0].count);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-  const dataQuery = await pool.query(
-    `SELECT * FROM subsystems ${whereClause} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex+1}`,
-    [...params, limit, offset]
-  );
+    const history = await History.find({ agent_id: user._id })
+      .skip(skip)
+      .limit(limit)
+      .sort({ date: -1 });
 
-  // Ajouter des statistiques basiques pour chaque sous-système
-  const subsystems = [];
-  for (const sub of dataQuery.rows) {
-    const stats = await pool.query(
-      `SELECT 
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND is_active = true) as active_users,
-        (SELECT COALESCE(SUM(total), 0) FROM tickets WHERE subsystem_id = $1 AND date >= CURRENT_DATE) as today_sales,
-        (SELECT COUNT(*) FROM tickets WHERE subsystem_id = $1 AND date >= CURRENT_DATE) as today_tickets,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1) as total_users
-      `, [sub.id]
-    );
-    subsystems.push({
-      ...sub,
-      _id: sub.id,
-      stats: stats.rows[0]
+    const total = await History.countDocuments({ agent_id: user._id });
+
+    res.json({
+      success: true,
+      history: history.map(record => ({
+        id: record._id,
+        date: record.date,
+        draw: record.draw,
+        draw_time: record.draw_time,
+        bets: record.bets,
+        total: record.total
+      })),
+      pagination: {
+        page: page,
+        limit: limit,
+        total: total,
+        total_pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Erreur récupération historique:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération de l\'historique'
     });
   }
+});
 
-  res.json({
-    success: true,
-    subsystems,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      total_pages: Math.ceil(total / limit)
+app.get('/api/tickets', vérifierToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
     }
+
+    const tickets = await Ticket.find({ agent_id: user._id })
+      .sort({ date: -1 })
+      .limit(100);
+
+    const lastTicket = await Ticket.findOne().sort({ number: -1 });
+    const nextTicketNumber = lastTicket ? lastTicket.number + 1 : 100001;
+
+    res.json({
+      success: true,
+      tickets: tickets.map(ticket => ({
+        id: ticket._id,
+        number: ticket.number,
+        date: ticket.date,
+        draw: ticket.draw,
+        draw_time: ticket.draw_time,
+        bets: ticket.bets,
+        total: ticket.total,
+        agent_name: ticket.agent_name,
+        subsystem_id: ticket.subsystem_id
+      })),
+      nextTicketNumber: nextTicketNumber
+    });
+  } catch (error) {
+    console.error('Erreur chargement tickets:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors du chargement des tickets'
+    });
+  }
+});
+
+app.post('/api/tickets', vérifierToken, async (req, res) => {
+    try {
+        console.log('--- Sauvegarde ticket ---');
+        console.log('Body reçu:', req.body);
+        console.log('Token info:', req.tokenInfo);
+
+        const { 
+            number, 
+            draw, 
+            draw_time, 
+            bets, 
+            total, 
+            agent_id, 
+            agent_name, 
+            subsystem_id, 
+            date 
+        } = req.body;
+
+        const user = await User.findById(req.tokenInfo.userId);
+        console.log('Utilisateur authentifié:', user ? user.toObject() : 'Aucun');
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Utilisateur non trouvé'
+            });
+        }
+
+        let finalSubsystemId = subsystem_id || user.subsystem_id;
+        console.log('subsystem_id final:', finalSubsystemId);
+
+        if (!finalSubsystemId) {
+            console.log('ERREUR: Pas de subsystem_id');
+            return res.status(400).json({
+                success: false,
+                error: 'L\'agent doit être associé à un sous-système'
+            });
+        }
+
+        let ticketNumber;
+        if (number) {
+            const existingTicket = await Ticket.findOne({ number: number });
+            if (existingTicket) {
+                const lastTicket = await Ticket.findOne().sort({ number: -1 });
+                ticketNumber = lastTicket ? lastTicket.number + 1 : 100001;
+            } else {
+                ticketNumber = number;
+            }
+        } else {
+            const lastTicket = await Ticket.findOne().sort({ number: -1 });
+            ticketNumber = lastTicket ? lastTicket.number + 1 : 100001;
+        }
+
+        const ticket = new Ticket({
+            number: ticketNumber,
+            draw: draw,
+            draw_time: draw_time,
+            bets: bets,
+            total: total || bets.reduce((sum, bet) => sum + bet.amount, 0),
+            agent_id: agent_id || user._id,
+            agent_name: agent_name || user.name,
+            subsystem_id: finalSubsystemId,
+            date: date || new Date()
+        });
+
+        await ticket.save();
+
+        console.log('✅ Ticket sauvegardé:', ticket._id, 'numéro:', ticket.number);
+
+        res.json({
+            success: true,
+            ticket: {
+                id: ticket._id,
+                number: ticket.number,
+                date: ticket.date,
+                draw: ticket.draw,
+                draw_time: ticket.draw_time,
+                bets: ticket.bets,
+                total: ticket.total,
+                agent_name: ticket.agent_name,
+                subsystem_id: ticket.subsystem_id
+            }
+        });
+    } catch (error) {
+        console.error('❌ Erreur sauvegarde fiche:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la sauvegarde de la fiche: ' + error.message
+        });
+    }
+});
+
+app.get('/api/tickets/pending', vérifierToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const tickets = await Ticket.find({ 
+      agent_id: user._id,
+      is_synced: false 
+    })
+      .sort({ date: -1 })
+      .limit(50);
+    
+    res.json({
+      success: true,
+      tickets: tickets.map(ticket => ({
+        id: ticket._id,
+        number: ticket.number,
+        date: ticket.date,
+        draw: ticket.draw,
+        draw_time: ticket.draw_time,
+        bets: ticket.bets,
+        total: ticket.total,
+        agent_name: ticket.agent_name
+      }))
+    });
+  } catch (error) {
+    console.error('Erreur tickets en attente:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors du chargement des tickets en attente'
+    });
+  }
+});
+
+app.post('/api/tickets/pending', vérifierToken, async (req, res) => {
+  try {
+    const { ticket } = req.body;
+
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const lastTicket = await Ticket.findOne().sort({ number: -1 });
+    const ticketNumber = lastTicket ? lastTicket.number + 1 : 100001;
+
+    const newTicket = new Ticket({
+      number: ticketNumber,
+      draw: ticket.draw,
+      draw_time: ticket.drawTime,
+      bets: ticket.bets,
+      total: ticket.total,
+      agent_id: user._id,
+      agent_name: user.name,
+      subsystem_id: user.subsystem_id,
+      date: new Date(),
+      is_synced: false
+    });
+
+    await newTicket.save();
+
+    res.json({
+      success: true,
+      ticket: {
+        id: newTicket._id,
+        number: newTicket.number,
+        date: newTicket.date,
+        draw: newTicket.draw,
+        draw_time: newTicket.draw_time,
+        bets: newTicket.bets,
+        total: newTicket.total,
+        agent_name: newTicket.agent_name
+      }
+    });
+  } catch (error) {
+    console.error('Erreur sauvegarde ticket en attente:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la sauvegarde du ticket en attente'
+    });
+  }
+});
+
+app.get('/api/tickets/winning', vérifierToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const winners = await Winner.find({ agent_id: user._id })
+      .sort({ date: -1 })
+      .limit(50);
+
+    res.json({
+      success: true,
+      tickets: winners.map(winner => ({
+        id: winner._id,
+        ticket_number: winner.ticket_number,
+        date: winner.date,
+        draw: winner.draw,
+        draw_time: winner.draw_time,
+        winning_bets: winner.winning_bets,
+        total_winnings: winner.total_winnings,
+        paid: winner.paid
+      }))
+    });
+  } catch (error) {
+    console.error('Erreur chargement gagnants:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors du chargement des gagnants'
+    });
+  }
+});
+
+app.get('/api/tickets/multi-draw', vérifierToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const tickets = await MultiDrawTicket.find({ agent_id: user._id })
+      .sort({ date: -1 })
+      .limit(50);
+    
+    res.json({
+      success: true,
+      tickets: tickets.map(ticket => ({
+        id: ticket._id,
+        number: ticket.number,
+        date: ticket.date,
+        bets: ticket.bets,
+        draws: ticket.draws,
+        total: ticket.total,
+        agent_name: ticket.agent_name,
+        subsystem_id: ticket.subsystem_id
+      }))
+    });
+  } catch (error) {
+    console.error('Erreur fiches multi-tirages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors du chargement des fiches multi-tirages'
+    });
+  }
+});
+
+app.post('/api/tickets/multi-draw', vérifierToken, async (req, res) => {
+  try {
+    const { ticket } = req.body;
+
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const lastTicket = await MultiDrawTicket.findOne().sort({ number: -1 });
+    const ticketNumber = lastTicket ? lastTicket.number + 1 : 500001;
+
+    const multiDrawTicket = new MultiDrawTicket({
+      number: ticketNumber,
+      date: new Date(),
+      bets: ticket.bets,
+      draws: Array.from(ticket.draws),
+      total: ticket.totalAmount,
+      agent_id: user._id,
+      agent_name: user.name,
+      subsystem_id: user.subsystem_id
+    });
+
+    await multiDrawTicket.save();
+
+    res.json({
+      success: true,
+      ticket: {
+        id: multiDrawTicket._id,
+        number: multiDrawTicket.number,
+        date: multiDrawTicket.date,
+        bets: multiDrawTicket.bets,
+        draws: multiDrawTicket.draws,
+        total: multiDrawTicket.total,
+        agent_name: multiDrawTicket.agent_name,
+        subsystem_id: multiDrawTicket.subsystem_id
+      }
+    });
+  } catch (error) {
+    console.error('Erreur sauvegarde fiche multi-tirages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la sauvegarde de la fiche multi-tirages'
+    });
+  }
+});
+
+app.get('/api/company-info', vérifierToken, async (req, res) => {
+  try {
+    let config = await Config.findOne();
+    
+    if (!config) {
+      config = new Config();
+      await config.save();
+    }
+    
+    res.json({
+      success: true,
+      company_name: config.company_name,
+      company_phone: config.company_phone,
+      company_address: config.company_address,
+      report_title: config.report_title,
+      report_phone: config.report_phone
+    });
+  } catch (error) {
+    console.error('Erreur chargement info entreprise:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors du chargement des informations de l\'entreprise'
+    });
+  }
+});
+
+app.get('/api/logo', vérifierToken, async (req, res) => {
+  try {
+    const config = await Config.findOne();
+    
+    res.json({
+      success: true,
+      logoUrl: config ? config.logo_url : 'logo-borlette.jpg'
+    });
+  } catch (error) {
+    console.error('Erreur chargement logo:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors du chargement du logo'
+    });
+  }
+});
+
+app.get('/api/results', vérifierToken, async (req, res) => {
+  try {
+    const { draw, draw_time, date } = req.query;
+    
+    let query = {};
+    if (draw) query.draw = draw;
+    if (draw_time) query.draw_time = draw_time;
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+      query.date = { $gte: startDate, $lt: endDate };
+    }
+    
+    const results = await Result.find(query)
+      .sort({ date: -1 })
+      .limit(50);
+    
+    const resultsDatabase = {};
+    results.forEach(result => {
+      if (!resultsDatabase[result.draw]) {
+        resultsDatabase[result.draw] = {};
+      }
+      resultsDatabase[result.draw][result.draw_time] = {
+        date: result.date,
+        lot1: result.lot1,
+        lot2: result.lot2 || '',
+        lot3: result.lot3 || ''
+      };
+    });
+    
+    res.json({
+      success: true,
+      results: resultsDatabase
+    });
+  } catch (error) {
+    console.error('Erreur chargement résultats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors du chargement des résultats'
+    });
+  }
+});
+
+app.post('/api/check-winners', vérifierToken, async (req, res) => {
+  try {
+    const { draw, draw_time } = req.body;
+    
+    const result = await Result.findOne({ 
+      draw: draw,
+      draw_time: draw_time 
+    }).sort({ date: -1 });
+    
+    if (!result) {
+      return res.json({
+        success: true,
+        winningTickets: [],
+        message: 'Aucun résultat trouvé pour ce tirage'
+      });
+    }
+    
+    const user = await User.findById(req.tokenInfo.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+    
+    const tickets = await Ticket.find({
+      agent_id: user._id,
+      draw: draw,
+      draw_time: draw_time,
+      date: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+    });
+    
+    const winningTickets = [];
+    
+    for (const ticket of tickets) {
+      const winningBets = [];
+      
+      for (const bet of ticket.bets) {
+        let winAmount = 0;
+        let winType = '';
+        let matchedNumber = '';
+        
+        if (bet.type === 'borlette' || bet.type === 'boulpe') {
+          const lot1Last2 = result.lot1.substring(1);
+          
+          if (bet.number === lot1Last2) {
+            winAmount = bet.amount * 60;
+            winType = '1er lot';
+            matchedNumber = lot1Last2;
+          } else if (bet.number === result.lot2) {
+            winAmount = bet.amount * 20;
+            winType = '2e lot';
+            matchedNumber = result.lot2;
+          } else if (bet.number === result.lot3) {
+            winAmount = bet.amount * 10;
+            winType = '3e lot';
+            matchedNumber = result.lot3;
+          }
+        } else if (bet.type === 'lotto3') {
+          if (bet.number === result.lot1) {
+            winAmount = bet.amount * 500;
+            winType = 'Lotto 3';
+            matchedNumber = result.lot1;
+          }
+        } else if (bet.type === 'marriage') {
+          const [num1, num2] = bet.number.split('*');
+          const numbers = [result.lot1.substring(1), result.lot2, result.lot3];
+          
+          if (numbers.includes(num1) && numbers.includes(num2)) {
+            winAmount = bet.amount * 1000;
+            winType = 'Maryaj';
+            matchedNumber = `${num1}*${num2}`;
+          }
+        } else if (bet.type === 'grap') {
+          if (result.lot1[0] === result.lot1[1] && result.lot1[1] === result.lot1[2]) {
+            if (bet.number === result.lot1) {
+              winAmount = bet.amount * 500;
+              winType = 'Grap';
+              matchedNumber = result.lot1;
+            }
+          }
+        }
+        
+        if (winAmount > 0) {
+          winningBets.push({
+            type: bet.type,
+            name: bet.name,
+            number: bet.number,
+            matched_number: matchedNumber,
+            win_type: winType,
+            win_amount: winAmount
+          });
+        }
+      }
+      
+      if (winningBets.length > 0) {
+        const totalWinnings = winningBets.reduce((sum, bet) => sum + bet.win_amount, 0);
+        
+        const winner = new Winner({
+          ticket_id: ticket._id,
+          ticket_number: ticket.number,
+          draw: ticket.draw,
+          draw_time: ticket.draw_time,
+          date: new Date(),
+          winning_bets: winningBets,
+          total_winnings: totalWinnings,
+          agent_id: user._id
+        });
+        
+        await winner.save();
+        
+        winningTickets.push({
+          id: ticket._id,
+          number: ticket.number,
+          date: ticket.date,
+          draw: ticket.draw,
+          draw_time: ticket.draw_time,
+          result: {
+            lot1: result.lot1,
+            lot2: result.lot2,
+            lot3: result.lot3
+          },
+          winningBets: winningBets,
+          totalWinnings: totalWinnings
+        });
+      }
+    }
+    
+    res.json({
+      success: true,
+      winningTickets: winningTickets
+    });
+  } catch (error) {
+    console.error('Erreur vérification gagnants:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la vérification des gagnants'
+    });
+  }
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    success: true, 
+    status: 'online', 
+    timestamp: new Date().toISOString(),
+    database: db.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
-// Créer un nouveau sous-système
-app.post('/api/master/subsystems', async (req, res) => {
-  const { name, subdomain, contact_email, contact_phone, max_users, subscription_type, subscription_months, send_credentials } = req.body;
-  if (!name || !subdomain || !contact_email) {
-    return res.status(400).json({ success: false, error: 'Nom, sous-domaine et email sont requis' });
-  }
-
-  const client = await pool.connect();
+app.get('/api/auth/verify', (req, res) => {
   try {
-    await client.query('BEGIN');
-
-    // Vérifier si le sous-domaine existe déjà
-    const existing = await client.query('SELECT id FROM subsystems WHERE subdomain = $1', [subdomain]);
-    if (existing.rows.length > 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ success: false, error: 'Ce sous-domaine est déjà utilisé' });
+    const token = req.query.token;
+    
+    if (!token || !token.startsWith('nova_')) {
+      return res.json({
+        success: false,
+        valid: false
+      });
     }
-
-    // Calculer la date d'expiration
-    let expires = null;
-    if (subscription_months) {
-      expires = new Date();
-      expires.setMonth(expires.getMonth() + parseInt(subscription_months));
-    }
-
-    // Insérer le sous-système
-    const subResult = await client.query(
-      `INSERT INTO subsystems (name, subdomain, contact_email, contact_phone, max_users, subscription_type, subscription_expires)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [name, subdomain, contact_email, contact_phone, max_users || 10, subscription_type || 'basic', expires]
-    );
-    const subsystemId = subResult.rows[0].id;
-
-    // Créer un utilisateur admin pour ce sous-système
-    const adminUsername = `admin_${subdomain}`;
-    const adminPassword = Math.random().toString(36).slice(-8); // mot de passe aléatoire
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
-
-    const userResult = await client.query(
-      `INSERT INTO users (name, username, password, email, role, subsystem_id)
-       VALUES ($1, $2, $3, $4, 'subsystem', $5) RETURNING id`,
-      [name, adminUsername, hashedPassword, contact_email, subsystemId]
-    );
-
-    await client.query('COMMIT');
-
+    
     res.json({
       success: true,
-      subsystem_id: subsystemId,
-      access_url: `https://${subdomain}.votredomaine.com`,
-      admin_credentials: {
-        username: adminUsername,
-        password: adminPassword,
-        email: contact_email
-      }
+      valid: true
     });
-
-    await logActivity(req.user.id, req.user.name, 'Création sous-système', `Sous-système ${name} créé`);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  } finally {
-    client.release();
+  } catch (error) {
+    res.json({
+      success: false,
+      valid: false
+    });
   }
 });
 
-// Récupérer un sous-système par ID
-app.get('/api/master/subsystems/:id', async (req, res) => {
-  const { id } = req.params;
+app.get('/api/auth/check', vérifierToken, async (req, res) => {
   try {
-    const sub = await pool.query('SELECT * FROM subsystems WHERE id = $1', [id]);
-    if (sub.rows.length === 0) return res.status(404).json({ success: false, error: 'Sous-système non trouvé' });
+    console.log('--- Auth check ---');
+    console.log('Token info:', req.tokenInfo);
 
-    // Statistiques
-    const stats = await pool.query(
-      `SELECT 
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1) as total_users,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND is_active = true) as active_users,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND role = 'agent') as total_agents,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND role = 'supervisor') as total_supervisors,
-        (SELECT COALESCE(SUM(total), 0) FROM tickets WHERE subsystem_id = $1 AND date >= CURRENT_DATE) as today_sales,
-        (SELECT COUNT(*) FROM tickets WHERE subsystem_id = $1 AND date >= CURRENT_DATE) as today_tickets,
-        (SELECT COALESCE(SUM(total), 0) FROM tickets WHERE subsystem_id = $1 AND date >= date_trunc('month', CURRENT_DATE)) as monthly_sales,
-        (SELECT COALESCE(SUM(total_winnings), 0) FROM winning_records wr JOIN tickets t ON wr.ticket_id = t.id WHERE t.subsystem_id = $1 AND wr.paid = false) as pending_payout
-      `, [id]
-    );
+    if (!req.tokenInfo) {
+      return res.status(401).json({
+        success: false,
+        error: 'Session invalide'
+      });
+    }
+    
+    const user = await User.findById(req.tokenInfo.userId);
+    console.log('Utilisateur trouvé par ID:', user ? user.toObject() : 'Aucun');
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+    
+    const subsystem = await Subsystem.findById(user.subsystem_id);
+    
+    res.json({
+      success: true,
+      admin: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        level: user.level,
+        email: user.email,
+        subsystem_id: user.subsystem_id,
+        subsystem_name: subsystem ? subsystem.name : 'Non spécifié'
+      }
+    });
+  } catch (error) {
+    console.error('Erreur vérification session:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la vérification de la session'
+    });
+  }
+});
+
+// =================== ROUTES POUR LE MASTER DASHBOARD ===================
+
+app.post('/api/master/init', async (req, res) => {
+  try {
+    const { masterUsername, masterPassword, companyName, masterEmail } = req.body;
+    
+    const existingMaster = await User.findOne({ role: 'master' });
+    if (existingMaster) {
+      return res.status(400).json({
+        success: false,
+        error: 'Un compte master existe déjà'
+      });
+    }
+    
+    const masterUser = new User({
+      username: masterUsername || 'master',
+      password: masterPassword || 'master123',
+      name: companyName || 'Master Admin',
+      email: masterEmail || 'master@novalotto.com',
+      role: 'master',
+      level: 1
+    });
+    
+    await masterUser.save();
+    
+    const token = `nova_${Date.now()}_${masterUser._id}_master_1`;
+    
+    res.json({
+      success: true,
+      token: token,
+      user: {
+        id: masterUser._id,
+        username: masterUser.username,
+        name: masterUser.name,
+        role: masterUser.role,
+        level: masterUser.level,
+        email: masterUser.email,
+        full_name: masterUser.name
+      }
+    });
+    
+  } catch (error) {
+    console.error('Erreur initialisation master:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de l\'initialisation'
+    });
+  }
+});
+
+app.post('/api/master/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    const user = await User.findOne({ 
+      username: username,
+      password: password,
+      role: 'master'
+    });
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Identifiants master incorrects'
+      });
+    }
+    
+    const token = `nova_${Date.now()}_${user._id}_master_1`;
+    
+    res.json({
+      success: true,
+      token: token,
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        level: user.level,
+        email: user.email,
+        full_name: user.name
+      }
+    });
+    
+  } catch (error) {
+    console.error('Erreur connexion master:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la connexion'
+    });
+  }
+});
+
+app.get('/api/master/check-session', vérifierToken, async (req, res) => {
+  try {
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
+    
+    const user = await User.findById(req.tokenInfo.userId);
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        level: user.level,
+        email: user.email,
+        full_name: user.name
+      }
+    });
+    
+  } catch (error) {
+    console.error('Erreur vérification session master:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la vérification de la session'
+    });
+  }
+});
+
+// =================== ROUTES POUR LES SOUS-SYSTÈMES ===================
+
+app.post('/api/master/subsystems', vérifierToken, async (req, res) => {
+  try {
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
+
+    const {
+      name,
+      subdomain,
+      contact_email,
+      contact_phone,
+      max_users,
+      subscription_type,
+      subscription_months,
+      send_credentials
+    } = req.body;
+
+    if (!name || !subdomain || !contact_email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Le nom, le sous-domaine et l\'email de contact sont obligatoires'
+      });
+    }
+
+    const existingSubsystem = await Subsystem.findOne({ subdomain: subdomain.toLowerCase() });
+    if (existingSubsystem) {
+      return res.status(400).json({
+        success: false,
+        error: 'Ce sous-domaine est déjà utilisé'
+      });
+    }
+
+    let adminUser = await User.findOne({ username: contact_email });
+    
+    if (!adminUser) {
+      const generatedPassword = Math.random().toString(36).slice(-8);
+
+      adminUser = new User({
+        username: contact_email,
+        password: generatedPassword,
+        name: name,
+        email: contact_email,
+        role: 'subsystem',
+        level: 1
+      });
+
+      await adminUser.save();
+    } else {
+      if (adminUser.role !== 'subsystem') {
+        return res.status(400).json({
+          success: false,
+          error: 'Cet email est déjà utilisé avec un rôle différent'
+        });
+      }
+    }
+
+    const subscription_expires = new Date();
+    subscription_expires.setMonth(subscription_expires.getMonth() + (subscription_months || 1));
+
+    const subsystem = new Subsystem({
+      name,
+      subdomain: subdomain.toLowerCase(),
+      contact_email,
+      contact_phone,
+      max_users: max_users || 10,
+      subscription_type: subscription_type || 'standard',
+      subscription_months: subscription_months || 1,
+      subscription_expires,
+      admin_user: adminUser._id,
+      is_active: true,
+      stats: {
+        active_users: 0,
+        today_sales: 0,
+        today_tickets: 0,
+        usage_percentage: 0
+      }
+    });
+
+    await subsystem.save();
+
+    adminUser.subsystem_id = subsystem._id;
+    await adminUser.save();
+
+    let domain = 'novalotto.com';
+    if (req.headers.host) {
+      const hostParts = req.headers.host.split('.');
+      if (hostParts.length > 2) {
+        domain = hostParts.slice(1).join('.');
+      } else {
+        domain = req.headers.host;
+      }
+    }
+    
+    domain = domain.replace('master.', '');
+    
+    const access_url = `https://${subdomain.toLowerCase()}.${domain}`;
 
     res.json({
       success: true,
       subsystem: {
-        ...sub.rows[0],
-        _id: sub.rows[0].id,
-        stats: stats.rows[0]
+        id: subsystem._id,
+        name: subsystem.name,
+        subdomain: subsystem.subdomain,
+        contact_email: subsystem.contact_email,
+        contact_phone: subsystem.contact_phone,
+        max_users: subsystem.max_users,
+        subscription_type: subsystem.subscription_type,
+        subscription_expires: subsystem.subscription_expires,
+        is_active: subsystem.is_active,
+        created_at: subsystem.created_at
+      },
+      admin_credentials: {
+        username: contact_email,
+        password: adminUser.password,
+        email: contact_email
+      },
+      access_url: access_url
+    });
+
+  } catch (error) {
+    console.error('Erreur création sous-système:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la création du sous-système: ' + error.message
+    });
+  }
+});
+
+app.get('/api/master/subsystems', vérifierToken, async (req, res) => {
+  try {
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search;
+    const status = req.query.status;
+
+    let query = {};
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { subdomain: { $regex: search, $options: 'i' } },
+        { contact_email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (status && status !== 'all') {
+      if (status === 'active') {
+        query.is_active = true;
+      } else if (status === 'inactive') {
+        query.is_active = false;
+      } else if (status === 'expired') {
+        query.subscription_expires = { $lt: new Date() };
+      }
+    }
+
+    const total = await Subsystem.countDocuments(query);
+
+    const totalPages = Math.ceil(total / limit);
+    const skip = (page - 1) * limit;
+
+    const subsystems = await Subsystem.find(query)
+      .skip(skip)
+      .limit(limit)
+      .sort({ created_at: -1 })
+      .populate('admin_user', 'username name email');
+
+    const formattedSubsystems = await Promise.all(subsystems.map(async (subsystem) => {
+      const activeUsers = await User.countDocuments({ 
+        subsystem_id: subsystem._id,
+        is_active: true 
+      });
+      
+      const usage_percentage = subsystem.max_users > 0 ? 
+        Math.round((activeUsers / subsystem.max_users) * 100) : 0;
+      
+      return {
+        id: subsystem._id,
+        name: subsystem.name,
+        subdomain: subsystem.subdomain,
+        contact_email: subsystem.contact_email,
+        contact_phone: subsystem.contact_phone,
+        max_users: subsystem.max_users,
+        subscription_type: subsystem.subscription_type,
+        subscription_expires: subsystem.subscription_expires,
+        is_active: subsystem.is_active,
+        created_at: subsystem.created_at,
+        stats: {
+          active_users: activeUsers,
+          today_sales: 0,
+          today_tickets: 0,
+          usage_percentage: usage_percentage
+        },
+        users: activeUsers
+      };
+    }));
+
+    res.json({
+      success: true,
+      subsystems: formattedSubsystems,
+      pagination: {
+        page: page,
+        limit: limit,
+        total: total,
+        total_pages: totalPages
       }
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur listage sous-systèmes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors du listage des sous-systèmes'
+    });
   }
 });
 
-// Désactiver un sous-système
-app.put('/api/master/subsystems/:id/deactivate', async (req, res) => {
-  const { id } = req.params;
+app.get('/api/master/subsystems/:id', vérifierToken, async (req, res) => {
   try {
-    await pool.query('UPDATE subsystems SET is_active = false WHERE id = $1', [id]);
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Désactivation sous-système', `Sous-système ${id} désactivé`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
+
+    const subsystemId = req.params.id;
+
+    const subsystem = await Subsystem.findById(subsystemId).populate('admin_user', 'username name email');
+
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
+
+    const users = await User.find({ subsystem_id: subsystemId, is_active: true });
+    
+    const usersByRole = {
+      owner: 0,
+      admin: 0,
+      supervisor: 0,
+      agent: 0
+    };
+    
+    users.forEach(user => {
+      if (user.role === 'subsystem') usersByRole.owner++;
+      else if (user.role === 'supervisor') usersByRole.supervisor++;
+      else if (user.role === 'agent') usersByRole.agent++;
+    });
+
+    const activeUsers = users.length;
+    const usage_percentage = subsystem.max_users > 0 ? 
+      Math.round((activeUsers / subsystem.max_users) * 100) : 0;
+
+    res.json({
+      success: true,
+      subsystem: {
+        id: subsystem._id,
+        name: subsystem.name,
+        subdomain: subsystem.subdomain,
+        contact_email: subsystem.contact_email,
+        contact_phone: subsystem.contact_phone,
+        max_users: subsystem.max_users,
+        subscription_type: subsystem.subscription_type,
+        subscription_expires: subsystem.subscription_expires,
+        is_active: subsystem.is_active,
+        created_at: subsystem.created_at,
+        stats: {
+          active_users: activeUsers,
+          today_sales: 0,
+          today_tickets: 0,
+          usage_percentage: usage_percentage
+        },
+        users: users,
+        users_by_role: usersByRole
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur détails sous-système:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération du sous-système'
+    });
   }
 });
 
-// Activer un sous-système
-app.put('/api/master/subsystems/:id/activate', async (req, res) => {
-  const { id } = req.params;
+app.put('/api/master/subsystems/:id/deactivate', vérifierToken, async (req, res) => {
   try {
-    await pool.query('UPDATE subsystems SET is_active = true WHERE id = $1', [id]);
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Activation sous-système', `Sous-système ${id} activé`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
 
-// Récupérer les utilisateurs d'un sous-système (pour master)
-app.get('/api/master/subsystems/:id/users', async (req, res) => {
-  const { id } = req.params;
-  const { page = 1, limit = 10 } = req.query;
-  const offset = (page - 1) * limit;
+    const subsystemId = req.params.id;
 
-  try {
-    const count = await pool.query('SELECT COUNT(*) FROM users WHERE subsystem_id = $1', [id]);
-    const users = await pool.query(
-      'SELECT id, name, username, email, role, level, is_active, is_online, last_login, created_at FROM users WHERE subsystem_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
-      [id, limit, offset]
+    const subsystem = await Subsystem.findById(subsystemId);
+
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
+
+    subsystem.is_active = false;
+    await subsystem.save();
+
+    await User.updateMany(
+      { subsystem_id: subsystemId },
+      { $set: { is_active: false } }
     );
 
-    const usersWithId = users.rows.map(u => ({ ...u, _id: u.id }));
-
     res.json({
       success: true,
-      users: usersWithId,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: parseInt(count.rows[0].count),
-        total_pages: Math.ceil(count.rows[0].count / limit)
-      }
+      message: 'Sous-système désactivé avec succès'
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur désactivation sous-système:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la désactivation du sous-système'
+    });
   }
 });
 
-// Statistiques globales pour le master
-app.get('/api/master/quick-stats', async (req, res) => {
+app.put('/api/master/subsystems/:id/activate', vérifierToken, async (req, res) => {
   try {
-    const todayTickets = await pool.query('SELECT COUNT(*) FROM tickets WHERE date >= CURRENT_DATE');
-    const onlineUsers = await pool.query('SELECT COUNT(*) FROM users WHERE is_online = true');
-    const expiringSoon = await pool.query("SELECT COUNT(*) FROM subsystems WHERE subscription_expires < NOW() + INTERVAL '7 days' AND subscription_expires > NOW()");
-    const systemAlerts = await pool.query('SELECT COUNT(*) FROM activities WHERE timestamp > NOW() - INTERVAL \'1 day\' AND action LIKE \'%erreur%\'');
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
+
+    const subsystemId = req.params.id;
+
+    const subsystem = await Subsystem.findById(subsystemId);
+
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
+
+    subsystem.is_active = true;
+    await subsystem.save();
+
+    await User.findByIdAndUpdate(
+      subsystem.admin_user,
+      { $set: { is_active: true } }
+    );
+
     res.json({
       success: true,
-      today_tickets: parseInt(todayTickets.rows[0].count),
-      online_users: parseInt(onlineUsers.rows[0].count),
-      expiring_soon: parseInt(expiringSoon.rows[0].count),
-      system_alerts: parseInt(systemAlerts.rows[0].count)
+      message: 'Sous-système activé avec succès'
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur activation sous-système:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de l\'activation du sous-système'
+    });
   }
 });
 
-// Tendances pour le master
-app.get('/api/master/trends', authenticate, isMaster, async (req, res) => {
+app.get('/api/master/subsystems/stats', vérifierToken, async (req, res) => {
   try {
-    const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const currentMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
-    const prevMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
-    const prevMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0);
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
 
-    const subsystemsCurrent = await pool.query('SELECT COUNT(*) FROM subsystems WHERE created_at >= $1 AND created_at <= $2', [currentMonthStart, currentMonthEnd]);
-    const subsystemsPrev = await pool.query('SELECT COUNT(*) FROM subsystems WHERE created_at >= $1 AND created_at <= $2', [prevMonthStart, prevMonthEnd]);
+    const subsystems = await Subsystem.find();
 
-    const usersCurrent = await pool.query('SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at <= $2', [currentMonthStart, currentMonthEnd]);
-    const usersPrev = await pool.query('SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at <= $2', [prevMonthStart, prevMonthEnd]);
+    const subsystemsWithStats = await Promise.all(subsystems.map(async (subsystem) => {
+      const active_agents = await User.countDocuments({ 
+        subsystem_id: subsystem._id,
+        role: 'agent',
+        is_active: true
+      });
 
-    const revenueCurrent = await pool.query('SELECT COALESCE(SUM(total), 0) FROM tickets WHERE date >= $1 AND date <= $2', [currentMonthStart, currentMonthEnd]);
-    const revenuePrev = await pool.query('SELECT COALESCE(SUM(total), 0) FROM tickets WHERE date >= $1 AND date <= $2', [prevMonthStart, prevMonthEnd]);
-
-    const activityCurrent = await pool.query('SELECT COUNT(*) FROM tickets WHERE date >= $1 AND date <= $2', [currentMonthStart, currentMonthEnd]);
-    const activityPrev = await pool.query('SELECT COUNT(*) FROM tickets WHERE date >= $1 AND date <= $2', [prevMonthStart, prevMonthEnd]);
-
-    const calcTrend = (current, prev) => {
-      if (prev == 0) return { direction: 'up', percent: 100 };
-      const percent = ((current - prev) / prev) * 100;
       return {
-        direction: percent >= 0 ? 'up' : 'down',
-        percent: Math.abs(Math.round(percent))
+        id: subsystem._id,
+        name: subsystem.name,
+        subdomain: subsystem.subdomain,
+        total_sales: 0,
+        total_payout: 0,
+        profit: 0,
+        master_commission: 0,
+        active_agents: active_agents,
+        profit_rate: 0
       };
+    }));
+
+    res.json({
+      success: true,
+      subsystems: subsystemsWithStats
+    });
+
+  } catch (error) {
+    console.error('Erreur statistiques sous-systèmes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des statistiques'
+    });
+  }
+});
+
+app.get('/api/master/consolidated-report', vérifierToken, async (req, res) => {
+  try {
+    if (!req.tokenInfo || req.tokenInfo.role !== 'master') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle master requis.'
+      });
+    }
+
+    const { start_date, end_date, group_by } = req.query;
+
+    const startDate = start_date ? new Date(start_date) : new Date();
+    const endDate = end_date ? new Date(end_date) : new Date();
+    
+    if (start_date) startDate.setHours(0, 0, 0, 0);
+    if (end_date) endDate.setHours(23, 59, 59, 999);
+
+    const subsystemsMap = new Map();
+    
+    const subsystems = await Subsystem.find();
+    
+    subsystems.forEach(subsystem => {
+      const subsystemId = subsystem._id.toString();
+      subsystemsMap.set(subsystemId, {
+        subsystem_id: subsystemId,
+        subsystem_name: subsystem.name,
+        tickets_count: 0,
+        total_sales: 0,
+        total_payout: 0,
+        profit: 0
+      });
+    });
+
+    const subsystems_detail = Array.from(subsystemsMap.values());
+
+    const report = {
+      period: {
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0]
+      },
+      summary: {
+        total_tickets: 0,
+        total_sales: 0,
+        total_payout: 0,
+        total_profit: 0,
+        profit_margin: 0
+      },
+      subsystems_detail: subsystems_detail,
+      daily_breakdown: []
     };
 
     res.json({
       success: true,
-      subsystems: calcTrend(parseInt(subsystemsCurrent.rows[0].count), parseInt(subsystemsPrev.rows[0].count)),
-      users: calcTrend(parseInt(usersCurrent.rows[0].count), parseInt(usersPrev.rows[0].count)),
-      revenue: calcTrend(parseFloat(revenueCurrent.rows[0].sum || 0), parseFloat(revenuePrev.rows[0].sum || 0)),
-      activity: calcTrend(parseInt(activityCurrent.rows[0].count), parseInt(activityPrev.rows[0].count))
+      report: report
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
 
-// Revenu mensuel pour le master
-app.get('/api/master/revenue/month', authenticate, isMaster, async (req, res) => {
-  try {
-    const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const result = await pool.query('SELECT COALESCE(SUM(total), 0) as revenue FROM tickets WHERE date >= $1', [currentMonthStart]);
-    res.json({ success: true, revenue: parseFloat(result.rows[0].revenue) });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Revenu quotidien pour le master
-app.get('/api/master/revenue/daily', authenticate, isMaster, async (req, res) => {
-  const days = parseInt(req.query.days) || 30;
-  try {
-    const result = await pool.query(`
-      SELECT DATE(date) as day, COALESCE(SUM(total), 0) as total
-      FROM tickets
-      WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
-      GROUP BY day
-      ORDER BY day ASC
-    `, [days]);
-    const labels = result.rows.map(r => r.day.toISOString().split('T')[0]);
-    const values = result.rows.map(r => parseFloat(r.total));
-    res.json({ success: true, labels, values });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Profit global quotidien pour le master
-app.get('/api/master/global/profit/daily', authenticate, isMaster, async (req, res) => {
-  const days = parseInt(req.query.days) || 30;
-  try {
-    const result = await pool.query(`
-      SELECT 
-        DATE(t.date) as day,
-        COALESCE(SUM(t.total), 0) as sales,
-        COALESCE(SUM(wr.total_winnings), 0) as winnings
-      FROM tickets t
-      LEFT JOIN winning_records wr ON t.id = wr.ticket_id
-      WHERE t.date >= CURRENT_DATE - INTERVAL '1 day' * $1
-      GROUP BY day
-      ORDER BY day ASC
-    `, [days]);
-    const labels = result.rows.map(r => r.day.toISOString().split('T')[0]);
-    const values = result.rows.map(r => parseFloat(r.sales) - parseFloat(r.winnings));
-    res.json({ success: true, labels, values });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Distribution des jeux pour le master
-app.get('/api/games/distribution', authenticate, isMaster, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT type, SUM(amount) as total
-      FROM bets
-      GROUP BY type
-    `);
-    const games = result.rows.map(r => r.type);
-    const sales = result.rows.map(r => parseFloat(r.total));
-    res.json({ success: true, games, sales });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Rapport consolidé pour le master
-app.get('/api/master/consolidated-report', authenticate, isMaster, async (req, res) => {
-  const { start_date, end_date, group_by = 'day' } = req.query;
-  if (!start_date || !end_date) {
-    return res.status(400).json({ success: false, error: 'start_date et end_date requis' });
-  }
-
-  try {
-    const period = { start_date, end_date };
-
-    const summaryRes = await pool.query(`
-      SELECT 
-        COUNT(DISTINCT t.id) as total_tickets,
-        COALESCE(SUM(t.total), 0) as total_sales,
-        COALESCE(SUM(wr.total_winnings), 0) as total_payout,
-        COUNT(DISTINCT t.subsystem_id) as total_subsystems
-      FROM tickets t
-      LEFT JOIN winning_records wr ON t.id = wr.ticket_id
-      WHERE t.date >= $1 AND t.date <= $2
-    `, [start_date, end_date + ' 23:59:59']);
-    const summary = summaryRes.rows[0];
-    summary.total_profit = summary.total_sales - summary.total_payout;
-
-    const subsystemsDetail = await pool.query(`
-      SELECT 
-        s.id as subsystem_id,
-        s.name as subsystem_name,
-        COUNT(DISTINCT t.id) as tickets_count,
-        COALESCE(SUM(t.total), 0) as total_sales,
-        COALESCE(SUM(wr.total_winnings), 0) as total_payout,
-        COALESCE(SUM(t.total), 0) - COALESCE(SUM(wr.total_winnings), 0) as profit
-      FROM subsystems s
-      LEFT JOIN tickets t ON s.id = t.subsystem_id AND t.date >= $1 AND t.date <= $2
-      LEFT JOIN winning_records wr ON t.id = wr.ticket_id
-      GROUP BY s.id, s.name
-    `, [start_date, end_date + ' 23:59:59']);
-
-    const dailyBreakdown = await pool.query(`
-      SELECT 
-        DATE(t.date) as date,
-        COUNT(DISTINCT t.id) as ticket_count,
-        COALESCE(SUM(t.total), 0) as total_amount
-      FROM tickets t
-      WHERE t.date >= $1 AND t.date <= $2
-      GROUP BY date
-      ORDER BY date ASC
-    `, [start_date, end_date + ' 23:59:59']);
-
-    res.json({
-      success: true,
-      report: {
-        period,
-        summary,
-        subsystems_detail: subsystemsDetail.rows,
-        daily_breakdown: dailyBreakdown.rows
-      }
+  } catch (error) {
+    console.error('Erreur génération rapport:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la génération du rapport'
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
   }
 });
 
-// ==================== ROUTES SOUS-SYSTÈME (admin subsystem) ====================
-app.use('/api/subsystem', authenticate, isSubsystem);
-
-// Récupérer les informations du sous-système de l'utilisateur connecté
-app.get('/api/subsystem/mine', async (req, res) => {
+app.get('/api/subsystems/mine', vérifierToken, async (req, res) => {
   try {
-    const sub = await pool.query('SELECT * FROM subsystems WHERE id = $1', [req.user.subsystem_id]);
-    const subWithId = sub.rows.map(s => ({ ...s, _id: s.id }));
-    res.json({ success: true, subsystems: subWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Statistiques du sous-système
-app.get('/api/subsystem/stats', async (req, res) => {
-  const subId = req.user.subsystem_id;
-  try {
-    const stats = await pool.query(
-      `SELECT 
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1) as total_users,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND is_active = true) as active_users,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND role = 'agent') as total_agents,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND role = 'supervisor') as total_supervisors,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND is_online = true AND role = 'agent') as online_agents,
-        (SELECT COUNT(*) FROM users WHERE subsystem_id = $1 AND is_online = true AND role = 'supervisor') as online_supervisors,
-        (SELECT COALESCE(SUM(total), 0) FROM tickets WHERE subsystem_id = $1 AND date >= CURRENT_DATE) as today_sales,
-        (SELECT COUNT(*) FROM tickets WHERE subsystem_id = $1 AND date >= CURRENT_DATE) as today_tickets,
-        (SELECT COALESCE(SUM(total), 0) FROM tickets WHERE subsystem_id = $1 AND date >= date_trunc('month', CURRENT_DATE)) as monthly_sales,
-        (SELECT COUNT(*) FROM tickets WHERE subsystem_id = $1 AND date >= date_trunc('month', CURRENT_DATE)) as monthly_tickets,
-        (SELECT COALESCE(SUM(total_winnings), 0) FROM winning_records wr JOIN tickets t ON wr.ticket_id = t.id WHERE t.subsystem_id = $1 AND wr.paid = false) as pending_payout,
-        (SELECT COUNT(*) FROM tickets WHERE subsystem_id = $1 AND is_synced = false) as pending_issues,
-        (SELECT max_users FROM subsystems WHERE id = $1) as max_users,
-        (SELECT name FROM subsystems WHERE id = $1) as subsystem_name
-      `, [subId]
-    );
-    const usage_percentage = stats.rows[0].max_users ? Math.round((stats.rows[0].active_users / stats.rows[0].max_users) * 100) : 0;
-    res.json({
-      success: true,
-      stats: { ...stats.rows[0], usage_percentage }
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Récupérer les utilisateurs du sous-système avec filtres (version enrichie)
-app.get('/api/subsystem/users', authenticate, async (req, res) => {
-  const subId = req.user.subsystem_id;
-  let { role, search, supervisor_id, limit = 50, supervisor, level } = req.query;
-
-  // Gestion des alias de rôle (supervisor1, supervisor2)
-  let actualRole = role;
-  let actualLevel = level;
-  if (role === 'supervisor1') {
-    actualRole = 'supervisor';
-    actualLevel = 1;
-  } else if (role === 'supervisor2') {
-    actualRole = 'supervisor';
-    actualLevel = 2;
-  }
-
-  let query = 'SELECT * FROM users WHERE subsystem_id = $1';
-  const params = [subId];
-  let paramIndex = 2;
-
-  if (actualRole) {
-    query += ` AND role = $${paramIndex}`;
-    params.push(actualRole);
-    paramIndex++;
-  }
-
-  if (actualLevel !== undefined) {
-    query += ` AND level = $${paramIndex}`;
-    params.push(parseInt(actualLevel));
-    paramIndex++;
-  }
-
-  if (search) {
-    query += ` AND (name ILIKE $${paramIndex} OR username ILIKE $${paramIndex})`;
-    params.push(`%${search}%`);
-    paramIndex++;
-  }
-
-  if (supervisor_id) {
-    query += ` AND (supervisor1_id = $${paramIndex} OR supervisor2_id = $${paramIndex})`;
-    params.push(supervisor_id);
-    paramIndex++;
-  }
-
-  // Filtre spécial : supervisor = '1' pour les agents du superviseur connecté
-  if (supervisor === '1') {
-    query += ` AND (supervisor1_id = $${paramIndex} OR supervisor2_id = $${paramIndex})`;
-    params.push(req.user.id);
-    paramIndex++;
-  }
-
-  query += ' ORDER BY created_at DESC';
-  if (limit) {
-    query += ` LIMIT $${paramIndex}`;
-    params.push(parseInt(limit));
-  }
-
-  try {
-    const users = await pool.query(query, params);
-    const usersWithId = users.rows.map(u => ({ ...u, _id: u.id }));
-    res.json({ success: true, users: usersWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Récupérer un utilisateur par ID
-app.get('/api/subsystem/users/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
-  const subId = req.user.subsystem_id;
-
-  try {
-    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2', [id, subId]);
-    if (user.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
-    }
-    const userWithId = { ...user.rows[0], _id: user.rows[0].id };
-    res.json({ success: true, user: userWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Créer un utilisateur (agent ou superviseur) dans le sous-système
-app.post('/api/subsystem/users/create', async (req, res) => {
-  const { name, username, password, role, level, supervisor1Id, supervisor2Id } = req.body;
-  const subId = req.user.subsystem_id;
-
-  if (!name || !username || !password || !role) {
-    return res.status(400).json({ success: false, error: 'Champs manquants' });
-  }
-  if (role === 'supervisor' && !level) {
-    return res.status(400).json({ success: false, error: 'Niveau requis pour superviseur' });
-  }
-
-  try {
-    const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-    if (existing.rows.length > 0) {
-      return res.status(400).json({ success: false, error: 'Nom d\'utilisateur déjà pris' });
+    if (!req.tokenInfo) {
+      return res.status(401).json({
+        success: false,
+        error: 'Non authentifié'
+      });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const result = await pool.query(
-      `INSERT INTO users (name, username, password, role, level, subsystem_id, supervisor1_id, supervisor2_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [name, username, hashedPassword, role, level || null, subId, supervisor1Id || null, supervisor2Id || null]
-    );
-
-    res.json({ success: true, userId: result.rows[0].id, _id: result.rows[0].id });
-    await logActivity(req.user.id, req.user.name, 'Création utilisateur', `Utilisateur ${username} créé`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Modifier un utilisateur
-app.put('/api/subsystem/users/:id', async (req, res) => {
-  const { id } = req.params;
-  const { name, is_active, password } = req.body;
-  const subId = req.user.subsystem_id;
-
-  try {
-    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2', [id, subId]);
-    if (user.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
+    const user = await User.findById(req.tokenInfo.userId);
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
     }
 
-    let updateQuery = 'UPDATE users SET name = $1, is_active = $2';
-    const params = [name, is_active];
-    if (password) {
-      const hashed = await bcrypt.hash(password, 10);
-      updateQuery += ', password = $' + (params.length + 1);
-      params.push(hashed);
-    }
-    updateQuery += ' WHERE id = $' + (params.length + 1) + ' RETURNING id';
-    params.push(id);
-
-    await pool.query(updateQuery, params);
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Modification utilisateur', `Utilisateur ${id} modifié`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Changer le statut (activer/désactiver) d'un utilisateur
-app.put('/api/subsystem/users/:id/status', async (req, res) => {
-  const { id } = req.params;
-  const { is_active } = req.body;
-  const subId = req.user.subsystem_id;
-
-  try {
-    const result = await pool.query(
-      'UPDATE users SET is_active = $1 WHERE id = $2 AND subsystem_id = $3 RETURNING id',
-      [is_active, id, subId]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
-    }
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Changement statut', `Utilisateur ${id} ${is_active ? 'activé' : 'désactivé'}`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Supprimer un utilisateur (hard delete)
-app.delete('/api/subsystem/users/:id', async (req, res) => {
-  const { id } = req.params;
-  const subId = req.user.subsystem_id;
-
-  try {
-    const result = await pool.query('DELETE FROM users WHERE id = $1 AND subsystem_id = $2 RETURNING id', [id, subId]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
-    }
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Suppression utilisateur', `Utilisateur ${id} supprimé`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Assigner un superviseur à un agent
-app.post('/api/subsystem/assign', authenticate, isSubsystem, async (req, res) => {
-  const { userId, supervisorId, supervisorType } = req.body;
-  const subId = req.user.subsystem_id;
-
-  if (!userId || !supervisorId || !supervisorType) {
-    return res.status(400).json({ success: false, error: 'Paramètres manquants' });
-  }
-
-  try {
-    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2', [userId, subId]);
-    if (user.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
-    }
-
-    const supervisor = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2 AND role = $3', [supervisorId, subId, 'supervisor']);
-    if (supervisor.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Superviseur non trouvé' });
-    }
-
-    let updateField = '';
-    if (supervisorType === 'supervisor1') {
-      updateField = 'supervisor1_id';
-    } else if (supervisorType === 'supervisor2') {
-      updateField = 'supervisor2_id';
+    let subsystems = [];
+    
+    if (user.role === 'subsystem') {
+      subsystems = await Subsystem.find({ 
+        admin_user: user._id,
+        is_active: true 
+      });
+    } else if (user.role === 'master') {
+      subsystems = await Subsystem.find({ is_active: true });
+    } else if (user.role === 'supervisor' && user.level === 2) {
+      subsystems = await Subsystem.find({ 
+        _id: user.subsystem_id,
+        is_active: true 
+      });
     } else {
-      return res.status(400).json({ success: false, error: 'Type de superviseur invalide' });
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle insuffisant.'
+      });
     }
 
-    await pool.query(`UPDATE users SET ${updateField} = $1 WHERE id = $2`, [supervisorId, userId]);
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Assignation superviseur', `Superviseur ${supervisorId} assigné à l'agent ${userId} comme ${supervisorType}`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+    const formattedSubsystems = subsystems.map(subsystem => ({
+      id: subsystem._id,
+      name: subsystem.name,
+      subdomain: subsystem.subdomain,
+      contact_email: subsystem.contact_email,
+      contact_phone: subsystem.contact_phone,
+      max_users: subsystem.max_users,
+      subscription_type: subsystem.subscription_type,
+      subscription_expires: subsystem.subscription_expires,
+      is_active: subsystem.is_active,
+      created_at: subsystem.created_at
+    }));
+
+    res.json({
+      success: true,
+      subsystems: formattedSubsystems
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération sous-systèmes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des sous-systèmes'
+    });
   }
 });
 
-// Récupérer les tickets du sous-système avec filtres
-app.get('/api/subsystem/tickets', async (req, res) => {
-  const subId = req.user.subsystem_id;
-  const { start_date, end_date, agent_id, agent_ids, status, limit = 50 } = req.query;
-  let query = 'SELECT t.*, u.name as agent_name FROM tickets t LEFT JOIN users u ON t.agent_id = u.id WHERE t.subsystem_id = $1';
-  const params = [subId];
-  let paramIndex = 2;
+// =================== ROUTES POUR LA GESTION DES UTILISATEURS DANS UN SOUS-SYSTÈME ===================
 
-  if (start_date) {
-    query += ` AND t.date >= $${paramIndex}`;
-    params.push(start_date);
-    paramIndex++;
-  }
-  if (end_date) {
-    query += ` AND t.date <= $${paramIndex}`;
-    params.push(end_date + ' 23:59:59');
-    paramIndex++;
-  }
-  if (agent_id) {
-    query += ` AND t.agent_id = $${paramIndex}`;
-    params.push(agent_id);
-    paramIndex++;
-  }
-  if (agent_ids) {
-    const ids = agent_ids.split(',').map(id => parseInt(id));
-    query += ` AND t.agent_id = ANY($${paramIndex})`;
-    params.push(ids);
-    paramIndex++;
-  }
-  if (status === 'pending') {
-    query += ` AND t.is_synced = false`;
-  } else if (status === 'synced') {
-    query += ` AND t.is_synced = true`;
-  }
-
-  query += ' ORDER BY t.date DESC LIMIT $' + paramIndex;
-  params.push(parseInt(limit));
-
+app.post('/api/subsystem/users/create', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
   try {
-    const tickets = await pool.query(query, params);
-    const ticketsWithId = tickets.rows.map(t => ({ ...t, _id: t.id }));
-    res.json({ success: true, tickets: ticketsWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
+    const currentUser = req.currentUser;
+    const { 
+      name, 
+      username, 
+      password, 
+      role, 
+      level, 
+      supervisorId, 
+      supervisorType 
+    } = req.body;
 
-// ==================== ROUTES TICKETS (pour agents et superviseurs) ====================
-// Créer un ticket (agent) - MODIFIÉ : numéro optionnel
-app.post('/api/tickets', authenticate, async (req, res) => {
-  const { number, draw, draw_time, bets, total, agent_id, agent_name, subsystem_id, date } = req.body;
-  if (req.user.role !== 'agent' && req.user.role !== 'subsystem' && req.user.role !== 'master') {
-    return res.status(403).json({ success: false, error: 'Seuls les agents peuvent créer des tickets' });
-  }
-  // Le champ number est optionnel : s'il n'est pas fourni, on le génère
-  if (!draw || !draw_time || !bets || !total || !agent_id || !subsystem_id || !date) {
-    return res.status(400).json({ success: false, error: 'Données incomplètes' });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Générer le numéro de ticket si non fourni
-    let ticketNumber = number;
-    if (!ticketNumber) {
-      const numRes = await client.query('SELECT nextval(\'ticket_number_seq\') as num');
-      ticketNumber = numRes.rows[0].num;
+    if (!name || !username || !password || !role) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nom, identifiant, mot de passe et rôle sont obligatoires'
+      });
     }
 
-    const ticketResult = await client.query(
-      `INSERT INTO tickets (number, draw, draw_time, total, agent_id, agent_name, subsystem_id, date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [ticketNumber, draw, draw_time, total, agent_id, agent_name, subsystem_id, date]
-    );
-    const ticketId = ticketResult.rows[0].id;
-
-    for (const bet of bets) {
-      await client.query(
-        `INSERT INTO bets (ticket_id, type, name, number, amount, multiplier, options, is_group, details, per_option_amount, is_lotto4, is_lotto5)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [ticketId, bet.type, bet.name, bet.number, bet.amount, bet.multiplier || null, bet.options || null, bet.isGroup || false, bet.details || null, bet.perOptionAmount || null, bet.isLotto4 || false, bet.isLotto5 || false]
-      );
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
     }
 
-    await client.query('COMMIT');
+    const activeUsersCount = await User.countDocuments({ 
+      subsystem_id: subsystem._id,
+      is_active: true,
+      role: { $in: ['agent', 'supervisor'] }
+    });
 
-    res.json({ success: true, ticket: { id: ticketId, number: ticketNumber, total, agent_name, date, bets } });
-    await logActivity(req.user.id, req.user.name, 'Création ticket', `Ticket #${ticketNumber} créé`);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  } finally {
-    client.release();
-  }
-});
-
-// Récupérer les tickets (avec filtres) - accessible selon rôle
-app.get('/api/tickets', authenticate, async (req, res) => {
-  const { agent, date, limit = 50 } = req.query;
-  let query = 'SELECT t.*, u.name as agent_name FROM tickets t LEFT JOIN users u ON t.agent_id = u.id WHERE 1=1';
-  const params = [];
-
-  if (req.user.role === 'agent') {
-    query += ' AND t.agent_id = $' + (params.length + 1);
-    params.push(req.user.id);
-  } else if (req.user.role === 'supervisor') {
-    query += ' AND t.agent_id IN (SELECT id FROM users WHERE (supervisor1_id = $' + (params.length + 1) + ' OR supervisor2_id = $' + (params.length + 2) + '))';
-    params.push(req.user.id, req.user.id);
-  } else if (req.user.role === 'subsystem') {
-    query += ' AND t.subsystem_id = $' + (params.length + 1);
-    params.push(req.user.subsystem_id);
-  } else if (req.user.role === 'master') {
-    // master voit tout
-  }
-
-  if (agent) {
-    query += ' AND t.agent_id = $' + (params.length + 1);
-    params.push(agent);
-  }
-  if (date) {
-    query += ' AND DATE(t.date) = $' + (params.length + 1);
-    params.push(date);
-  }
-
-  query += ' ORDER BY t.date DESC LIMIT $' + (params.length + 1);
-  params.push(parseInt(limit));
-
-  try {
-    const tickets = await pool.query(query, params);
-    const ticketsWithId = tickets.rows.map(t => ({ ...t, _id: t.id }));
-    res.json({ success: true, tickets: ticketsWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Récupérer un ticket par ID
-app.get('/api/tickets/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const ticket = await pool.query('SELECT * FROM tickets WHERE id = $1', [id]);
-    if (ticket.rows.length === 0) return res.status(404).json({ success: false, error: 'Ticket non trouvé' });
-
-    // Vérifier les droits
-    if (req.user.role === 'agent' && ticket.rows[0].agent_id !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Accès interdit' });
-    }
-    if (req.user.role === 'supervisor') {
-      const agent = await pool.query('SELECT * FROM users WHERE id = $1', [ticket.rows[0].agent_id]);
-      if (agent.rows.length === 0 || (agent.rows[0].supervisor1_id !== req.user.id && agent.rows[0].supervisor2_id !== req.user.id)) {
-        return res.status(403).json({ success: false, error: 'Accès interdit' });
-      }
-    }
-    if (req.user.role === 'subsystem' && ticket.rows[0].subsystem_id !== req.user.subsystem_id) {
-      return res.status(403).json({ success: false, error: 'Accès interdit' });
+    if (activeUsersCount >= subsystem.max_users) {
+      return res.status(400).json({
+        success: false,
+        error: `Limite d'utilisateurs atteinte (${subsystem.max_users} maximum)`
+      });
     }
 
-    const bets = await pool.query('SELECT * FROM bets WHERE ticket_id = $1', [id]);
-
-    res.json({ success: true, ticket: { ...ticket.rows[0], _id: ticket.rows[0].id, bets: bets.rows } });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Supprimer un ticket (si moins de 5 min)
-app.delete('/api/tickets/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const ticket = await pool.query('SELECT * FROM tickets WHERE id = $1', [id]);
-    if (ticket.rows.length === 0) return res.status(404).json({ success: false, error: 'Ticket non trouvé' });
-
-    let allowed = false;
-    if (req.user.role === 'agent' && ticket.rows[0].agent_id === req.user.id) allowed = true;
-    else if (req.user.role === 'supervisor') {
-      const agent = await pool.query('SELECT * FROM users WHERE id = $1', [ticket.rows[0].agent_id]);
-      if (agent.rows.length && (agent.rows[0].supervisor1_id === req.user.id || agent.rows[0].supervisor2_id === req.user.id)) allowed = true;
-    } else if (req.user.role === 'subsystem' && ticket.rows[0].subsystem_id === req.user.subsystem_id) allowed = true;
-    else if (req.user.role === 'master') allowed = true;
-
-    if (!allowed) return res.status(403).json({ success: false, error: 'Accès interdit' });
-
-    const diff = (new Date() - new Date(ticket.rows[0].date)) / (1000 * 60);
-    if (diff > 5 && req.user.role !== 'master' && req.user.role !== 'subsystem') {
-      return res.status(400).json({ success: false, error: 'Ticket trop ancien pour être supprimé (plus de 5 min)' });
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cet identifiant est déjà utilisé'
+      });
     }
 
-    await pool.query('DELETE FROM tickets WHERE id = $1', [id]);
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Suppression ticket', `Ticket #${ticket.rows[0].number} supprimé`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Marquer un ticket comme synchronisé
-app.put('/api/tickets/:id/sync', authenticate, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const ticket = await pool.query('SELECT * FROM tickets WHERE id = $1', [id]);
-    if (ticket.rows.length === 0) return res.status(404).json({ success: false, error: 'Ticket non trouvé' });
-
-    if (req.user.role !== 'subsystem' && req.user.role !== 'master') {
-      return res.status(403).json({ success: false, error: 'Seul l\'admin peut synchroniser' });
+    let userLevel = 1;
+    if (role === 'supervisor') {
+      userLevel = level || 1;
+    } else if (role === 'agent') {
+      userLevel = 1;
     }
 
-    await pool.query('UPDATE tickets SET is_synced = true, synced_at = NOW() WHERE id = $1', [id]);
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Synchronisation ticket', `Ticket #${ticket.rows[0].number} synchronisé`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
+    const newUser = new User({
+      username,
+      password,
+      name,
+      role,
+      level: userLevel,
+      subsystem_id: subsystem._id,
+      is_active: true,
+      dateCreation: new Date()
+    });
 
-// Récupérer les tickets gagnants (avec filtre)
-app.get('/api/tickets/winning', authenticate, async (req, res) => {
-  const { agent, subsystem_id, date } = req.query;
-  let query = `
-    SELECT wr.*, t.number as ticket_number, t.draw, t.draw_time, t.date, t.agent_id, t.agent_name, t.subsystem_id
-    FROM winning_records wr
-    JOIN tickets t ON wr.ticket_id = t.id
-    WHERE 1=1
-  `;
-  const params = [];
+    if (role === 'agent' && supervisorId) {
+      const supervisor = await User.findOne({
+        _id: supervisorId,
+        subsystem_id: subsystem._id,
+        role: 'supervisor'
+      });
 
-  if (agent) {
-    query += ' AND t.agent_id = $' + (params.length + 1);
-    params.push(agent);
-  }
-  if (subsystem_id) {
-    query += ' AND t.subsystem_id = $' + (params.length + 1);
-    params.push(subsystem_id);
-  } else if (req.user.role === 'subsystem') {
-    query += ' AND t.subsystem_id = $' + (params.length + 1);
-    params.push(req.user.subsystem_id);
-  } else if (req.user.role === 'supervisor') {
-    query += ' AND t.agent_id IN (SELECT id FROM users WHERE supervisor1_id = $' + (params.length + 1) + ' OR supervisor2_id = $' + (params.length + 2) + ')';
-    params.push(req.user.id, req.user.id);
-  } else if (req.user.role === 'agent') {
-    query += ' AND t.agent_id = $' + (params.length + 1);
-    params.push(req.user.id);
-  }
-
-  if (date) {
-    query += ' AND DATE(t.date) = $' + (params.length + 1);
-    params.push(date);
-  }
-
-  query += ' ORDER BY t.date DESC';
-
-  try {
-    const winners = await pool.query(query, params);
-    const winnersWithId = winners.rows.map(w => ({ ...w, _id: w.id }));
-    res.json({ success: true, tickets: winnersWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Marquer un ticket gagnant comme payé
-app.put('/api/winners/:id/pay', authenticate, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const winner = await pool.query('SELECT * FROM winning_records WHERE id = $1', [id]);
-    if (winner.rows.length === 0) return res.status(404).json({ success: false, error: 'Enregistrement non trouvé' });
-
-    if (req.user.role !== 'subsystem' && req.user.role !== 'master') {
-      return res.status(403).json({ success: false, error: 'Seul l\'admin peut marquer comme payé' });
-    }
-
-    await pool.query('UPDATE winning_records SET paid = true, paid_at = NOW() WHERE id = $1', [id]);
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Paiement gagnant', `Winner ${id} marqué payé`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// ==================== ROUTES RÉSULTATS ====================
-// Obtenir les résultats (public)
-app.get('/api/results', async (req, res) => {
-  const { subsystem_id } = req.query;
-  try {
-    const results = await pool.query(
-      'SELECT * FROM results WHERE subsystem_id = $1 ORDER BY date DESC, time DESC LIMIT 20',
-      [subsystem_id || 1]
-    );
-    const resultsWithId = results.rows.map(r => ({ ...r, _id: r.id }));
-    res.json({ success: true, results: resultsWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// Ajouter/modifier un résultat (subsystem)
-app.post('/api/results', authenticate, isSubsystem, async (req, res) => {
-  const { draw, time, date, lot1, lot2, lot3, verified } = req.body;
-  const subId = req.user.subsystem_id;
-
-  if (!draw || !time || !date || !lot1) {
-    return res.status(400).json({ success: false, error: 'Données incomplètes' });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    await client.query(
-      `INSERT INTO results (draw, time, date, lot1, lot2, lot3, verified, subsystem_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (draw, time, date, subsystem_id) DO UPDATE SET
-         lot1 = EXCLUDED.lot1,
-         lot2 = EXCLUDED.lot2,
-         lot3 = EXCLUDED.lot3,
-         verified = EXCLUDED.verified,
-         updated_at = NOW()`,
-      [draw, time, date, lot1, lot2, lot3, verified, subId]
-    );
-
-    await calculateWinnersForDraw(client, draw, time, date, subId);
-
-    await client.query('COMMIT');
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Saisie résultat', `Résultat ${draw} ${time} ${date} enregistré`);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  } finally {
-    client.release();
-  }
-});
-
-// Fonction pour calculer les gagnants d'un tirage (identique à l'original)
-async function calculateWinnersForDraw(client, draw, time, date, subsystemId) {
-  const tickets = await client.query(
-    'SELECT * FROM tickets WHERE draw = $1 AND draw_time = $2 AND DATE(date) = $3 AND subsystem_id = $4',
-    [draw, time, date, subsystemId]
-  );
-
-  for (const ticket of tickets.rows) {
-    const bets = await client.query('SELECT * FROM bets WHERE ticket_id = $1', [ticket.id]);
-    const result = await client.query(
-      'SELECT * FROM results WHERE draw = $1 AND time = $2 AND date = $3 AND subsystem_id = $4',
-      [draw, time, date, subsystemId]
-    );
-    if (result.rows.length === 0) continue;
-    const resData = result.rows[0];
-
-    const winningBets = [];
-    let totalWinnings = 0;
-
-    for (const bet of bets.rows) {
-      let winAmount = 0;
-      if (bet.type === 'borlette' && bet.number === resData.lot1?.slice(-2)) {
-        winAmount = bet.amount * 60;
-      } else if (bet.type === 'borlette' && bet.number === resData.lot2) {
-        winAmount = bet.amount * 20;
-      } else if (bet.type === 'borlette' && bet.number === resData.lot3) {
-        winAmount = bet.amount * 10;
-      }
-      // Ajouter d'autres jeux...
-
-      if (winAmount > 0) {
-        winningBets.push({ ...bet, winAmount });
-        totalWinnings += winAmount;
+      if (supervisor) {
+        if (supervisorType === 'supervisor1') {
+          newUser.supervisor_id = supervisorId;
+        } else if (supervisorType === 'supervisor2') {
+          newUser.supervisor2_id = supervisorId;
+        }
       }
     }
 
-    if (totalWinnings > 0) {
-      await client.query(
-        `INSERT INTO winning_records (ticket_id, winning_bets, total_winnings, paid)
-         VALUES ($1, $2, $3, false)`,
-        [ticket.id, JSON.stringify(winningBets), totalWinnings]
-      );
-    }
-  }
-}
+    await newUser.save();
 
-// ==================== ROUTES TIRAGES (draws) ====================
-app.get('/api/draws', async (req, res) => {
-  const { subsystem_id } = req.query;
+    subsystem.stats.active_users = activeUsersCount + 1;
+    subsystem.stats.usage_percentage = Math.round(((activeUsersCount + 1) / subsystem.max_users) * 100);
+    await subsystem.save();
+
+    res.json({
+      success: true,
+      message: 'Utilisateur créé avec succès',
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        username: newUser.username,
+        role: newUser.role,
+        level: newUser.level,
+        subsystem_id: newUser.subsystem_id
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur création utilisateur:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la création de l\'utilisateur'
+    });
+  }
+});
+
+app.delete('/api/subsystem/users/:id', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
   try {
-    const draws = await pool.query(
-      'SELECT * FROM draws WHERE subsystem_id = $1 AND is_active = true',
-      [subsystem_id || 1]
-    );
-    const formatted = {};
-    draws.rows.forEach(d => {
-      formatted[d.name.toLowerCase().replace(' ', '')] = {
-        name: d.name,
-        times: d.times
+    const currentUser = req.currentUser;
+    const userId = req.params.id;
+
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    const user = await User.findOne({
+      _id: userId,
+      subsystem_id: subsystem._id
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé dans votre sous-système'
+      });
+    }
+
+    if (user.role === 'subsystem') {
+      return res.status(403).json({
+        success: false,
+        error: 'Vous ne pouvez pas supprimer un administrateur de sous-système'
+      });
+    }
+
+    if (user._id.toString() === currentUser._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Vous ne pouvez pas vous supprimer vous-même'
+      });
+    }
+
+    user.is_active = false;
+    await user.save();
+
+    const activeUsersCount = await User.countDocuments({ 
+      subsystem_id: subsystem._id,
+      is_active: true,
+      role: { $in: ['agent', 'supervisor'] }
+    });
+    
+    subsystem.stats.active_users = activeUsersCount;
+    subsystem.stats.usage_percentage = Math.round((activeUsersCount / subsystem.max_users) * 100);
+    await subsystem.save();
+
+    res.json({
+      success: true,
+      message: 'Utilisateur désactivé avec succès'
+    });
+
+  } catch (error) {
+    console.error('Erreur suppression utilisateur:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la suppression de l\'utilisateur'
+    });
+  }
+});
+
+app.get('/api/subsystem/tickets', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
+  try {
+    const currentUser = req.currentUser;
+    const { period, limit, draw, date } = req.query;
+
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
+
+    let query = { subsystem_id: subsystem._id };
+    
+    if (period === 'today') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      query.date = { $gte: today };
+    } else if (period === 'week') {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      query.date = { $gte: weekAgo };
+    } else if (period === 'month') {
+      const monthAgo = new Date();
+      monthAgo.setDate(monthAgo.getDate() - 30);
+      query.date = { $gte: monthAgo };
+    }
+
+    if (draw && draw !== 'all') {
+      query.draw = draw;
+    }
+
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+      query.date = { $gte: startDate, $lt: endDate };
+    }
+
+    const limitValue = parseInt(limit) || 100;
+
+    const tickets = await Ticket.find(query)
+      .sort({ date: -1 })
+      .limit(limitValue);
+
+    const totalTickets = tickets.length;
+    const totalSales = tickets.reduce((sum, ticket) => sum + ticket.total, 0);
+
+    if (period === 'today' || !period) {
+      subsystem.stats.today_tickets = totalTickets;
+      subsystem.stats.today_sales = totalSales;
+      await subsystem.save();
+    }
+
+    res.json({
+      success: true,
+      tickets: tickets.map(ticket => ({
+        id: ticket._id,
+        number: ticket.number,
+        date: ticket.date,
+        draw: ticket.draw,
+        draw_time: ticket.draw_time,
+        bets: ticket.bets,
+        total: ticket.total,
+        agent_id: ticket.agent_id,
+        agent_name: ticket.agent_name,
+        is_synced: ticket.is_synced
+      })),
+      stats: {
+        total_tickets: totalTickets,
+        total_sales: totalSales
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération tickets:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des tickets'
+    });
+  }
+});
+
+app.get('/api/subsystem/activities', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
+  try {
+    const currentUser = req.currentUser;
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
+
+    const activities = [
+      {
+        user: 'Debesly borlette',
+        action: 'Création d\'utilisateur',
+        details: 'Création de l\'agent Dédie jean',
+        timestamp: new Date(Date.now() - 3600000)
+      },
+      {
+        user: 'Debesly borlette',
+        action: 'Modification des paramètres',
+        details: 'Changement des multiplicateurs Borlette',
+        timestamp: new Date(Date.now() - 7200000)
+      },
+      {
+        user: 'Dédie jean',
+        action: 'Vente de ticket',
+        details: 'Ticket #100001 vendu pour 500 HTG',
+        timestamp: new Date(Date.now() - 10800000)
+      }
+    ];
+
+    res.json({
+      success: true,
+      activities: activities
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération activités:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des activités'
+    });
+  }
+});
+
+app.put('/api/tickets/:id/sync', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
+  try {
+    const currentUser = req.currentUser;
+    const ticketId = req.params.id;
+
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    const ticket = await Ticket.findOne({
+      _id: ticketId,
+      subsystem_id: subsystem._id
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        error: 'Ticket non trouvé dans votre sous-système'
+      });
+    }
+
+    ticket.is_synced = true;
+    ticket.synced_at = new Date();
+    await ticket.save();
+
+    res.json({
+      success: true,
+      message: 'Ticket synchronisé avec succès'
+    });
+
+  } catch (error) {
+    console.error('Erreur synchronisation ticket:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la synchronisation du ticket'
+    });
+  }
+});
+
+app.get('/api/supervisor1/agent-stats', vérifierToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.tokenInfo.userId);
+    
+    if (!user || user.role !== 'supervisor' || user.level !== 1) {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle superviseur level 1 requis.'
+      });
+    }
+
+    const agents = await User.find({
+      role: 'agent',
+      subsystem_id: user.subsystem_id,
+      $or: [
+        { supervisor_id: user._id },
+        { supervisor2_id: user._id }
+      ],
+      is_active: true
+    });
+
+    const agentStats = await Promise.all(agents.map(async (agent) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const ticketsCount = await Ticket.countDocuments({
+        agent_id: agent._id,
+        date: { $gte: today }
+      });
+
+      const salesResult = await Ticket.aggregate([
+        {
+          $match: {
+            agent_id: agent._id,
+            date: { $gte: today }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalSales: { $sum: '$total' }
+          }
+        }
+      ]);
+
+      const totalSales = salesResult.length > 0 ? salesResult[0].totalSales : 0;
+
+      return {
+        id: agent._id,
+        name: agent.name,
+        username: agent.username,
+        tickets_today: ticketsCount,
+        sales_today: totalSales,
+        is_online: Math.random() > 0.3
       };
+    }));
+
+    const totals = {
+      total_agents: agents.length,
+      total_tickets: agentStats.reduce((sum, stat) => sum + stat.tickets_today, 0),
+      total_sales: agentStats.reduce((sum, stat) => sum + stat.sales_today, 0),
+      online_agents: agentStats.filter(stat => stat.is_online).length
+    };
+
+    res.json({
+      success: true,
+      agents: agentStats,
+      totals: totals
     });
-    res.json({ success: true, draws: formatted });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur récupération statistiques agents:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des statistiques'
+    });
   }
 });
 
-// ==================== ROUTES RESTRICTIONS ====================
-app.get('/api/restrictions', authenticate, async (req, res) => {
-  const subsystemId = req.user.subsystem_id || req.query.subsystemId;
-  if (!subsystemId) return res.status(400).json({ success: false, error: 'subsystemId requis' });
-
+app.get('/api/supervisor1/agent-reports/:agentId', vérifierToken, async (req, res) => {
   try {
-    const restrictions = await pool.query('SELECT * FROM restrictions WHERE subsystem_id = $1 ORDER BY created_at DESC', [subsystemId]);
-    const restrictionsWithId = restrictions.rows.map(r => ({ ...r, _id: r.id }));
-    res.json({ success: true, restrictions: restrictionsWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-app.post('/api/restrictions', authenticate, isSubsystem, async (req, res) => {
-  const { number, type, limitAmount, draw, time } = req.body;
-  const subId = req.user.subsystem_id;
-
-  if (!number || !type) {
-    return res.status(400).json({ success: false, error: 'Numéro et type requis' });
-  }
-
-  try {
-    await pool.query(
-      `INSERT INTO restrictions (number, type, limit_amount, draw, time, subsystem_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [number, type, limitAmount || null, draw || 'all', time || 'all', subId]
-    );
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Ajout restriction', `Restriction ${number} créée`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-app.put('/api/restrictions/:id', authenticate, isSubsystem, async (req, res) => {
-  const { id } = req.params;
-  const { number, type, limitAmount, draw, time } = req.body;
-  const subId = req.user.subsystem_id;
-
-  try {
-    const result = await pool.query(
-      `UPDATE restrictions SET number = $1, type = $2, limit_amount = $3, draw = $4, time = $5
-       WHERE id = $6 AND subsystem_id = $7 RETURNING id`,
-      [number, type, limitAmount || null, draw, time, id, subId]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Restriction non trouvée' });
+    const supervisor = await User.findById(req.tokenInfo.userId);
+    
+    if (!supervisor || supervisor.role !== 'supervisor' || supervisor.level !== 1) {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé. Rôle superviseur level 1 requis.'
+      });
     }
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Modification restriction', `Restriction ${id} modifiée`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
 
-app.delete('/api/restrictions/:id', authenticate, isSubsystem, async (req, res) => {
-  const { id } = req.params;
-  const subId = req.user.subsystem_id;
+    const agentId = req.params.agentId;
+    
+    const agent = await User.findOne({
+      _id: agentId,
+      role: 'agent',
+      subsystem_id: supervisor.subsystem_id,
+      $or: [
+        { supervisor_id: supervisor._id },
+        { supervisor2_id: supervisor._id }
+      ]
+    });
 
-  try {
-    const result = await pool.query('DELETE FROM restrictions WHERE id = $1 AND subsystem_id = $2 RETURNING id', [id, subId]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Restriction non trouvée' });
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        error: 'Agent non trouvé ou non assigné à ce superviseur'
+      });
     }
-    res.json({ success: true });
-    await logActivity(req.user.id, req.user.name, 'Suppression restriction', `Restriction ${id} supprimée`);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
 
-// ==================== ROUTES NOTIFICATIONS ====================
-app.get('/api/notifications', authenticate, async (req, res) => {
-  try {
-    const notifs = await pool.query(
-      'SELECT * FROM notifications WHERE user_id = $1 ORDER BY timestamp DESC',
-      [req.user.id]
-    );
-    const notifsWithId = notifs.rows.map(n => ({ ...n, _id: n.id }));
-    res.json({ success: true, notifications: notifsWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
+    const { start_date, end_date } = req.query;
+    let dateFilter = {};
 
-app.get('/api/notifications/unread-count', authenticate, async (req, res) => {
-  try {
-    const count = await pool.query(
-      'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = false',
-      [req.user.id]
-    );
-    res.json({ success: true, count: parseInt(count.rows[0].count) });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
+    if (start_date && end_date) {
+      const startDate = new Date(start_date);
+      const endDate = new Date(end_date);
+      endDate.setHours(23, 59, 59, 999);
+      dateFilter = { date: { $gte: startDate, $lte: endDate } };
+    } else {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      dateFilter = { date: { $gte: today, $lt: tomorrow } };
+    }
 
-app.put('/api/notifications/:id/read', authenticate, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await pool.query('UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2', [id, req.user.id]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
+    const tickets = await Ticket.find({
+      agent_id: agent._id,
+      ...dateFilter
+    }).sort({ date: -1 });
 
-app.delete('/api/notifications/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await pool.query('DELETE FROM notifications WHERE id = $1 AND user_id = $2', [id, req.user.id]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
+    const multiDrawTickets = await MultiDrawTicket.find({
+      agent_id: agent._id,
+      ...dateFilter
+    }).sort({ date: -1 });
 
-app.put('/api/notifications/read-all', authenticate, async (req, res) => {
-  try {
-    await pool.query('UPDATE notifications SET read = true WHERE user_id = $1', [req.user.id]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-app.delete('/api/notifications/clear', authenticate, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM notifications WHERE user_id = $1', [req.user.id]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// ==================== ROUTES ACTIVITÉS ====================
-app.get('/api/subsystem/activities', authenticate, isSubsystem, async (req, res) => {
-  const subId = req.user.subsystem_id;
-  try {
-    const activities = await pool.query(
-      `SELECT a.* FROM activities a
-       JOIN users u ON a.user_id = u.id
-       WHERE u.subsystem_id = $1
-       ORDER BY a.timestamp DESC LIMIT 50`,
-      [subId]
-    );
-    const activitiesWithId = activities.rows.map(a => ({ ...a, _id: a.id }));
-    res.json({ success: true, activities: activitiesWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
-  }
-});
-
-// ==================== ROUTES RAPPORTS (simplifiées) ====================
-app.get('/api/reports/daily', authenticate, isSubsystem, async (req, res) => {
-  const { date } = req.query;
-  const subId = req.user.subsystem_id;
-  if (!date) return res.status(400).json({ success: false, error: 'Date requise' });
-
-  try {
-    const tickets = await pool.query(
-      `SELECT t.*, u.name as agent_name FROM tickets t
-       JOIN users u ON t.agent_id = u.id
-       WHERE t.subsystem_id = $1 AND DATE(t.date) = $2`,
-      [subId, date]
-    );
-
-    const totalTickets = tickets.rows.length;
-    const totalSales = tickets.rows.reduce((sum, t) => sum + t.total, 0);
-
-    const agentsMap = {};
-    tickets.rows.forEach(t => {
-      if (!agentsMap[t.agent_name]) {
-        agentsMap[t.agent_name] = { name: t.agent_name, tickets: 0, sales: 0 };
-      }
-      agentsMap[t.agent_name].tickets++;
-      agentsMap[t.agent_name].sales += t.total;
-    });
-    const agents = Object.values(agentsMap);
+    const totalTickets = tickets.length + multiDrawTickets.length;
+    const totalSales = tickets.reduce((sum, ticket) => sum + ticket.total, 0) +
+                      multiDrawTickets.reduce((sum, ticket) => sum + ticket.total, 0);
 
     res.json({
       success: true,
-      report: {
-        date,
-        totalTickets,
-        totalSales,
-        agents
+      agent: {
+        id: agent._id,
+        name: agent.name,
+        username: agent.username
+      },
+      period: dateFilter,
+      tickets: tickets,
+      multiDrawTickets: multiDrawTickets,
+      totals: {
+        total_tickets: totalTickets,
+        total_sales: totalSales,
+        regular_tickets: tickets.length,
+        multi_draw_tickets: multiDrawTickets.length
       }
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur récupération rapport agent:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération du rapport'
+    });
   }
 });
 
-app.get('/api/reports/monthly', authenticate, isSubsystem, async (req, res) => {
-  const { month } = req.query;
-  const subId = req.user.subsystem_id;
-  if (!month) return res.status(400).json({ success: false, error: 'Mois requis' });
-
+app.get('/api/subsystem/users', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
   try {
-    const startDate = month + '-01';
-    const endDate = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).toISOString().split('T')[0];
+    const user = req.currentUser;
+    const subsystem = await Subsystem.findById(user.subsystem_id);
+    
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
 
-    const tickets = await pool.query(
-      `SELECT * FROM tickets
-       WHERE subsystem_id = $1 AND date >= $2 AND date <= $3`,
-      [subId, startDate, endDate + ' 23:59:59']
-    );
+    const { role, status } = req.query;
+    let query = { subsystem_id: subsystem._id };
 
-    const totalTickets = tickets.rows.length;
-    const totalSales = tickets.rows.reduce((sum, t) => sum + t.total, 0);
-
-    const dailyMap = {};
-    tickets.rows.forEach(t => {
-      const day = new Date(t.date).toISOString().split('T')[0];
-      if (!dailyMap[day]) {
-        dailyMap[day] = { date: day, tickets: 0, sales: 0 };
+    if (role) {
+      if (role === 'supervisor1') {
+        query.role = 'supervisor';
+        query.level = 1;
+      } else if (role === 'supervisor2') {
+        query.role = 'supervisor';
+        query.level = 2;
+      } else {
+        query.role = role;
       }
-      dailyMap[day].tickets++;
-      dailyMap[day].sales += t.total;
-    });
-    const daily = Object.values(dailyMap).sort((a,b) => a.date.localeCompare(b.date));
+    }
+
+    if (status) {
+      query.is_active = status === 'active';
+    }
+
+    const users = await User.find(query)
+      .select('-password')
+      .sort({ dateCreation: -1 });
+
+    const usersWithStats = await Promise.all(users.map(async (user) => {
+      if (user.role === 'agent') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const ticketsCount = await Ticket.countDocuments({
+          agent_id: user._id,
+          date: { $gte: today }
+        });
+
+        return {
+          ...user.toObject(),
+          tickets_today: ticketsCount,
+          is_online: Math.random() > 0.3
+        };
+      }
+
+      if (user.role === 'supervisor') {
+        const agents = await User.find({ 
+          subsystem_id: subsystem._id,
+          role: 'agent',
+          $or: [
+            { supervisor_id: user._id },
+            { supervisor2_id: user._id }
+          ]
+        });
+
+        return {
+          ...user.toObject(),
+          agents_count: agents.length,
+          is_online: Math.random() > 0.3
+        };
+      }
+
+      return user.toObject();
+    }));
 
     res.json({
       success: true,
-      report: {
-        month,
-        totalTickets,
-        totalSales,
-        daily
-      }
+      users: usersWithStats
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur récupération utilisateurs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des utilisateurs'
+    });
   }
 });
 
-app.get('/api/reports/agent', authenticate, isSubsystem, async (req, res) => {
-  const { agentId, period } = req.query;
-  const subId = req.user.subsystem_id;
-  if (!agentId) return res.status(400).json({ success: false, error: 'agentId requis' });
-
-  let startDate;
-  const today = new Date();
-  if (period === 'today') {
-    startDate = new Date(today.setHours(0,0,0,0)).toISOString().split('T')[0];
-  } else if (period === 'week') {
-    const weekAgo = new Date(today);
-    weekAgo.setDate(today.getDate() - 7);
-    startDate = weekAgo.toISOString().split('T')[0];
-  } else if (period === 'month') {
-    const monthAgo = new Date(today);
-    monthAgo.setMonth(today.getMonth() - 1);
-    startDate = monthAgo.toISOString().split('T')[0];
-  } else {
-    return res.status(400).json({ success: false, error: 'Période invalide' });
-  }
-
+app.get('/api/subsystem/users/:id', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
   try {
-    const agent = await pool.query('SELECT * FROM users WHERE id = $1 AND subsystem_id = $2', [agentId, subId]);
-    if (agent.rows.length === 0) return res.status(404).json({ success: false, error: 'Agent non trouvé' });
+    const currentUser = req.currentUser;
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
 
-    const tickets = await pool.query(
-      `SELECT * FROM tickets WHERE agent_id = $1 AND date >= $2 ORDER BY date DESC`,
-      [agentId, startDate]
-    );
+    const userId = req.params.id;
+    
+    const user = await User.findOne({
+      _id: userId,
+      subsystem_id: subsystem._id
+    }).select('-password');
 
-    const totalTickets = tickets.rows.length;
-    const totalSales = tickets.rows.reduce((sum, t) => sum + t.total, 0);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé dans votre sous-système'
+      });
+    }
 
     res.json({
       success: true,
-      report: {
-        agent: agent.rows[0],
-        totalTickets,
-        totalSales,
-        tickets: tickets.rows
+      user
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération utilisateur:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération de l\'utilisateur'
+    });
+  }
+});
+
+app.put('/api/subsystem/users/:id/status', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
+  try {
+    const currentUser = req.currentUser;
+    const { is_active } = req.body;
+
+    const userId = req.params.id;
+
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    const user = await User.findOne({
+      _id: userId,
+      subsystem_id: subsystem._id
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé dans votre sous-système'
+      });
+    }
+
+    if (user._id.toString() === currentUser._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Vous ne pouvez pas modifier votre propre statut'
+      });
+    }
+
+    user.is_active = is_active;
+    await user.save();
+
+    const activeUsersCount = await User.countDocuments({ 
+      subsystem_id: subsystem._id,
+      is_active: true,
+      role: { $in: ['agent', 'supervisor'] }
+    });
+    
+    subsystem.stats.active_users = activeUsersCount;
+    subsystem.stats.usage_percentage = Math.round((activeUsersCount / subsystem.max_users) * 100);
+    await subsystem.save();
+
+    res.json({
+      success: true,
+      message: `Utilisateur ${is_active ? 'activé' : 'désactivé'} avec succès`
+    });
+
+  } catch (error) {
+    console.error('Erreur changement statut:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors du changement de statut'
+    });
+  }
+});
+
+app.put('/api/subsystem/users/:id', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
+  try {
+    const currentUser = req.currentUser;
+    const userId = req.params.id;
+    const { name, level, password } = req.body;
+
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    const user = await User.findOne({
+      _id: userId,
+      subsystem_id: subsystem._id
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé dans votre sous-système'
+      });
+    }
+
+    if (user.role === 'subsystem' && currentUser.role !== 'subsystem') {
+      return res.status(403).json({
+        success: false,
+        error: 'Vous ne pouvez pas modifier un administrateur de sous-système'
+      });
+    }
+
+    if (name) user.name = name;
+    if (level && (user.role === 'supervisor')) user.level = level;
+    if (password) user.password = password;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Utilisateur modifié avec succès',
+      user: {
+        id: user._id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        level: user.level
       }
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur modification utilisateur:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la modification de l\'utilisateur'
+    });
   }
 });
 
-// ==================== ROUTES POUR L'AGENT (lotato.js) ====================
-// Historique des paris
-app.post('/api/history', authenticate, async (req, res) => {
-  const { draw, drawTime, bets, total } = req.body;
-  const userId = req.user.id;
-  const userName = req.user.name;
-  const subsystemId = req.user.subsystem_id;
-
+app.post('/api/subsystem/assign', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
   try {
-    await pool.query(
-      `INSERT INTO bet_history (user_id, user_name, subsystem_id, draw, draw_time, bets, total, date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-      [userId, userName, subsystemId, draw, drawTime, JSON.stringify(bets), total]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+    const currentUser = req.currentUser;
+    const { userId, supervisorId, supervisorType } = req.body;
+
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    
+    const user = await User.findOne({
+      _id: userId,
+      subsystem_id: subsystem._id
+    });
+
+    const supervisor = await User.findOne({
+      _id: supervisorId,
+      subsystem_id: subsystem._id
+    });
+
+    if (!user || !supervisor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur ou superviseur non trouvé dans votre sous-système'
+      });
+    }
+
+    if (supervisor.role !== 'supervisor') {
+      return res.status(400).json({
+        success: false,
+        error: 'L\'utilisateur assigné comme superviseur n\'a pas le rôle superviseur'
+      });
+    }
+
+    if (supervisorType === 'supervisor1') {
+      user.supervisor_id = supervisorId;
+    } else if (supervisorType === 'supervisor2') {
+      user.supervisor2_id = supervisorId;
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Assignation réussie'
+    });
+
+  } catch (error) {
+    console.error('Erreur assignation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de l\'assignation'
+    });
   }
 });
 
-// Multi-draw tickets
-app.post('/api/multi-draw-tickets', authenticate, async (req, res) => {
-  const { bets, draws, totalAmount } = req.body.ticket;
-  const agentId = req.user.id;
-  const agentName = req.user.name;
-  const subsystemId = req.user.subsystem_id;
-
+app.get('/api/subsystem/stats', vérifierToken, vérifierAccèsSubsystem, async (req, res) => {
   try {
-    const numberRes = await pool.query('SELECT nextval(\'ticket_number_seq\') as num');
-    const ticketNumber = numberRes.rows[0].num;
+    const currentUser = req.currentUser;
+    const subsystem = await Subsystem.findById(currentUser.subsystem_id);
+    
+    if (!subsystem) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sous-système non trouvé'
+      });
+    }
 
-    const result = await pool.query(
-      `INSERT INTO multi_draw_tickets (ticket_number, bets, draws, total_amount, agent_id, agent_name, subsystem_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [ticketNumber, JSON.stringify(bets), JSON.stringify(draws), totalAmount, agentId, agentName, subsystemId]
-    );
-    res.json({ success: true, ticket: { id: result.rows[0].id, number: ticketNumber, ...req.body.ticket } });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+    const totalUsers = await User.countDocuments({ 
+      subsystem_id: subsystem._id,
+      role: { $in: ['agent', 'supervisor'] }
+    });
+    const activeUsers = await User.countDocuments({ 
+      subsystem_id: subsystem._id,
+      is_active: true,
+      role: { $in: ['agent', 'supervisor'] }
+    });
+
+    const usage_percentage = subsystem.max_users > 0 ? 
+      Math.round((activeUsers / subsystem.max_users) * 100) : 0;
+
+    subsystem.stats.active_users = activeUsers;
+    subsystem.stats.usage_percentage = usage_percentage;
+    await subsystem.save();
+
+    res.json({
+      success: true,
+      stats: {
+        total_users: totalUsers,
+        active_users: activeUsers,
+        max_users: subsystem.max_users,
+        usage_percentage: usage_percentage
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur statistiques sous-système:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des statistiques'
+    });
   }
 });
 
-app.get('/api/multi-draw-tickets', authenticate, async (req, res) => {
-  const subsystemId = req.user.subsystem_id;
+app.post('/api/agents/create', vérifierToken, async (req, res) => {
+    try {
+        const { name, email, level, password } = req.body;
+        const newAgent = new User({
+            username: email,
+            password: password,
+            name: name,
+            role: 'agent',
+            level: parseInt(level)
+        });
+        await newAgent.save();
+        res.json({ success: true, message: 'Agent créé avec succès' });
+    } catch (error) {
+        console.error('Erreur création agent:', error);
+        res.status(500).json({ success: false, error: 'Erreur lors de la création de l\'agent' });
+    }
+});
+
+app.post('/api/init/master', async (req, res) => {
   try {
-    const tickets = await pool.query(
-      'SELECT * FROM multi_draw_tickets WHERE subsystem_id = $1 ORDER BY date DESC',
-      [subsystemId]
-    );
-    const ticketsWithId = tickets.rows.map(t => ({ ...t, _id: t.id }));
-    res.json({ success: true, tickets: ticketsWithId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Erreur serveur' });
+    const { username, password, name } = req.body;
+    
+    const existingMaster = await User.findOne({ role: 'master' });
+    if (existingMaster) {
+      return res.status(400).json({
+        success: false,
+        error: 'Un compte master existe déjà'
+      });
+    }
+    
+    const master = new User({
+      username: username,
+      password: password,
+      name: name || 'Master Admin',
+      role: 'master',
+      level: 1
+    });
+    
+    await master.save();
+    
+    res.json({
+      success: true,
+      message: 'Compte master créé avec succès'
+    });
+  } catch (error) {
+    console.error('Erreur création compte master:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la création du compte master'
+    });
   }
 });
 
-// Informations entreprise
-app.get('/api/company-info', async (req, res) => {
-  // À améliorer : lire depuis une table settings
-  res.json({
-    success: true,
-    name: "Nova Lotto",
-    phone: "+509 32 53 49 58",
-    address: "Cap Haïtien",
-    reportTitle: "Nova Lotto",
-    reportPhone: "40104585"
+app.post('/api/init/subsystem', async (req, res) => {
+  try {
+    const { username, password, name } = req.body;
+    
+    const existingUser = await User.findOne({ username: username });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cet utilisateur existe déjà'
+      });
+    }
+    
+    const subsystemUser = new User({
+      username: username,
+      password: password,
+      name: name || 'Subsystem Admin',
+      role: 'subsystem',
+      level: 1
+    });
+    
+    await subsystemUser.save();
+    
+    res.json({
+      success: true,
+      message: 'Compte subsystem créé avec succès'
+    });
+  } catch (error) {
+    console.error('Erreur création compte subsystem:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la création du compte subsystem'
+    });
+  }
+});
+
+// =================== ROUTES HTML ===================
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/*.html', (req, res) => {
+  const filePath = path.join(__dirname, req.path);
+  
+  fs.access(filePath, fs.constants.F_OK, (err) => {
+    if (err) {
+      return res.status(404).send('Page non trouvée');
+    }
+    
+    res.sendFile(filePath);
   });
 });
 
-// Logo
-app.get('/api/logo', async (req, res) => {
-  // À améliorer
-  res.json({ success: true, logoUrl: '/logo.png' });
+app.get('/subsystem-admin.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'subsystem-admin.html'));
 });
 
-// Check winners (simple)
-app.get('/api/check-winners', authenticate, async (req, res) => {
-  res.json({ success: true });
+app.get('/control-level1.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'control-level1.html'));
 });
 
-// ==================== GESTION DES ERREURS 404 ====================
+app.get('/control-level2.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'control-level2.html'));
+});
+
+app.get('/supervisor-control.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'supervisor-control.html'));
+});
+
+app.get('/master-dashboard.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'master-dashboard.html'));
+});
+
+app.get('/lotato.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'lotato.html'));
+});
+
+// =================== MIDDLEWARE DE GESTION D'ERREURS ===================
+
+app.use((err, req, res, next) => {
+  if (err) {
+    console.error('Erreur serveur:', err);
+    
+    if (req.path.startsWith('/api/')) {
+      return res.status(500).json({
+        success: false,
+        error: 'Erreur serveur interne'
+      });
+    }
+    
+    return res.status(500).send('Erreur serveur interne');
+  }
+  next();
+});
+
 app.use((req, res) => {
-  if (req.url.startsWith('/api/')) {
-    return res.status(404).json({ success: false, error: 'Route API non trouvée' });
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({
+      success: false,
+      error: 'Route API non trouvée'
+    });
   }
-  res.status(404).send(`
-    <html>
-      <head><title>404 - Page non trouvée</title></head>
-      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-        <h1>404</h1>
-        <p>La page que vous cherchez n'existe pas.</p>
-        <a href="/">Retour à l'accueil</a>
-      </body>
-    </html>
-  `);
+  
+  res.status(404).send('Page non trouvée');
 });
 
-// ==================== CRÉATION DES UTILISATEURS DE TEST AU DÉMARRAGE ====================
-async function createTestUsers() {
-  const client = await pool.connect();
-  try {
-    const count = await client.query('SELECT COUNT(*) FROM users');
-    if (parseInt(count.rows[0].count) > 0) {
-      console.log('Des utilisateurs existent déjà, pas de création de test.');
-      return;
-    }
+// =================== DÉMARRAGE DU SERVEUR ===================
 
-    console.log('Création des utilisateurs de test...');
-
-    const defaultPassword = await bcrypt.hash('1111', 10);
-
-    const subRes = await client.query('SELECT id FROM subsystems LIMIT 1');
-    const subId = subRes.rows[0].id;
-
-    const users = [
-      { name: 'Master Admin', username: 'master001', password: defaultPassword, role: 'master', subsystem_id: null },
-      { name: 'Subsystem Admin', username: 'subsystem001', password: defaultPassword, role: 'subsystem', subsystem_id: subId },
-      { name: 'Supervisor Level 1', username: 'supervisor1001', password: defaultPassword, role: 'supervisor', level: 1, subsystem_id: subId },
-      { name: 'Supervisor Level 2', username: 'supervisor2001', password: defaultPassword, role: 'supervisor', level: 2, subsystem_id: subId },
-      { name: 'Agent 001', username: 'agent001', password: defaultPassword, role: 'agent', subsystem_id: subId }
-    ];
-
-    for (const u of users) {
-      await client.query(
-        `INSERT INTO users (name, username, password, role, level, subsystem_id)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [u.name, u.username, u.password, u.role, u.level || null, u.subsystem_id]
-      );
-    }
-
-    console.log('Utilisateurs de test créés avec succès.');
-  } catch (err) {
-    console.error('Erreur lors de la création des utilisateurs de test:', err);
-  } finally {
-    client.release();
-  }
-}
-
-// ==================== DÉMARRAGE DU SERVEUR ====================
-app.listen(PORT, async () => {
-  console.log(`Serveur démarré sur le port ${PORT}`);
-  try {
-    await pool.query('SELECT 1');
-    console.log('Connexion à la base de données réussie');
-    await createTestUsers();
-  } catch (err) {
-    console.error('Erreur de connexion à la base de données:', err);
-  }
-});
-
-process.on('SIGINT', async () => {
-  await pool.end();
-  process.exit(0);
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`🚀 Serveur démarré sur le port ${PORT}`);
+  console.log(`📁 Compression GZIP activée`);
+  console.log(`🌐 CORS activé`);
+  console.log(`👑 Master Dashboard: http://localhost:${PORT}/master-dashboard.html`);
+  console.log(`🏢 Subsystem Admin: http://localhost:${PORT}/subsystem-admin.html`);
+  console.log(`🎰 LOTATO: http://localhost:${PORT}/lotato.html`);
+  console.log(`👮 Control Level 1: http://localhost:${PORT}/control-level1.html`);
+  console.log(`👮 Control Level 2: http://localhost:${PORT}/control-level2.html`);
+  console.log(`📊 Supervisor Control: http://localhost:${PORT}/supervisor-control.html`);
+  console.log(`🏠 Login: http://localhost:${PORT}/`);
+  console.log('');
+  console.log('✅ Serveur prêt avec toutes les routes !');
 });
