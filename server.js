@@ -1,160 +1,175 @@
-// server.js – Version Corrigée pour enregistrement effectif des tickets
-require('dotenv').config();
 const express = require('express');
+const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { Pool } = require('pg');
 const cors = require('cors');
 const compression = require('compression');
-const path = require('path');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_cle_secrete_ultra_secure';
 
-// Configuration de la base de données (Neon.tech)
+// Configuration de la base de données
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
 
-// Middleware
+// Middlewares
 app.use(cors());
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(__dirname, { extensions: ['html'] }));
+app.use(express.json());
 
-// ==================== AUTHENTIFICATION ====================
-
-app.post('/api/auth/login', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-        const result = await pool.query('SELECT * FROM users WHERE username = $1 AND is_active = true', [username]);
-        if (result.rows.length === 0) return res.status(401).json({ error: 'Utilisateur non trouvé' });
-
-        const user = result.rows[0];
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) return res.status(401).json({ error: 'Mot de passe incorrect' });
-
-        const token = jwt.sign(
-            { id: user.id, role: user.role, subsystem_id: user.subsystem_id },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-
-        res.json({
-            success: true,
-            token,
-            user: { id: user.id, name: user.name, role: user.role, subsystem_id: user.subsystem_id }
-        });
-    } catch (err) {
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Middleware de vérification du Token
+// --- MIDDLEWARE D'AUTHENTIFICATION ---
 const authenticateToken = (req, res, next) => {
-    const token = req.headers['x-auth-token'] || req.headers['authorization']?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Accès refusé' });
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ success: false, error: "Token manquant" });
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ error: 'Token invalide' });
+        if (err) return res.status(403).json({ success: false, error: "Session expirée" });
         req.user = user;
         next();
     });
 };
 
-// ==================== GESTION DES TICKETS (LA CORRECTION) ====================
+// --- ROUTES AUTHENTIFICATION ---
 
-
-
-app.post('/api/tickets', authenticateToken, async (req, res) => {
-    const { draw, drawTime, bets, total } = req.body;
-    const { id: user_id, subsystem_id } = req.user;
-
-    // 1. Vérification ultime du subsystem_id
-    if (!subsystem_id) {
-        return res.status(400).json({ error: "L'agent n'est pas rattaché à un sous-système." });
-    }
-
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
     try {
-        // Début de la transaction
-        await pool.query('BEGIN');
+        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+        const user = result.rows[0];
 
-        // 2. Génération d'un numéro de ticket unique via la séquence SQL
-        const seqResult = await pool.query("SELECT nextval('ticket_number_seq') as num");
-        const ticketNumber = `TKT-${subsystem_id}-${seqResult.rows[0].num}`;
+        if (user && await bcrypt.compare(password, user.password)) {
+            const token = jwt.sign({ 
+                id: user.id, 
+                username: user.username, 
+                role: user.role, 
+                subsystem_id: user.subsystem_id,
+                level: user.level 
+            }, JWT_SECRET, { expiresIn: '24h' });
 
-        // 3. Insertion dans bet_history (nom de table conforme à votre SQL)
-        const insertQuery = `
-            INSERT INTO bet_history 
-            (user_id, subsystem_id, draw, draw_time, bets, total, date) 
-            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP) 
-            RETURNING id
-        `;
-
-        const values = [
-            user_id,
-            subsystem_id,
-            draw,
-            drawTime, // Le serveur mappe drawTime du JS vers draw_time du SQL
-            JSON.stringify(bets),
-            total
-        ];
-
-        const result = await pool.query(insertQuery, values);
-        
-        await pool.query('COMMIT');
-
-        res.json({
-            success: true,
-            ticketId: result.rows[0].id,
-            ticketNumber: ticketNumber, // Retourné pour l'impression dans lotato.js
-            message: "Ticket enregistré avec succès"
-        });
-
+            res.json({ success: true, token, admin: user });
+        } else {
+            res.status(401).json({ success: false, error: "Identifiants invalides" });
+        }
     } catch (err) {
-        await pool.query('ROLLBACK');
-        console.error('ERREUR SQL TICKET:', err.message);
-        res.status(500).json({ error: 'Erreur lors de l’enregistrement : ' + err.message });
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// ==================== ROUTES DE CONSULTATION ====================
+app.get('/api/auth/check', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, name, username, role, level, subsystem_id FROM users WHERE id = $1', [req.user.id]);
+        res.json({ success: true, admin: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// --- ROUTES TICKETS & JEUX (lotato.js) ---
+
+app.post('/api/tickets', authenticateToken, async (req, res) => {
+    const { draw, draw_time, bets, total, subsystem_id } = req.body;
+    try {
+        const numResult = await pool.query("SELECT nextval('ticket_number_seq') as num");
+        const ticketNumber = numResult.rows[0].num;
+
+        const result = await pool.query(
+            `INSERT INTO bet_history (user_id, user_name, subsystem_id, draw, draw_time, bets, total) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [req.user.id, req.user.username, req.user.subsystem_id, draw, draw_time, JSON.stringify(bets), total]
+        );
+
+        res.json({ success: true, ticket: { ...result.rows[0], number: ticketNumber } });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 app.get('/api/history', authenticateToken, async (req, res) => {
-    const { subsystem_id } = req.user;
     try {
         const result = await pool.query(
-            'SELECT * FROM bet_history WHERE subsystem_id = $1 ORDER BY date DESC LIMIT 50',
-            [subsystem_id]
+            'SELECT * FROM bet_history WHERE subsystem_id = $1 ORDER BY date DESC LIMIT 100', 
+            [req.user.subsystem_id]
         );
         res.json({ success: true, tickets: result.rows });
     } catch (err) {
-        res.status(500).json({ error: 'Erreur historique' });
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// Route pour les paramètres (Logo, Nom entreprise)
-app.get('/api/company-info', async (req, res) => {
+// --- ROUTES ADMINISTRATION (Master & Subsystem) ---
+
+// Lister les sous-systèmes (Master Dashboard)
+app.get('/api/master/subsystems', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'master') return res.status(403).json({ success: false });
     try {
-        const result = await pool.query("SELECT value FROM settings WHERE key = 'company_info'");
-        if (result.rows.length > 0) {
-            res.json(JSON.parse(result.rows[0].value));
+        const result = await pool.query('SELECT * FROM subsystems');
+        res.json({ success: true, subsystems: result.rows });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// Gestion des utilisateurs (Hiérarchie : Master > Sub > Supervisor > Agent)
+app.get('/api/users', authenticateToken, async (req, res) => {
+    let query = 'SELECT id, name, username, role, level, is_active FROM users WHERE subsystem_id = $1';
+    let params = [req.user.subsystem_id];
+
+    if (req.user.role === 'supervisor') {
+        if (req.user.level === 2) {
+            query += ' AND (supervisor2_id = $2 OR supervisor1_id IN (SELECT id FROM users WHERE supervisor2_id = $2))';
         } else {
-            res.json({ name: "Nova Lotto", phone: "+509 0000-0000", reportTitle: "LOTATO" });
+            query += ' AND supervisor1_id = $2';
         }
-    } catch (err) {
-        res.status(500).json({ error: 'Erreur settings' });
+        params.push(req.user.id);
     }
+
+    try {
+        const result = await pool.query(query, params);
+        res.json({ success: true, users: result.rows });
+    } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// Santé du serveur
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', database: 'Connected', timestamp: new Date() });
+// --- ROUTES TIRAGES & RÉSULTATS ---
+
+app.get('/api/draws', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM draws');
+        const drawsObj = {};
+        result.rows.forEach(d => { drawsObj[d.name.toLowerCase()] = d; });
+        res.json({ success: true, draws: drawsObj });
+    } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// Démarrage
+app.get('/api/results', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM results ORDER BY date DESC LIMIT 20');
+        res.json({ success: true, results: result.rows });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// --- ROUTES RESTRICTIONS (subsystem-admin.html) ---
+
+app.get('/api/restrictions/:subsystem_id', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM restrictions WHERE subsystem_id = $1', [req.params.subsystem_id]);
+        res.json({ success: true, restrictions: result.rows });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.delete('/api/restrictions/:id', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM restrictions WHERE id = $1 AND subsystem_id = $2', [req.params.id, req.user.subsystem_id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// --- SANTÉ DU SERVEUR ---
+app.get('/api/health', (req, res) => res.json({ success: true, status: "Online", time: new Date() }));
+
 app.listen(PORT, () => {
-    console.log(`🚀 Serveur Lotato démarré sur le port ${PORT}`);
+    console.log(`✅ Serveur NOVA opérationnel sur le port ${PORT}`);
 });
