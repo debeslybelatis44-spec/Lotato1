@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>LOTATO PRO | System</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- PWA Manifest -->
+<link rel="manifest" href="/manifest.json">
+
+<!-- iOS spécifique -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LOTATO PRO">
+<link rel="apple-touch-icon" href="/192.png">
+</head>
+<body>
+    <div class="app-shell">
+        <div id="sync-status-bar" class="sync-status-bar sync-idle">
+            <span id="sync-text">Sistem OK</span>
+        </div>
+
+        <header>
+            <div class="brand">
+                <h1 class="logo-text" id="lottery-name">LOTATO PRO <span class="pro-badge">vession 6</span></h1>
+                <div id="live-clock">00:00:00</div>
+            </div>
+            <div class="user-profile">
+                <i class="fas fa-user-circle"></i>
+                <span id="agent-name">Agent-01</span>
+                <button onclick="logout()" class="logout-btn" title="Dekonekte">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </header>
+
+        <main class="content-area">
+            <!-- Screen 1: Draw Selection -->
+            <section id="draw-selection-screen" class="screen active">
+                <button class="back-button" onclick="goBackToDraws()" style="display:none;">
+                    <i class="fas fa-arrow-left"></i> Retounen
+                </button>
+                <h2 class="section-title">Chwazi Tiraj</h2>
+                
+                <div style="padding: 0 20px 10px 20px;">
+                    <button id="multi-draw-btn" class="multi-draw-toggle" onclick="toggleMultiDrawMode()">
+                        <i class="fas fa-layer-group"></i> Plizyè Tiraj
+                    </button>
+                </div>
+
+                <div id="multi-draw-continue" style="display: none;">
+                    <button onclick="continueToBettingWithMultiDraw()" class="btn-success-full">
+                        <i class="fas fa-play"></i> Kontinye ak Tiraj Chwazi yo (<span id="selected-draws-count-multi">0</span>)
+                    </button>
+                </div>
+
+                <div id="multi-draw-container" class="multi-draw-selector" style="display: none;"></div>
+
+                <div class="draw-grid" id="draws-container"></div>
+            </section>
+
+            <!-- Screen 2: Betting Interface -->
+            <section id="betting-screen" class="screen">
+                <button class="back-button" onclick="goBackToDraws()">
+                    <i class="fas fa-arrow-left"></i> Retounen
+                </button>
+                <h2 class="section-title" id="current-draw-title">Tunisia Matin</h2>
+                
+                <div id="draw-blocked-warning" class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Tiraj sa a ap femen nan 3 minit. Ou pa ka ajoute pari .</span>
+                </div>
+
+                <div id="multi-draw-indicator" class="multi-draw-indicator" style="display: none;">
+                    <i class="fas fa-layer-group"></i> Jwe pou plizyè tiraj: <span id="selected-draws-count">1</span> tiraj
+                </div>
+
+                <div id="lotto4-options" class="lotto-options">
+                    <div class="option-chip active" data-option="1" onclick="toggleLottoOption(4, 1)">
+                        <input type="checkbox" id="opt1-4" checked>
+                        <i class="fas fa-check-circle"></i>
+                        <label for="opt1-4">Opsyon 1</label>
+                    </div>
+                    <div class="option-chip active" data-option="2" onclick="toggleLottoOption(4, 2)">
+                        <input type="checkbox" id="opt2-4" checked>
+                        <i class="fas fa-check-circle"></i>
+                        <label for="opt2-4">Opsyon 2</label>
+                    </div>
+                    <div class="option-chip active" data-option="3" onclick="toggleLottoOption(4, 3)">
+                        <input type="checkbox" id="opt3-4" checked>
+                        <i class="fas fa-check-circle"></i>
+                        <label for="opt3-4">Opsyon 3</label>
+                    </div>
+                </div>
+
+                <div id="lotto5-options" class="lotto-options">
+                    <div class="option-chip active" data-option="1" onclick="toggleLottoOption(5, 1)">
+                        <input type="checkbox" id="opt1-5" checked>
+                        <i class="fas fa-check-circle"></i>
+                        <label for="opt1-5">Opsyon 1</label>
+                    </div>
+                    <div class="option-chip active" data-option="2" onclick="toggleLottoOption(5, 2)">
+                        <input type="checkbox" id="opt2-5" checked>
+                        <i class="fas fa-check-circle"></i>
+                        <label for="opt2-5">Opsyon 2</label>
+                    </div>
+                    <div class="option-chip active" data-option="3" onclick="toggleLottoOption(5, 3)">
+                        <input type="checkbox" id="opt3-5" checked>
+                        <i class="fas fa-check-circle"></i>
+                        <label for="opt3-5">Opsyon 3</label>
+                    </div>
+                </div>
+
+                <section class="betting-panel animate-fade">
+                    <div class="game-selector" id="game-types">
+                        <button class="chip active" data-game="borlette" onclick="selectMainGame('borlette')">Borlette</button>
+                        <button class="chip" data-game="lotto" onclick="selectMainGame('lotto')">Lotto</button>
+                        <button class="chip" data-game="special" onclick="selectMainGame('special')">Jeux Spéciaux</button>
+                        <button class="chip" id="toggle-nx-btn" onclick="toggleNumericChips()">NX</button>
+                    </div>
+
+                    <div class="numeric-chips-container" id="numeric-chips">
+                        <button class="chip numeric-chip" data-game="n0" onclick="selectGame('n0')">N0</button>
+                        <button class="chip numeric-chip" data-game="n1" onclick="selectGame('n1')">N1</button>
+                        <button class="chip numeric-chip" data-game="n2" onclick="selectGame('n2')">N2</button>
+                        <button class="chip numeric-chip" data-game="n3" onclick="selectGame('n3')">N3</button>
+                        <button class="chip numeric-chip" data-game="n4" onclick="selectGame('n4')">N4</button>
+                        <button class="chip numeric-chip" data-game="n5" onclick="selectGame('n5')">N5</button>
+                        <button class="chip numeric-chip" data-game="n6" onclick="selectGame('n6')">N6</button>
+                        <button class="chip numeric-chip" data-game="n7" onclick="selectGame('n7')">N7</button>
+                        <button class="chip numeric-chip" data-game="n8" onclick="selectGame('n8')">N8</button>
+                        <button class="chip numeric-chip" data-game="n9" onclick="selectGame('n9')">N9</button>
+                    </div>
+
+                    <div class="lotto-games-container" id="lotto-games">
+                        <button class="sub-game-btn" onclick="selectGame('lotto3')">Lotto 3</button>
+                        <button class="sub-game-btn" onclick="selectGame('lotto4')">Lotto 4</button>
+                        <button class="sub-game-btn" onclick="selectGame('lotto5')">Lotto 5</button>
+                        <button class="sub-game-btn auto-chip" onclick="selectGame('auto_lotto4')">Lotto 4 Auto</button>
+                        <button class="sub-game-btn auto-chip" onclick="selectGame('auto_lotto5')">Lotto 5 Auto</button>
+                    </div>
+
+                    <div class="special-games-container" id="special-games">
+                        <button class="sub-game-btn special-chip" onclick="selectGame('bo')">BO</button>
+                        <button class="sub-game-btn special-chip" onclick="selectGame('grap')">GRAP</button>
+                        <button class="sub-game-btn" onclick="selectGame('mariage')">Mariage</button>
+                        <button class="sub-game-btn auto-chip" onclick="selectGame('auto_marriage')">Mariage Auto</button>
+                    </div>
+
+                    <div class="input-container">
+                        <input type="text" id="num-input" placeholder="00" inputmode="numeric" maxlength="5" class="num-input">
+                        <input type="number" id="amt-input" placeholder="Montan (G)" inputmode="numeric">
+                        <button id="add-bet-btn" class="btn-primary-gradient">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="cart-section">
+                    <div class="cart-header">
+                        <div>
+                            <h3>Fich an kou</h3>
+                            <span id="items-count">0 jwèt</span>
+                        </div>
+                        <div class="cart-actions">
+                            <div class="cart-total" id="cart-total-display">0 Gdes</div>
+                            <button onclick="processFinalTicket()" class="print-btn" id="print-cart-btn">
+                                <i class="fas fa-print"></i> Enprime Fich
+                            </button>
+                        </div>
+                    </div>
+                    <div class="cart-list" id="cart-display"></div>
+                    
+                    <div id="cart-summary" style="display: none;">
+                        <div class="total-row">
+                            <span>Total pou peye:</span>
+                            <span id="total-amount">0</span><span> Gdes</span>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- Screen 3: History -->
+            <section id="history-screen" class="screen">
+                <div style="padding: 20px;">
+                    <h2 class="section-title">Istorik Tikè</h2>
+                    <div class="history-list" id="history-container"></div>
+                </div>
+            </section>
+
+            <!-- Screen 4: Reports (MODIFIÉ) -->
+            <section id="reports-screen" class="screen">
+                <div style="padding: 20px;">
+                    <!-- En-tête avec titre et bouton imprimante -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 class="section-title" style="margin:0;">Rapò Jodi a</h2>
+                        <button onclick="printReport()" class="print-report-btn" style="background:var(--primary); color:white; border:none; border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+                            <i class="fas fa-print"></i>
+                        </button>
+                    </div>
+
+                    <!-- Sélecteur de tirage -->
+                    <div class="report-draw-selector">
+                        <select id="draw-report-selector" class="chip" style="width: 100%; padding: 12px;" onchange="loadDrawReport()">
+                            <option value="all">Tout Tiraj</option>
+                        </select>
+                    </div>
+
+                    <!-- Cartes de rapport -->
+                    <div class="report-card" id="draw-report-card">
+                        <div class="report-row">
+                            <span>Total Tikè:</span>
+                            <span class="val" id="draw-total-tickets">0</span>
+                        </div>
+                        <div class="report-row">
+                            <span>Total Pari:</span>
+                            <span class="val" id="draw-total-bets">0 Gdes</span>
+                        </div>
+                        <div class="report-row">
+                            <span>Total Ganyen:</span>
+                            <span class="val" id="draw-total-wins">0 Gdes</span>
+                        </div>
+                        <div class="report-row">
+                            <span>Pèdi:</span>
+                            <span class="val" id="draw-total-loss">0 Gdes</span>
+                        </div>
+                        <div class="report-row total">
+                            <span>Balans:</span>
+                            <span class="val" id="draw-balance">0 Gdes</span>
+                        </div>
+                    </div>
+
+                    <div class="report-card" id="general-report-card">
+                        <h3 style="margin-bottom: 15px;">Rapò Jeneral Jodi a</h3>
+                        <div class="report-row">
+                            <span>Total Tikè:</span>
+                            <span class="val" id="total-tickets">0</span>
+                        </div>
+                        <div class="report-row">
+                            <span>Total Pari:</span>
+                            <span class="val" id="total-bets">0 Gdes</span>
+                        </div>
+                        <div class="report-row">
+                            <span>Total Genyen:</span>
+                            <span class="val" id="total-wins">0 Gdes</span>
+                        </div>
+                        <div class="report-row">
+                            <span>Pèdi:</span>
+                            <span class="val" id="total-loss">0 Gdes</span>
+                        </div>
+                        <div class="report-row total">
+                            <span>Balans Total:</span>
+                            <span class="val" id="balance">0 Gdes</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Screen 5: Winners -->
+            <section id="winners-screen" class="screen">
+                <div style="padding: 20px;">
+                    <h2 class="section-title">Tikè Genyen yo</h2>
+                    
+                    <div class="winners-summary">
+                        <h3 style="margin-bottom: 15px;">Rekapitilatif Jodi a</h3>
+                        <div class="summary-row">
+                            <span>Total Tikè Genyen:</span>
+                            <span class="val" id="total-winners-today">0</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Total Genyen:</span>
+                            <span class="val" id="total-winning-amount">0 Gdes</span>
+                        </div>
+                        <div class="summary-row total">
+                            <span>Mwayèn Genyen:</span>
+                            <span class="val" id="average-winning">0 Gdes</span>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-bottom: 15px; margin-top: 30px;">Lis Tikè Genyen yo</h3>
+                    <div id="winners-container"></div>
+                </div>
+            </section>
+        </main>
+
+        <div id="winner-overlay" class="modal-overlay">
+            <div class="winner-modal">
+                <i class="fas fa-trophy trophy-icon"></i>
+                <h2>OU GENYEN !</h2>
+                <div id="winner-details"></div>
+                <button onclick="closeWinnerModal()" class="btn-close">OK</button>
+            </div>
+        </div>
+
+        <nav class="nav-bar">
+            <a href="#" class="nav-item active" onclick="switchTab('home')">
+                <i class="fas fa-dice"></i><span>Jwèt</span>
+            </a>
+            <a href="#" class="nav-item" onclick="switchTab('history')">
+                <i class="fas fa-receipt"></i><span>Istorik</span>
+            </a>
+            <a href="#" class="nav-item" onclick="switchTab('reports')">
+                <i class="fas fa-chart-line"></i><span>Rapò</span>
+            </a>
+            <a href="#" class="nav-item" onclick="switchTab('winners')">
+                <i class="fas fa-trophy"></i><span>Genyen</span>
+            </a>
+        </nav>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="drawManager.js"></script>
+    <script src="gameEngine.js"></script>
+    <script src="cartManager.js"></script>
+    <script src="apiService.js"></script>
+    <script src="uiManager.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>

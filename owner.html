@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LOTATO PRO · Administration</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="main.js"></script>
+    <style>
+        /* (styles inchangés) */
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter',sans-serif; }
+        body { background:#0a0b1e; color:#fff; padding:20px; }
+        .app { max-width:1400px; margin:0 auto; }
+        header { display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; background:rgba(255,255,255,0.03); border-radius:20px; padding:20px; }
+        .logo { display:flex; align-items:center; gap:10px; }
+        .logo img { height:40px; border-radius:8px; }
+        .logo h1 { font-size:1.8rem; background:linear-gradient(135deg,#ad00f1,#ff007a); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        .logout-btn { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; padding:10px 20px; border-radius:30px; cursor:pointer; }
+        .section-title { margin:30px 0 20px; font-size:1.4rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; display:flex; align-items:center; gap:10px; }
+        .tabs { display:flex; gap:10px; margin-bottom:30px; flex-wrap:wrap; }
+        .tab { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:30px; padding:12px 24px; cursor:pointer; transition:0.2s; }
+        .tab.active { background:linear-gradient(135deg,#ad00f1,#00d4ff); color:white; border-color:transparent; }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+        .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; background:rgba(255,255,255,0.03); border-radius:20px; padding:25px; margin-bottom:20px; }
+        .form-group { margin-bottom:15px; }
+        .form-group label { display:block; color:#a0a0b8; margin-bottom:6px; font-size:0.9rem; }
+        .form-group input, .form-group select, .form-group textarea { width:100%; padding:12px 16px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:white; }
+        .btn-primary { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; border-radius:30px; padding:12px 30px; color:white; font-weight:600; cursor:pointer; }
+        .btn-danger { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; border-radius:30px; padding:10px 20px; cursor:pointer; }
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:20px; margin-bottom:30px; }
+        .stat-card { background:rgba(255,255,255,0.05); border-radius:16px; padding:20px; }
+        .list-container { background:rgba(255,255,255,0.02); border-radius:20px; padding:20px; max-height:400px; overflow-y:auto; }
+        .item-row { display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .badge-success { background:#00f190; color:black; padding:4px 12px; border-radius:20px; }
+        .badge-danger { background:#ff4d4d; color:white; padding:4px 12px; border-radius:20px; }
+        .badge-warning { background:#ffaa00; color:black; padding:4px 12px; border-radius:20px; }
+        .chart-container { margin-top:40px; background:rgba(255,255,255,0.02); border-radius:20px; padding:20px; }
+        canvas { max-height:300px; }
+        .alert { padding:15px; border-radius:12px; margin-bottom:20px; }
+        .alert-success { background:rgba(0,241,144,0.2); border:1px solid #00f190; color:#00f190; }
+        .alert-danger { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; }
+        .progress-bar { width:100%; background:rgba(255,255,255,0.1); border-radius:10px; height:8px; margin-top:6px; }
+        .progress-fill { height:8px; border-radius:10px; background:linear-gradient(90deg,#ad00f1,#00d4ff); }
+        .table-responsive { overflow-x: auto; }
+        table { width:100%; border-collapse:collapse; }
+        th, td { padding:12px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .profit { color:#00f190; }
+        .loss { color:#ff4d4d; }
+        .restriction-item { display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #333; }
+        #logo-preview img { max-height:60px; border-radius:8px; margin-top:10px; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header>
+            <div class="logo">
+                <img id="header-logo" src="" alt="Logo" style="display:none;">
+                <h1 id="header-title">LOTATO PRO · Propriétaire</h1>
+            </div>
+            <div class="user-info">
+                <span id="owner-name"></span>
+                <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Déconnexion</button>
+            </div>
+        </header>
+
+        <!-- Onglets -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('dashboard')">📊 Tableau de bord</div>
+            <div class="tab" onclick="switchTab('users')">👥 Utilisateurs</div>
+            <div class="tab" onclick="switchTab('draws')">🎲 Tirages & Résultats</div>
+            <div class="tab" onclick="switchTab('numbers')">🔢 Boules & Limites</div>
+            <div class="tab" onclick="switchTab('reports')">📊 Rapports</div>
+            <!-- NOUVEL ONGLET TICKETS -->
+            <div class="tab" onclick="switchTab('tickets')">🎫 Tickets</div>
+            <div class="tab" onclick="switchTab('config')">⚙️ Configuration</div>
+        </div>
+
+        <!-- ========== TABLEAU DE BORD ========== -->
+        <div id="tab-dashboard" class="tab-content active">
+            <!-- (contenu inchangé) -->
+            <div class="section-title"><i class="fas fa-chart-pie"></i> Aperçu du jour</div>
+            
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:30px;">
+                <div class="stat-card">
+                    <h3><i class="fas fa-user-tie"></i> Superviseurs connectés</h3>
+                    <div style="font-size:2.5rem;" id="connected-sup-count">0</div>
+                    <div id="connected-sup-list" style="margin-top:10px; font-size:0.9rem;"></div>
+                </div>
+                <div class="stat-card">
+                    <h3><i class="fas fa-user"></i> Agents connectés</h3>
+                    <div style="font-size:2.5rem;" id="connected-agent-count">0</div>
+                    <div id="connected-agent-list" style="margin-top:10px; font-size:0.9rem;"></div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div style="font-size:2rem;" id="sales-today">0 G</div>
+                    <div>Ventes totales (aujourd'hui)</div>
+                </div>
+            </div>
+
+            <div class="section-title"><i class="fas fa-chart-line"></i> Progression des limites (aujourd'hui)</div>
+            <div class="list-container" id="limits-progress-container" style="max-height:300px;">
+                <p>Chargement...</p>
+            </div>
+
+            <div class="section-title"><i class="fas fa-trophy"></i> Agents avec gains/pertes (aujourd'hui)</div>
+            <div class="list-container" id="agents-gainloss-container" style="max-height:300px;">
+                <p>Chargement...</p>
+            </div>
+        </div>
+
+        <!-- ========== GESTION UTILISATEURS ========== -->
+        <div id="tab-users" class="tab-content">
+            <!-- (contenu inchangé) -->
+            <div class="section-title"><i class="fas fa-user-plus"></i> Créer un utilisateur</div>
+            <div id="user-create-message" style="display:none;" class="alert"></div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Nom complet</label>
+                    <input type="text" id="create-fullname" placeholder="Jean Dupont">
+                </div>
+                <div class="form-group">
+                    <label>CIN (optionnel)</label>
+                    <input type="text" id="create-cin" placeholder="01-02-03-04-05">
+                </div>
+                <div class="form-group">
+                    <label>Identifiant (login)</label>
+                    <input type="text" id="create-username" placeholder="jean.dupont">
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="create-password" value="default123">
+                </div>
+                <div class="form-group">
+                    <label>Rôle</label>
+                    <select id="create-role" onchange="toggleSupervisorField()">
+                        <option value="agent">Agent</option>
+                        <option value="supervisor">Superviseur</option>
+                    </select>
+                </div>
+                <div class="form-group" id="supervisor-field">
+                    <label>Superviseur (pour agent)</label>
+                    <select id="create-supervisor">
+                        <option value="">Aucun (libre)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Zone / Localisation</label>
+                    <input type="text" id="create-zone" placeholder="Port-au-Prince">
+                </div>
+                <div style="display:flex; align-items:end;">
+                    <button class="btn-primary" onclick="createUser()"><i class="fas fa-save"></i> Créer</button>
+                </div>
+            </div>
+
+            <div id="user-created-info" class="alert alert-success" style="display:none; margin-top:20px;">
+                <strong>✅ Utilisateur créé avec succès :</strong>
+                <div id="created-user-details" style="margin:10px 0;"></div>
+                <button class="btn-primary" onclick="document.getElementById('user-created-info').style.display='none'">Fermer</button>
+            </div>
+
+            <div class="section-title"><i class="fas fa-list"></i> Agents & Superviseurs</div>
+            <div id="user-load-error" class="alert alert-danger" style="display:none;"></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                <div>
+                    <h3>Superviseurs</h3>
+                    <div id="supervisors-list" class="list-container"></div>
+                </div>
+                <div>
+                    <h3>Agents</h3>
+                    <div id="agents-list" class="list-container"></div>
+                </div>
+            </div>
+
+            <div class="section-title"><i class="fas fa-arrows-spread"></i> Changer superviseur d'un agent</div>
+            <div class="form-grid" style="grid-template-columns:1fr 1fr auto;">
+                <select id="change-agent-select"></select>
+                <select id="change-supervisor-select"></select>
+                <button class="btn-primary" onclick="changeSupervisor()">Transférer</button>
+            </div>
+        </div>
+
+        <!-- ========== TIRAGES & RÉSULTATS ========== -->
+        <div id="tab-draws" class="tab-content">
+            <div class="section-title"><i class="fas fa-pen"></i> Publier un résultat</div>
+            <div id="publish-message" style="display:none;" class="alert"></div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Tirage</label>
+                    <select id="draw-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>Lotto 3 (3 chiffres) <small>→ le 1er lot correspond aux 2 derniers chiffres</small></label>
+                    <input type="text" id="draw-lotto3" maxlength="3" placeholder="456">
+                </div>
+                <div class="form-group">
+                    <label>2e lot (2 chiffres)</label>
+                    <input type="text" id="draw-lot2" maxlength="2" placeholder="23">
+                </div>
+                <div class="form-group">
+                    <label>3e lot (2 chiffres)</label>
+                    <input type="text" id="draw-lot3" maxlength="2" placeholder="11">
+                </div>
+                <div style="display:flex; gap:10px; align-items:end;">
+                    <button class="btn-primary" onclick="publishManual()">Publier</button>
+                </div>
+            </div>
+
+            <div class="section-title"><i class="fas fa-ban"></i> Bloquer / Débloquer un tirage</div>
+            <div class="form-grid">
+                <select id="draw-block-select"></select>
+                <button class="btn-danger" onclick="toggleDrawBlock(true)">Bloquer</button>
+                <button class="btn-primary" onclick="toggleDrawBlock(false)">Débloquer</button>
+            </div>
+        </div>
+
+        <!-- ========== BOULES & LIMITES ========== -->
+        <div id="tab-numbers" class="tab-content">
+            <!-- (contenu inchangé) -->
+            <div class="section-title"><i class="fas fa-ban"></i> Bloquer une boule (tous tirages)</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Numéro à bloquer (00-99)</label>
+                    <input type="text" id="block-number" maxlength="2" placeholder="82">
+                </div>
+                <button class="btn-danger" onclick="blockNumberGlobal()">Bloquer global</button>
+                <button class="btn-primary" onclick="unblockNumberGlobal()">Débloquer global</button>
+            </div>
+            <div id="blocked-numbers-list" class="list-container" style="max-height:150px;"></div>
+
+            <div class="section-title"><i class="fas fa-ban"></i> Bloquer une boule pour un tirage spécifique</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Tirage</label>
+                    <select id="block-draw-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>Numéro à bloquer</label>
+                    <input type="text" id="block-number-draw" maxlength="2" placeholder="48">
+                </div>
+                <button class="btn-danger" onclick="blockNumberDraw()">Bloquer</button>
+                <button class="btn-primary" onclick="unblockNumberDraw()">Débloquer</button>
+            </div>
+
+            <div class="section-title"><i class="fas fa-chart-line"></i> Limiter une boule (montant max)</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Tirage</label>
+                    <select id="limit-draw"></select>
+                </div>
+                <div class="form-group">
+                    <label>Numéro</label>
+                    <input type="text" id="limit-number" maxlength="2" placeholder="48">
+                </div>
+                <div class="form-group">
+                    <label>Montant maximum (G)</label>
+                    <input type="number" id="limit-amount" placeholder="100">
+                </div>
+                <button class="btn-primary" onclick="setNumberLimit()">Appliquer</button>
+            </div>
+
+            <div class="section-title"><i class="fas fa-list"></i> Liste des restrictions actuelles</div>
+            <div id="restrictions-list" class="list-container" style="max-height:400px;"></div>
+        </div>
+
+        <!-- ========== RAPPORTS ========== -->
+        <div id="tab-reports" class="tab-content">
+            <!-- (contenu inchangé) -->
+            <div class="section-title"><i class="fas fa-filter"></i> Générer rapport</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Superviseur</label>
+                    <select id="report-supervisor"></select>
+                </div>
+                <div class="form-group">
+                    <label>Agent</label>
+                    <select id="report-agent"></select>
+                </div>
+                <div class="form-group">
+                    <label>Tirage</label>
+                    <select id="report-draw">
+                        <option value="all">Tous les tirages</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Période</label>
+                    <select id="report-period" onchange="toggleCustomDates()">
+                        <option value="today">Aujourd'hui</option>
+                        <option value="yesterday">Hier</option>
+                        <option value="week">Cette semaine</option>
+                        <option value="month">Ce mois</option>
+                        <option value="custom">Personnalisée</option>
+                    </select>
+                </div>
+                <div id="custom-dates" style="display:none; grid-column:span 2; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div class="form-group">
+                        <label>Du</label>
+                        <input type="date" id="report-from">
+                    </div>
+                    <div class="form-group">
+                        <label>Au</label>
+                        <input type="date" id="report-to">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Filtre gain/perte</label>
+                    <select id="report-gainloss">
+                        <option value="">Tous</option>
+                        <option value="gain">Gain (gagnant)</option>
+                        <option value="loss">Perte (perdant)</option>
+                    </select>
+                </div>
+                <button class="btn-primary" onclick="generateReport()">Générer</button>
+                <button class="btn-primary" onclick="printReport()"><i class="fas fa-print"></i> Imprimer</button>
+            </div>
+            <div id="report-result" style="margin-top:30px;"></div>
+            <div class="chart-container" id="report-chart-container" style="display:none;">
+                <canvas id="reportChart"></canvas>
+            </div>
+        </div>
+
+        <!-- ========== TICKETS (GESTION PAR PROPRIÉTAIRE) ========== -->
+        <div id="tab-tickets" class="tab-content">
+            <div class="section-title"><i class="fas fa-ticket-alt"></i> Gestion des tickets</div>
+
+            <!-- Filtres -->
+            <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+                <div class="form-group">
+                    <label>Superviseur</label>
+                    <select id="ticket-filter-supervisor">
+                        <option value="all">Tous</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Agent</label>
+                    <select id="ticket-filter-agent">
+                        <option value="all">Tous</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tirage</label>
+                    <select id="ticket-filter-draw">
+                        <option value="all">Tous</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Période</label>
+                    <select id="ticket-filter-period" onchange="toggleTicketCustomDates()">
+                        <option value="today">Aujourd'hui</option>
+                        <option value="yesterday">Hier</option>
+                        <option value="week">Cette semaine</option>
+                        <option value="month">Ce mois</option>
+                        <option value="custom">Personnalisée</option>
+                    </select>
+                </div>
+                <div id="ticket-custom-dates" style="display:none; grid-column:span 2; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div class="form-group">
+                        <label>Du</label>
+                        <input type="date" id="ticket-filter-from">
+                    </div>
+                    <div class="form-group">
+                        <label>Au</label>
+                        <input type="date" id="ticket-filter-to">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Statut gain</label>
+                    <select id="ticket-filter-gain">
+                        <option value="all">Tous</option>
+                        <option value="win">Gagnant (win_amount > 0)</option>
+                        <option value="nowin">Non gagnant</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Statut paiement</label>
+                    <select id="ticket-filter-paid">
+                        <option value="all">Tous</option>
+                        <option value="paid">Payé</option>
+                        <option value="unpaid">Non payé</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:end; gap:10px;">
+                    <button class="btn-primary" onclick="loadTickets()"><i class="fas fa-search"></i> Filtrer</button>
+                    <button class="btn-primary" onclick="resetTicketFilters()"><i class="fas fa-undo"></i> Réinitialiser</button>
+                </div>
+            </div>
+
+            <!-- Liste des tickets -->
+            <div class="section-title"><i class="fas fa-list"></i> Liste des tickets</div>
+            <div id="tickets-list-container" class="list-container" style="max-height:500px; overflow-y:auto;">
+                <p>Chargement...</p>
+            </div>
+
+            <!-- Bouton pour charger plus (pagination simple) -->
+            <div style="text-align:center; margin-top:20px; display:none;" id="tickets-load-more">
+                <button class="btn-primary" onclick="loadMoreTickets()">Charger plus de tickets</button>
+            </div>
+
+            <!-- Modale pour afficher les détails d'un ticket -->
+            <div id="ticket-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center;" onclick="if(event.target===this) closeTicketModal()">
+                <div style="background:#1e1f36; border-radius:20px; padding:25px; max-width:600px; width:90%; max-height:80%; overflow-y:auto;">
+                    <h3 style="margin-bottom:20px;">Détails du ticket <span id="modal-ticket-id"></span></h3>
+                    <div id="modal-ticket-content"></div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                        <button class="btn-primary" onclick="closeTicketModal()">Fermer</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== CONFIGURATION ========== -->
+        <div id="tab-config" class="tab-content">
+            <div class="section-title"><i class="fas fa-cog"></i> Paramètres généraux</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Nom de la borlette</label>
+                    <input type="text" id="config-name" placeholder="LOTATO PRO">
+                </div>
+                <div class="form-group">
+                    <label>Slogan</label>
+                    <input type="text" id="config-slogan" placeholder="Votre chance, notre jeu">
+                </div>
+                <div class="form-group">
+                    <label>Logo (URL ou fichier)</label>
+                    <input type="file" id="config-logo-file" accept="image/*">
+                    <div style="margin-top:10px;" id="logo-preview"></div>
+                    <small>Ou URL: <input type="url" id="config-logo-url" placeholder="https://example.com/logo.png"></small>
+                </div>
+            </div>
+            <div class="section-title"><i class="fas fa-calculator"></i> Multiplicateurs de gains</div>
+            <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+                <div class="form-group">
+                    <label>1er lot (2 chiffres) - extrait du Lotto 3</label>
+                    <input type="number" id="multiplier-lot1" value="60" min="1">
+                </div>
+                <div class="form-group">
+                    <label>2e lot (2 chiffres)</label>
+                    <input type="number" id="multiplier-lot2" value="20" min="1">
+                </div>
+                <div class="form-group">
+                    <label>3e lot (2 chiffres)</label>
+                    <input type="number" id="multiplier-lot3" value="10" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Lotto 3 (3 chiffres)</label>
+                    <input type="number" id="multiplier-lotto3" value="500" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Lotto 4 (combinaison)</label>
+                    <input type="number" id="multiplier-lotto4" value="5000" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Lotto 5 (combinaison)</label>
+                    <input type="number" id="multiplier-lotto5" value="25000" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Mariage (combinaison de deux lots)</label>
+                    <input type="number" id="multiplier-mariage" value="500" min="1">
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Enregistrer les paramètres</button>
+            </div>
+            <div id="settings-message" class="alert" style="display:none;"></div>
+        </div>
+
+        <script>
+            // ---------- CONFIGURATION ----------
+            const API_URL = ''; // Laissez vide si même origine
+            let chartInstance = null;
+
+            // ---------- AUTH ----------
+            (function() {
+                const token = localStorage.getItem('auth_token');
+                const role = localStorage.getItem('user_role');
+                if (!token || role !== 'owner') {
+                    window.location.href = 'index.html';
+                }
+                document.getElementById('owner-name').innerHTML = `<i class="fas fa-crown"></i> ${localStorage.getItem('user_name') || 'Propriétaire'}`;
+            })();
+
+            // ---------- ONGLETS ----------
+            function switchTab(tabId) {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.querySelector(`.tab[onclick*="${tabId}"]`).classList.add('active');
+                document.getElementById(`tab-${tabId}`).classList.add('active');
+                
+                if (tabId === 'dashboard') loadDashboard();
+                if (tabId === 'users') loadUsersLists();
+                if (tabId === 'draws') loadDraws();
+                if (tabId === 'numbers') {
+                    loadBlockedNumbers();
+                    loadDrawsForSelects();
+                    loadAllRestrictions();
+                }
+                if (tabId === 'reports') {
+                    loadSupervisorsAndAgents();
+                    loadDrawsForReport();
+                }
+                // NOUVEAU : charger les filtres et tickets quand on va dans l'onglet tickets
+                if (tabId === 'tickets') {
+                    loadTicketFilters();
+                    loadTickets();
+                }
+                if (tabId === 'config') {
+                    loadSettings();
+                }
+            }
+
+            // ---------- UTILITAIRES ----------
+            function showMessage(elementId, message, isSuccess = true) {
+                const el = document.getElementById(elementId);
+                if (el) {
+                    el.style.display = 'block';
+                    el.className = isSuccess ? 'alert alert-success' : 'alert alert-danger';
+                    el.innerHTML = message;
+                    setTimeout(() => { el.style.display = 'none'; }, 5000);
+                }
+            }
+
+            // ---------- TABLEAU DE BORD ----------
+            async function loadDashboard() {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/dashboard`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) throw new Error('Erreur chargement dashboard');
+                    const data = await res.json();
+
+                    document.getElementById('connected-sup-count').innerText = data.connected.supervisors_count;
+                    document.getElementById('connected-agent-count').innerText = data.connected.agents_count;
+                    
+                    let supList = '';
+                    data.connected.supervisors.forEach(s => supList += `<div>👤 ${s.name} (${s.username || s.email})</div>`);
+                    document.getElementById('connected-sup-list').innerHTML = supList || '<span style="opacity:0.7;">Aucun superviseur connecté</span>';
+                    
+                    let agentList = '';
+                    data.connected.agents.forEach(a => agentList += `<div>👤 ${a.name} (${a.username || a.email})</div>`);
+                    document.getElementById('connected-agent-list').innerHTML = agentList || '<span style="opacity:0.7;">Aucun agent connecté</span>';
+
+                    document.getElementById('sales-today').innerHTML = `${data.sales_today.toLocaleString()} G`;
+
+                    let limitsHtml = '';
+                    if (data.limits_progress.length === 0) {
+                        limitsHtml = '<p>Aucune limite définie</p>';
+                    } else {
+                        limitsHtml = '<table><thead><tr><th>Tirage</th><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></tr></thead><tbody>';
+                        data.limits_progress.forEach(l => {
+                            const percent = parseFloat(l.progress_percent).toFixed(1);
+                            let statusClass = '';
+                            if (percent >= 90) statusClass = 'badge-danger';
+                            else if (percent >= 70) statusClass = 'badge-warning';
+                            else statusClass = 'badge-success';
+                            limitsHtml += `<tr>
+                                <td>${l.draw_name}</td>
+                                <td>${l.number}</td>
+                                <td>${parseFloat(l.limit_amount).toLocaleString()} G</td>
+                                <td>${parseFloat(l.current_bets).toLocaleString()} G</td>
+                                <td><span class="${statusClass}">${percent}%</span></td>
+                            </tr>`;
+                        });
+                        limitsHtml += '</tbody></table>';
+                    }
+                    document.getElementById('limits-progress-container').innerHTML = limitsHtml;
+
+                    let agentsHtml = '';
+                    if (data.agents_gain_loss.length === 0) {
+                        agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
+                    } else {
+                        agentsHtml = '<table><thead><tr><th>Agent</th><th>Mises</th><th>Gains</th><th>Résultat net</th></tr></thead><tbody>';
+                        data.agents_gain_loss.forEach(a => {
+                            const netClass = a.net_result >= 0 ? 'profit' : 'loss';
+                            agentsHtml += `<tr>
+                                <td>${a.name}</td>
+                                <td>${parseFloat(a.total_bets).toLocaleString()} G</td>
+                                <td>${parseFloat(a.total_wins).toLocaleString()} G</td>
+                                <td class="${netClass}">${parseFloat(a.net_result).toLocaleString()} G</td>
+                            </tr>`;
+                        });
+                        agentsHtml += '</tbody></table>';
+                    }
+                    document.getElementById('agents-gainloss-container').innerHTML = agentsHtml;
+
+                } catch (e) {
+                    console.error('Dashboard error:', e);
+                    showMessage('', 'Erreur chargement dashboard', false);
+                }
+            }
+
+            // ---------- GESTION UTILISATEURS ----------
+            async function loadUsersLists() {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!supRes.ok) throw new Error('Erreur chargement superviseurs');
+                    const supervisors = await supRes.json();
+                    let supHtml = '';
+                    supervisors.forEach(s => {
+                        supHtml += `<div class="item-row">
+                            <span><strong>${s.name}</strong> (${s.email})</span>
+                            <span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span>
+                            <button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button>
+                        </div>`;
+                    });
+                    document.getElementById('supervisors-list').innerHTML = supHtml || '<p>Aucun superviseur</p>';
+
+                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!agentRes.ok) throw new Error('Erreur chargement agents');
+                    const agents = await agentRes.json();
+                    let agentHtml = '';
+                    agents.forEach(a => {
+                        agentHtml += `<div class="item-row">
+                            <span><strong>${a.name}</strong> (${a.email})</span>
+                            <span>Superviseur: ${a.supervisor_name || 'libre'}</span>
+                            <span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span>
+                            <button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button>
+                        </div>`;
+                    });
+                    document.getElementById('agents-list').innerHTML = agentHtml || '<p>Aucun agent</p>';
+
+                    let supOpts = '<option value="">Aucun (libre)</option>';
+                    supervisors.forEach(s => { supOpts += `<option value="${s.id}">${s.name}</option>`; });
+                    document.getElementById('create-supervisor').innerHTML = supOpts;
+                    document.getElementById('change-supervisor-select').innerHTML = supOpts;
+
+                    let agentOpts = '<option value="">Choisir agent</option>';
+                    agents.forEach(a => { agentOpts += `<option value="${a.id}">${a.name}</option>`; });
+                    document.getElementById('change-agent-select').innerHTML = agentOpts;
+
+                } catch (e) {
+                    console.error(e);
+                    document.getElementById('user-load-error').style.display = 'block';
+                    document.getElementById('user-load-error').innerText = 'Erreur chargement des utilisateurs : ' + e.message;
+                }
+            }
+
+            function toggleSupervisorField() {
+                const role = document.getElementById('create-role').value;
+                document.getElementById('supervisor-field').style.display = role === 'agent' ? 'block' : 'none';
+            }
+
+            async function createUser() {
+                const token = localStorage.getItem('auth_token');
+                const data = {
+                    name: document.getElementById('create-fullname').value,
+                    cin: document.getElementById('create-cin').value,
+                    username: document.getElementById('create-username').value,
+                    password: document.getElementById('create-password').value,
+                    role: document.getElementById('create-role').value,
+                    supervisorId: document.getElementById('create-supervisor').value || null,
+                    zone: document.getElementById('create-zone').value
+                };
+                if (!data.name || !data.username || !data.password) {
+                    showMessage('user-create-message', 'Veuillez remplir tous les champs obligatoires', false);
+                    return;
+                }
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/create-user`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        showMessage('user-create-message', '✅ Utilisateur créé avec succès', true);
+                        
+                        if (result.user) {
+                            const user = result.user;
+                            const details = `
+                                <p><strong>Nom :</strong> ${user.name}</p>
+                                <p><strong>Identifiant :</strong> ${user.username}</p>
+                                <p><strong>Rôle :</strong> ${user.role}</p>
+                                <p><strong>CIN :</strong> ${user.cin || 'Non renseigné'}</p>
+                                <p><strong>Zone :</strong> ${user.zone || 'Non renseignée'}</p>
+                                <p><strong>Superviseur :</strong> ${user.supervisor_name || 'Aucun'}</p>
+                            `;
+                            document.getElementById('created-user-details').innerHTML = details;
+                            document.getElementById('user-created-info').style.display = 'block';
+                        }
+
+                        loadUsersLists();
+                        document.getElementById('create-fullname').value = '';
+                        document.getElementById('create-cin').value = '';
+                        document.getElementById('create-username').value = '';
+                        document.getElementById('create-password').value = 'default123';
+                        document.getElementById('create-zone').value = '';
+                    } else {
+                        showMessage('user-create-message', '❌ ' + (result.error || 'Erreur'), false);
+                    }
+                } catch (e) {
+                    showMessage('user-create-message', '❌ Erreur réseau', false);
+                }
+            }
+
+            async function toggleUserBlock(userId, type) {
+                const token = localStorage.getItem('auth_token');
+                await fetch(`${API_URL}/api/owner/block-user`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, type })
+                });
+                loadUsersLists();
+            }
+
+            async function changeSupervisor() {
+                const token = localStorage.getItem('auth_token');
+                const agentId = document.getElementById('change-agent-select').value;
+                const supervisorId = document.getElementById('change-supervisor-select').value;
+                if (!agentId) return;
+                await fetch(`${API_URL}/api/owner/change-supervisor`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agentId, supervisorId: supervisorId || null })
+                });
+                loadUsersLists();
+            }
+
+            // ---------- TIRAGES ----------
+            async function loadDraws() {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/draws`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const draws = await res.json();
+                    let opts = '<option value="">Sélectionnez un tirage</option>';
+                    draws.forEach(d => { opts += `<option value="${d.id}">${d.name} (${d.time || ''})</option>`; });
+                    document.getElementById('draw-select').innerHTML = opts;
+                    document.getElementById('draw-block-select').innerHTML = opts;
+                } catch (e) { console.error(e); }
+            }
+
+            async function publishManual() {
+                const token = localStorage.getItem('auth_token');
+                const drawId = document.getElementById('draw-select').value;
+                const lotto3 = document.getElementById('draw-lotto3').value.padStart(3, '0');
+                const lot2 = document.getElementById('draw-lot2').value.padStart(2, '0');
+                const lot3 = document.getElementById('draw-lot3').value.padStart(2, '0');
+                if (!drawId || !lotto3 || !lot2 || !lot3) {
+                    showMessage('publish-message', 'Veuillez remplir tous les lots', false);
+                    return;
+                }
+                // Extraire le premier lot (les deux derniers chiffres du Lotto 3)
+                const premierLot = lotto3.slice(-2);
+                const numbers = [premierLot, lot2, lot3];
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/publish-results`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ drawId, numbers, lotto3 }) // on envoie aussi le lotto3 complet si besoin
+                    });
+                    const result = await res.json();
+                    showMessage('publish-message', result.success ? '✅ Résultats publiés' : '❌ Erreur', result.success);
+                } catch (e) { showMessage('publish-message', '❌ Erreur', false); }
+            }
+
+            async function toggleDrawBlock(block) {
+                const token = localStorage.getItem('auth_token');
+                const drawId = document.getElementById('draw-block-select').value;
+                if (!drawId) return;
+                await fetch(`${API_URL}/api/owner/block-draw`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drawId, block })
+                });
+                alert(block ? 'Tirage bloqué' : 'Tirage débloqué');
+                loadDraws();
+            }
+
+            // ---------- BOULES & LIMITES ----------
+            async function loadDrawsForSelects() {
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const draws = await res.json();
+                let opts = '<option value="">Sélectionnez un tirage</option>';
+                draws.forEach(d => { opts += `<option value="${d.id}">${d.name}</option>`; });
+                document.getElementById('limit-draw').innerHTML = opts;
+                document.getElementById('block-draw-select').innerHTML = opts;
+            }
+
+            async function loadBlockedNumbers() {
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                let html = '<strong>Numéros bloqués globalement:</strong> ';
+                html += (data.blockedNumbers || []).join(', ') || 'aucun';
+                document.getElementById('blocked-numbers-list').innerHTML = html;
+            }
+
+            async function blockNumberGlobal() {
+                const token = localStorage.getItem('auth_token');
+                const num = document.getElementById('block-number').value.padStart(2, '0');
+                if (!num) return;
+                await fetch(`${API_URL}/api/owner/block-number`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ number: num })
+                });
+                loadBlockedNumbers();
+                loadAllRestrictions();
+            }
+            async function unblockNumberGlobal() {
+                const token = localStorage.getItem('auth_token');
+                const num = document.getElementById('block-number').value.padStart(2, '0');
+                await fetch(`${API_URL}/api/owner/unblock-number`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ number: num })
+                });
+                loadBlockedNumbers();
+                loadAllRestrictions();
+            }
+
+            async function blockNumberDraw() {
+                const token = localStorage.getItem('auth_token');
+                const drawId = document.getElementById('block-draw-select').value;
+                const num = document.getElementById('block-number-draw').value.padStart(2, '0');
+                if (!drawId || !num) { alert('Choisissez un tirage et un numéro'); return; }
+                await fetch(`${API_URL}/api/owner/block-number-draw`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drawId, number: num })
+                });
+                alert('Numéro bloqué pour ce tirage');
+                loadAllRestrictions();
+            }
+            async function unblockNumberDraw() {
+                const token = localStorage.getItem('auth_token');
+                const drawId = document.getElementById('block-draw-select').value;
+                const num = document.getElementById('block-number-draw').value.padStart(2, '0');
+                await fetch(`${API_URL}/api/owner/unblock-number-draw`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drawId, number: num })
+                });
+                alert('Numéro débloqué pour ce tirage');
+                loadAllRestrictions();
+            }
+
+            async function setNumberLimit() {
+                const token = localStorage.getItem('auth_token');
+                const drawId = document.getElementById('limit-draw').value;
+                const number = document.getElementById('limit-number').value.padStart(2, '0');
+                const amount = parseFloat(document.getElementById('limit-amount').value);
+                if (!drawId || !number || !amount) { alert('Veuillez remplir tous les champs'); return; }
+                await fetch(`${API_URL}/api/owner/number-limit`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drawId, number, limitAmount: amount })
+                });
+                alert('Limite appliquée');
+                loadAllRestrictions();
+            }
+
+            // ---------- FONCTIONS POUR LA LISTE DES RESTRICTIONS ----------
+            async function fetchGlobalBlockedNumbers() {
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                return (data.blockedNumbers || []).map(num => ({ type: 'global', number: num }));
+            }
+
+            async function fetchPerDrawBlockedNumbers() {
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch(`${API_URL}/api/owner/blocked-numbers-per-draw`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return [];
+                return await res.json();
+            }
+
+            async function fetchNumberLimits() {
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch(`${API_URL}/api/owner/number-limits`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return [];
+                return await res.json();
+            }
+
+            async function fetchBlockedDraws() {
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch(`${API_URL}/api/owner/blocked-draws`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return [];
+                return await res.json();
+            }
+
+            async function unblockPerDraw(drawId, number) {
+                const token = localStorage.getItem('auth_token');
+                await fetch(`${API_URL}/api/owner/unblock-number-draw`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drawId, number })
+                });
+                loadAllRestrictions();
+            }
+
+            async function removeLimit(drawId, number) {
+                const token = localStorage.getItem('auth_token');
+                await fetch(`${API_URL}/api/owner/remove-number-limit`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drawId, number })
+                });
+                loadAllRestrictions();
+            }
+
+            async function unblockDraw(drawId) {
+                const token = localStorage.getItem('auth_token');
+                await fetch(`${API_URL}/api/owner/block-draw`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drawId, block: false })
+                });
+                loadAllRestrictions();
+                loadDraws();
+            }
+
+            async function loadAllRestrictions() {
+                const container = document.getElementById('restrictions-list');
+                container.innerHTML = '<p>Chargement des restrictions...</p>';
+
+                try {
+                    const [globalBlocked, perDrawBlocked, limits, blockedDraws] = await Promise.all([
+                        fetchGlobalBlockedNumbers(),
+                        fetchPerDrawBlockedNumbers(),
+                        fetchNumberLimits(),
+                        fetchBlockedDraws()
+                    ]);
+
+                    if (globalBlocked.length === 0 && perDrawBlocked.length === 0 && limits.length === 0 && blockedDraws.length === 0) {
+                        container.innerHTML = '<p class="badge-success" style="padding:10px;">✅ Aucune restriction active</p>';
+                        return;
+                    }
+
+                    let html = '<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
+
+                    blockedDraws.forEach(item => {
+                        html += `<tr style="background:rgba(255,77,77,0.1);">
+                            <td>⏸️ Tirage bloqué</td>
+                            <td>${item.drawName}</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td>
+                        </tr>`;
+                    });
+
+                    globalBlocked.forEach(item => {
+                        html += `<tr style="background:rgba(255,77,77,0.1);">
+                            <td>🚫 Blocage global</td>
+                            <td>Tous</td>
+                            <td><strong>${item.number}</strong></td>
+                            <td>—</td>
+                            <td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockNumberGlobalWithValue('${item.number}')">Débloquer</button></td>
+                        </tr>`;
+                    });
+
+                    perDrawBlocked.forEach(item => {
+                        html += `<tr style="background:rgba(255,170,0,0.1);">
+                            <td>🔒 Blocage spécifique</td>
+                            <td>${item.draw_name || item.drawId}</td>
+                            <td><strong>${item.number}</strong></td>
+                            <td>—</td>
+                            <td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockPerDraw('${item.draw_id}', '${item.number}')">Débloquer</button></td>
+                        </tr>`;
+                    });
+
+                    limits.forEach(item => {
+                        html += `<tr>
+                            <td>💰 Limite de mise</td>
+                            <td>${item.draw_name || item.drawId}</td>
+                            <td><strong>${item.number}</strong></td>
+                            <td>${parseFloat(item.limit_amount).toLocaleString()} G</td>
+                            <td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${item.draw_id}', '${item.number}')">Supprimer</button></td>
+                        </tr>`;
+                    });
+
+                    html += '</tbody></table>';
+                    container.innerHTML = html;
+                } catch (e) {
+                    container.innerHTML = '<p class="loss">❌ Erreur lors du chargement des restrictions. Vérifiez les appels API.</p>';
+                    console.error(e);
+                }
+            }
+
+            async function unblockNumberGlobalWithValue(num) {
+                const token = localStorage.getItem('auth_token');
+                await fetch(`${API_URL}/api/owner/unblock-number`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ number: num })
+                });
+                loadAllRestrictions();
+                loadBlockedNumbers();
+            }
+
+            // ---------- RAPPORTS ----------
+            async function loadSupervisorsAndAgents() {
+                const token = localStorage.getItem('auth_token');
+                const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const supervisors = await supRes.json();
+                let supOpts = '<option value="all">Tous superviseurs</option>';
+                supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
+                document.getElementById('report-supervisor').innerHTML = supOpts;
+
+                const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const agents = await agentRes.json();
+                let agentOpts = '<option value="all">Tous agents</option>';
+                agents.forEach(a => agentOpts += `<option value="${a.id}">${a.name}</option>`);
+                document.getElementById('report-agent').innerHTML = agentOpts;
+            }
+
+            async function loadDrawsForReport() {
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const draws = await res.json();
+                let opts = '<option value="all">Tous les tirages</option>';
+                draws.forEach(d => opts += `<option value="${d.id}">${d.name}</option>`);
+                document.getElementById('report-draw').innerHTML = opts;
+            }
+
+            function toggleCustomDates() {
+                const period = document.getElementById('report-period').value;
+                document.getElementById('custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
+            }
+
+            async function generateReport() {
+                const token = localStorage.getItem('auth_token');
+                const params = new URLSearchParams({
+                    supervisorId: document.getElementById('report-supervisor').value,
+                    agentId: document.getElementById('report-agent').value,
+                    drawId: document.getElementById('report-draw').value,
+                    period: document.getElementById('report-period').value,
+                    fromDate: document.getElementById('report-from').value,
+                    toDate: document.getElementById('report-to').value,
+                    gainLoss: document.getElementById('report-gainloss').value
+                });
+
+                const res = await fetch(`${API_URL}/api/owner/reports?${params}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const report = await res.json();
+                displayReport(report);
+            }
+
+            function displayReport(report) {
+                const s = report.summary;
+                let html = `<div class="stats-grid">`;
+                html += `<div class="stat-card"><div style="font-size:2rem;">${s.total_tickets}</div><div>Tickets</div></div>`;
+                html += `<div class="stat-card"><div style="font-size:2rem;">${parseFloat(s.total_bets).toLocaleString()} G</div><div>Pariés</div></div>`;
+                html += `<div class="stat-card"><div style="font-size:2rem;">${parseFloat(s.total_wins).toLocaleString()} G</div><div>Gains</div></div>`;
+                html += `<div class="stat-card"><div style="font-size:2rem;" class="${parseFloat(s.net_result) >= 0 ? 'profit' : 'loss'}">${parseFloat(s.net_result).toLocaleString()} G</div><div>Résultat net</div></div>`;
+                html += `<div class="stat-card"><div style="font-size:2rem;">${s.gain_count}</div><div>Agents en gain</div></div>`;
+                html += `<div class="stat-card"><div style="font-size:2rem;">${s.loss_count}</div><div>Agents en perte</div></div>`;
+                html += `</div>`;
+
+                if (report.detail && report.detail.length > 0) {
+                    html += `<h3>Détail</h3><div class="list-container">`;
+                    html += `<table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
+                    report.detail.forEach(d => {
+                        const result = parseFloat(d.result || d.wins - d.bets);
+                        html += `<tr>
+                            <td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td>
+                            <td>${d.tickets}</td>
+                            <td>${parseFloat(d.bets).toLocaleString()} G</td>
+                            <td>${parseFloat(d.wins).toLocaleString()} G</td>
+                            <td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td>
+                        </tr>`;
+                    });
+                    html += `</tbody></table></div>`;
+                }
+                document.getElementById('report-result').innerHTML = html;
+
+                const ctx = document.getElementById('reportChart').getContext('2d');
+                if (chartInstance) chartInstance.destroy();
+                chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Mises', 'Gains', 'Résultat net'],
+                        datasets: [{
+                            label: 'Montants (G)',
+                            data: [parseFloat(s.total_bets), parseFloat(s.total_wins), parseFloat(s.net_result)],
+                            backgroundColor: ['#00d4ff', '#00f190', '#ad00f1']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } } },
+                        plugins: { legend: { labels: { color: 'white' } } }
+                    }
+                });
+                document.getElementById('report-chart-container').style.display = 'block';
+            }
+
+            function printReport() {
+                const content = document.getElementById('report-result').innerHTML;
+                const w = window.open('', '_blank');
+                w.document.write(`<html><head><title>Rapport LOTATO</title><style>body{font-family:Arial;padding:20px;background:#0a0b1e;color:#fff;}</style></head><body>${content}</body></html>`);
+                w.document.close();
+                w.print();
+            }
+
+            // ---------- TICKETS (GESTION PROPRIÉTAIRE) ----------
+            let currentTicketPage = 0;
+            let currentTicketFilters = {};
+
+            async function loadTickets(reset = true) {
+                if (reset) {
+                    currentTicketPage = 0;
+                    document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>';
+                }
+
+                const token = localStorage.getItem('auth_token');
+                const params = new URLSearchParams();
+
+                // Récupérer les filtres
+                const supervisor = document.getElementById('ticket-filter-supervisor').value;
+                const agent = document.getElementById('ticket-filter-agent').value;
+                const draw = document.getElementById('ticket-filter-draw').value;
+                const period = document.getElementById('ticket-filter-period').value;
+                const from = document.getElementById('ticket-filter-from').value;
+                const to = document.getElementById('ticket-filter-to').value;
+                const gain = document.getElementById('ticket-filter-gain').value;
+                const paid = document.getElementById('ticket-filter-paid').value;
+
+                if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
+                if (agent && agent !== 'all') params.append('agentId', agent);
+                if (draw && draw !== 'all') params.append('drawId', draw);
+                if (period) params.append('period', period);
+                if (from) params.append('fromDate', from);
+                if (to) params.append('toDate', to);
+                if (gain && gain !== 'all') params.append('gain', gain);
+                if (paid && paid !== 'all') params.append('paid', paid);
+
+                params.append('page', currentTicketPage);
+                params.append('limit', 20); // 20 tickets par chargement
+
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) throw new Error('Erreur chargement tickets');
+                    const data = await res.json();
+
+                    if (reset) {
+                        displayTickets(data.tickets);
+                    } else {
+                        appendTickets(data.tickets);
+                    }
+
+                    // Afficher le bouton "Charger plus" s'il y a plus de tickets
+                    const loadMoreBtn = document.getElementById('tickets-load-more');
+                    if (data.hasMore) {
+                        loadMoreBtn.style.display = 'block';
+                    } else {
+                        loadMoreBtn.style.display = 'none';
+                    }
+                } catch (e) {
+                    document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>';
+                    console.error(e);
+                }
+            }
+
+            function displayTickets(tickets) {
+                const container = document.getElementById('tickets-list-container');
+                if (!tickets || tickets.length === 0) {
+                    container.innerHTML = '<p>Aucun ticket trouvé</p>';
+                    return;
+                }
+
+                let html = '<table><thead><tr><th>ID</th><th>Agent</th><th>Tirage</th><th>Date</th><th>Montant</th><th>Gain</th><th>Payé</th><th>Actions</th></tr></thead><tbody>';
+                tickets.forEach(t => {
+                    const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
+                    const gainClass = t.win_amount > 0 ? 'profit' : '';
+                    const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
+                    html += `<tr>
+                        <td>${t.ticket_id || t.id}</td>
+                        <td>${t.agent_name || t.agent_id}</td>
+                        <td>${t.draw_name || t.draw_id}</td>
+                        <td>${new Date(t.date).toLocaleString()}</td>
+                        <td>${parseFloat(t.total_amount).toLocaleString()} G</td>
+                        <td class="${gainClass}">${gainDisplay}</td>
+                        <td>${paidStatus}</td>
+                        <td>
+                            <button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button>
+                            <button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            }
+
+            function appendTickets(tickets) {
+                const container = document.getElementById('tickets-list-container');
+                const table = container.querySelector('table');
+                if (!table) {
+                    displayTickets(tickets);
+                    return;
+                }
+                const tbody = table.querySelector('tbody');
+                tickets.forEach(t => {
+                    const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
+                    const gainClass = t.win_amount > 0 ? 'profit' : '';
+                    const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${t.ticket_id || t.id}</td>
+                        <td>${t.agent_name || t.agent_id}</td>
+                        <td>${t.draw_name || t.draw_id}</td>
+                        <td>${new Date(t.date).toLocaleString()}</td>
+                        <td>${parseFloat(t.total_amount).toLocaleString()} G</td>
+                        <td class="${gainClass}">${gainDisplay}</td>
+                        <td>${paidStatus}</td>
+                        <td>
+                            <button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button>
+                            <button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            function loadMoreTickets() {
+                currentTicketPage++;
+                loadTickets(false);
+            }
+
+            async function viewTicketDetails(ticketId) {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) throw new Error('Erreur chargement détails');
+                    const ticket = await res.json();
+
+                    let betsHtml = '<h4>Pari(s)</h4><table><thead><tr><th>Numéro</th><th>Jeu</th><th>Montant</th><th>Gain estimé</th></tr></thead><tbody>';
+                    if (ticket.bets && Array.isArray(ticket.bets)) {
+                        ticket.bets.forEach(bet => {
+                            const game = bet.game || bet.specialType || 'N/A';
+                            const number = bet.cleanNumber || bet.number || '';
+                            const amount = parseFloat(bet.amount || 0).toLocaleString();
+                            const win = bet.winAmount || 0;
+                            betsHtml += `<tr><td>${number}</td><td>${game}</td><td>${amount} G</td><td>${win > 0 ? win + ' G' : '-'}</td></tr>`;
+                        });
+                    }
+                    betsHtml += '</tbody></table>';
+
+                    const html = `
+                        <p><strong>Ticket ID:</strong> ${ticket.ticket_id || ticket.id}</p>
+                        <p><strong>Agent:</strong> ${ticket.agent_name} (ID: ${ticket.agent_id})</p>
+                        <p><strong>Tirage:</strong> ${ticket.draw_name}</p>
+                        <p><strong>Date:</strong> ${new Date(ticket.date).toLocaleString()}</p>
+                        <p><strong>Total misé:</strong> ${parseFloat(ticket.total_amount).toLocaleString()} G</p>
+                        <p><strong>Gain total:</strong> <span class="${ticket.win_amount > 0 ? 'profit' : ''}">${parseFloat(ticket.win_amount).toLocaleString()} G</span></p>
+                        <p><strong>Payé:</strong> ${ticket.paid ? 'Oui' : 'Non'}</p>
+                        ${betsHtml}
+                    `;
+                    document.getElementById('modal-ticket-content').innerHTML = html;
+                    document.getElementById('modal-ticket-id').innerText = ticket.ticket_id || ticket.id;
+                    document.getElementById('ticket-details-modal').style.display = 'flex';
+                } catch (e) {
+                    alert('Erreur lors du chargement des détails');
+                    console.error(e);
+                }
+            }
+
+            function closeTicketModal() {
+                document.getElementById('ticket-details-modal').style.display = 'none';
+            }
+
+            function confirmDeleteTicket(ticketId) {
+                if (confirm('Êtes-vous sûr de vouloir supprimer ce ticket définitivement ?')) {
+                    deleteTicket(ticketId);
+                }
+            }
+
+            async function deleteTicket(ticketId) {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        alert('Ticket supprimé avec succès');
+                        loadTickets(); // Recharger la liste
+                    } else {
+                        alert('Erreur: ' + (result.error || 'Suppression échouée'));
+                    }
+                } catch (e) {
+                    alert('Erreur réseau');
+                    console.error(e);
+                }
+            }
+
+            // Fonctions pour les filtres
+            async function loadTicketFilters() {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    // Charger superviseurs
+                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const supervisors = await supRes.json();
+                    let supOpts = '<option value="all">Tous superviseurs</option>';
+                    supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
+                    document.getElementById('ticket-filter-supervisor').innerHTML = supOpts;
+
+                    // Charger agents
+                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const agents = await agentRes.json();
+                    let agentOpts = '<option value="all">Tous agents</option>';
+                    agents.forEach(a => agentOpts += `<option value="${a.id}">${a.name}</option>`);
+                    document.getElementById('ticket-filter-agent').innerHTML = agentOpts;
+
+                    // Charger tirages
+                    const drawRes = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const draws = await drawRes.json();
+                    let drawOpts = '<option value="all">Tous tirages</option>';
+                    draws.forEach(d => drawOpts += `<option value="${d.id}">${d.name}</option>`);
+                    document.getElementById('ticket-filter-draw').innerHTML = drawOpts;
+                } catch (e) {
+                    console.error('Erreur chargement filtres:', e);
+                }
+            }
+
+            function toggleTicketCustomDates() {
+                const period = document.getElementById('ticket-filter-period').value;
+                document.getElementById('ticket-custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
+            }
+
+            function resetTicketFilters() {
+                document.getElementById('ticket-filter-supervisor').value = 'all';
+                document.getElementById('ticket-filter-agent').value = 'all';
+                document.getElementById('ticket-filter-draw').value = 'all';
+                document.getElementById('ticket-filter-period').value = 'today';
+                document.getElementById('ticket-filter-from').value = '';
+                document.getElementById('ticket-filter-to').value = '';
+                document.getElementById('ticket-filter-gain').value = 'all';
+                document.getElementById('ticket-filter-paid').value = 'all';
+                toggleTicketCustomDates();
+                loadTickets();
+            }
+
+            // ---------- CONFIGURATION ----------
+            async function loadSettings() {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/settings`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        document.getElementById('config-name').value = data.name || '';
+                        document.getElementById('config-slogan').value = data.slogan || '';
+                        document.getElementById('config-logo-url').value = data.logoUrl || '';
+                        if (data.logoUrl) {
+                            document.getElementById('header-logo').src = data.logoUrl;
+                            document.getElementById('header-logo').style.display = 'inline';
+                        } else {
+                            document.getElementById('header-logo').style.display = 'none';
+                        }
+                        document.getElementById('header-title').innerText = data.name ? data.name + ' · Propriétaire' : 'LOTATO PRO · Propriétaire';
+                        
+                        if (data.multipliers) {
+                            document.getElementById('multiplier-lot1').value = data.multipliers.lot1 || 60;
+                            document.getElementById('multiplier-lot2').value = data.multipliers.lot2 || 20;
+                            document.getElementById('multiplier-lot3').value = data.multipliers.lot3 || 10;
+                            document.getElementById('multiplier-lotto3').value = data.multipliers.lotto3 || 500;
+                            document.getElementById('multiplier-lotto4').value = data.multipliers.lotto4 || 5000;
+                            document.getElementById('multiplier-lotto5').value = data.multipliers.lotto5 || 25000;
+                            document.getElementById('multiplier-mariage').value = data.multipliers.mariage || 500;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Erreur chargement settings', e);
+                }
+            }
+
+            async function saveSettings() {
+                const token = localStorage.getItem('auth_token');
+                const name = document.getElementById('config-name').value;
+                const slogan = document.getElementById('config-slogan').value;
+                const logoUrl = document.getElementById('config-logo-url').value;
+                const logoFile = document.getElementById('config-logo-file').files[0];
+                
+                const multipliers = {
+                    lot1: parseInt(document.getElementById('multiplier-lot1').value) || 60,
+                    lot2: parseInt(document.getElementById('multiplier-lot2').value) || 20,
+                    lot3: parseInt(document.getElementById('multiplier-lot3').value) || 10,
+                    lotto3: parseInt(document.getElementById('multiplier-lotto3').value) || 500,
+                    lotto4: parseInt(document.getElementById('multiplier-lotto4').value) || 5000,
+                    lotto5: parseInt(document.getElementById('multiplier-lotto5').value) || 25000,
+                    mariage: parseInt(document.getElementById('multiplier-mariage').value) || 500
+                };
+
+                let body;
+                let headers = { 'Authorization': `Bearer ${token}` };
+                let url = `${API_URL}/api/owner/settings`;
+
+                if (logoFile) {
+                    const formData = new FormData();
+                    formData.append('name', name);
+                    formData.append('slogan', slogan);
+                    formData.append('logo', logoFile);
+                    formData.append('multipliers', JSON.stringify(multipliers));
+                    body = formData;
+                } else {
+                    headers['Content-Type'] = 'application/json';
+                    body = JSON.stringify({ name, slogan, logoUrl, multipliers });
+                }
+
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers,
+                        body
+                    });
+                    if (res.ok) {
+                        showMessage('settings-message', '✅ Paramètres enregistrés', true);
+                        loadSettings();
+                    } else {
+                        showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
+                    }
+                } catch (e) {
+                    showMessage('settings-message', '❌ Erreur réseau', false);
+                }
+            }
+
+            // Prévisualisation du logo
+            document.getElementById('config-logo-file').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(ev) {
+                        document.getElementById('logo-preview').innerHTML = `<img src="${ev.target.result}" style="max-height:60px;">`;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    document.getElementById('logo-preview').innerHTML = '';
+                }
+            });
+
+            // ---------- DÉCONNEXION ----------
+            function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+
+            // ---------- CHARGEMENT INITIAL ----------
+            window.onload = function() {
+                loadDashboard();
+                loadUsersLists();
+                loadDraws();
+                loadBlockedNumbers();
+                loadDrawsForSelects();
+                loadSupervisorsAndAgents();
+                loadDrawsForReport();
+                loadTicketFilters(); // Pré-remplir les filtres de l'onglet tickets
+                loadSettings();
+                toggleSupervisorField();
+                toggleCustomDates();
+            };
+        </script>
+    </div>
+</body>
+</html>
