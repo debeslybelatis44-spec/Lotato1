@@ -1,19 +1,19 @@
 const API_CONFIG = {
     BASE_URL: 'https://lotato1.onrender.com',
     ENDPOINTS: {
-        LOGIN: '/auth/login',
-        SAVE_TICKET: '/tickets/save',
-        GET_TICKETS: '/tickets',
-        GET_REPORTS: '/reports',
-        GET_DRAWS: '/draws',
-        GET_WINNERS: '/winners',
-        GET_WINNING_RESULTS: '/winners/results',
-        PAY_WINNER: '/winners/pay',
-        GET_AGENTS: '/agents',
-        DELETE_TICKET: '/tickets',
-        GET_DRAW_REPORT: '/reports/draw',
-        GET_LOTTERY_CONFIG: '/lottery-config',
-        CHECK_WINNING_TICKETS: '/tickets/check-winners'
+        LOGIN: '/api/auth/login',
+        SAVE_TICKET: '/api/tickets/save',
+        GET_TICKETS: '/api/tickets',
+        GET_REPORTS: '/api/reports',
+        GET_DRAWS: '/api/draws',
+        GET_WINNERS: '/api/winners',
+        GET_WINNING_RESULTS: '/api/winners/results',
+        PAY_WINNER: '/api/winners/pay',
+        GET_AGENTS: '/api/agents',
+        DELETE_TICKET: '/api/tickets',
+        GET_DRAW_REPORT: '/api/reports/draw',
+        GET_LOTTERY_CONFIG: '/api/lottery-config',
+        CHECK_WINNING_TICKETS: '/api/tickets/check-winners'
     }
 };
 
