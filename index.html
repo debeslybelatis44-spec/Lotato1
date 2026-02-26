@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOTATO PRO - Connexion</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6a11cb;
+            --secondary: #2575fc;
+            --success: #00b09b;
+            --danger: #ff416c;
+            --dark: #1a1b3a;
+            --light: #ecf0f1;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1b3a 0%, #0a0b1e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid rgba(81, 6, 75, 0.699);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-icon {
+            font-size: 50px;
+            color: var(--primary);
+            margin-bottom: 15px;
+            text-shadow: 0 0 20px rgba(106, 17, 203, 0.5);
+        }
+
+        .logo h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #6a11cb, #2575fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+
+        .logo p {
+            color: #a0a0b8;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            color: #a0a0b8;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.2);
+        }
+
+        .password-container {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(106, 17, 203, 0.3);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            background: rgba(255, 65, 108, 0.1);
+            border: 1px solid var(--danger);
+            color: #ff416c;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .error-message.show {
+            display: flex;
+        }
+
+        .success-message {
+            background: rgba(0, 176, 155, 0.1);
+            border: 1px solid var(--success);
+            color: #00b09b;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .success-message.show {
+            display: flex;
+        }
+
+        .role-selection {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .role-btn {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #a0a0b8;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .role-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-spinner.active {
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        /* Bouton pour effacer la session */
+        .clear-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #ff416c, #ff4b2b);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s;
+        }
+
+        .clear-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(255, 65, 108, 0.3);
+        }
+
+        .button-container {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .button-container button {
+            flex: 1;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+            }
+            
+            .button-container {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <div class="logo-icon">
+                <i class="fas fa-crown"></i>
+            </div>
+            <h1>LOTATO PRO</h1>
+            <p>Système de gestion de loterie</p>
+        </div>
+
+        <div class="error-message" id="error-message">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="error-text"></span>
+        </div>
+
+        <div class="success-message" id="success-message">
+            <i class="fas fa-check-circle"></i>
+            <span id="success-text"></span>
+        </div>
+
+        <form id="login-form" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-user"></i> Identifiant
+                </label>
+                <input type="text" id="username" class="form-input" 
+                       placeholder="Entrez votre identifiant" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-key"></i> Mot de passe
+                </label>
+                <div class="password-container">
+                    <input type="password" id="password" class="form-input" 
+                           placeholder="Entrez votre mot de passe" required>
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility()">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-user-tag"></i> Rôle
+                </label>
+                <div class="role-selection">
+                    <button type="button" class="role-btn active" data-role="agent" onclick="selectRole('agent')">
+                        Agent
+                    </button>
+                    <button type="button" class="role-btn" data-role="supervisor" onclick="selectRole('supervisor')">
+                        Superviseur
+                    </button>
+                    <button type="button" class="role-btn" data-role="owner" onclick="selectRole('owner')">
+                        Propriétaire
+                    </button>
+                </div>
+                <input type="hidden" id="user-role" value="agent">
+            </div>
+
+            <div id="button-container" class="button-container">
+                <button type="submit" class="login-btn" id="login-btn">
+                    <span class="loading-spinner" id="loading-spinner"></span>
+                    <span id="login-text">
+                        <i class="fas fa-sign-in-alt"></i> Se connecter
+                    </span>
+                </button>
+            </div>
+        </form>
+
+        <div class="footer">
+            <p>© 2024 LOTATO PRO. Tous droits réservés.</p>
+            <p style="margin-top: 5px;">Version 6.0</p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const CONFIG = {
+            API_URL: 'https://lotata-islp.onrender.com/api',
+            ROLES: {
+                AGENT: 'agent',
+                SUPERVISOR: 'supervisor', 
+                OWNER: 'owner'
+            },
+            REDIRECTS: {
+                AGENT: 'agent1.html',
+                SUPERVISOR: 'responsable.html',
+                OWNER: 'owner.html'
+            }
+        };
+
+        let currentRole = 'agent';
+        let isLoggingIn = false; // Variable pour empêcher les connexions multiples
+
+        // Fonctions d'affichage
+        function showError(message) {
+            const errorEl = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            errorText.textContent = message;
+            errorEl.classList.add('show');
+            
+            // Cacher après 5 secondes
+            setTimeout(() => {
+                errorEl.classList.remove('show');
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            const successEl = document.getElementById('success-message');
+            const successText = document.getElementById('success-text');
+            successText.textContent = message;
+            successEl.classList.add('show');
+            
+            // Cacher après 5 secondes
+            setTimeout(() => {
+                successEl.classList.remove('show');
+            }, 5000);
+        }
+
+        function hideMessages() {
+            document.getElementById('error-message').classList.remove('show');
+            document.getElementById('success-message').classList.remove('show');
+        }
+
+        function setLoading(loading) {
+            const btn = document.getElementById('login-btn');
+            const spinner = document.getElementById('loading-spinner');
+            const text = document.getElementById('login-text');
+            
+            if (loading) {
+                btn.disabled = true;
+                spinner.classList.add('active');
+                text.innerHTML = 'Connexion...';
+                isLoggingIn = true;
+            } else {
+                btn.disabled = false;
+                spinner.classList.remove('active');
+                text.innerHTML = '<i class="fas fa-sign-in-alt"></i> Se connecter';
+                isLoggingIn = false;
+            }
+        }
+
+        function togglePasswordVisibility() {
+            const input = document.getElementById('password');
+            const icon = document.querySelector('.toggle-password i');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'fas fa-eye-slash';
+            } else {
+                input.type = 'password';
+                icon.className = 'fas fa-eye';
+            }
+        }
+
+        function selectRole(role) {
+            currentRole = role;
+            document.getElementById('user-role').value = role;
+            
+            // Mettre à jour l'interface
+            document.querySelectorAll('.role-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Changer le placeholder selon le rôle
+            const usernameInput = document.getElementById('username');
+            switch(role) {
+                case 'agent':
+                    usernameInput.placeholder = 'Ex: agent-01 ou Jean Pierre';
+                    break;
+                case 'supervisor':
+                    usernameInput.placeholder = 'Email ou identifiant superviseur';
+                    break;
+                case 'owner':
+                    usernameInput.placeholder = 'Email administrateur';
+                    break;
+            }
+        }
+
+        // Fonction pour effacer la session et recharger
+        function clearSessionAndReload() {
+            // Effacer toutes les données de session
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_role');
+            localStorage.removeItem('user_name');
+            localStorage.removeItem('agent_id');
+            localStorage.removeItem('agent_name');
+            localStorage.removeItem('supervisor_id');
+            localStorage.removeItem('owner_id');
+            localStorage.removeItem('last_username');
+            
+            // Recharger la page
+            window.location.reload();
+        }
+
+        // Vérifier si déjà connecté - MODIFIÉ POUR ÉVITER REDIRECTION AUTOMATIQUE
+        function checkExistingSession() {
+            const token = localStorage.getItem('auth_token');
+            const role = localStorage.getItem('user_role');
+            
+            // Ne pas rediriger automatiquement - permettre à l'utilisateur de choisir
+            if (token && role && CONFIG.REDIRECTS[role.toUpperCase()]) {
+                // Pré-remplir les champs avec les dernières infos
+                const lastUsername = localStorage.getItem('last_username');
+                if (lastUsername) {
+                    document.getElementById('username').value = lastUsername;
+                }
+                
+                // Pré-sélectionner le dernier rôle
+                selectRole(role);
+                
+                // Afficher un message informatif
+                showSuccess(`Session précédente détectée (${role}). Vous pouvez vous reconnecter ou changer d'utilisateur.`);
+                
+                // Créer un bouton "Effacer session"
+                const buttonContainer = document.getElementById('button-container');
+                const clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.className = 'clear-btn';
+                clearBtn.innerHTML = '<i class="fas fa-times"></i> Effacer session';
+                clearBtn.onclick = function() {
+                    clearSessionAndReload();
+                };
+                
+                // Ajouter le bouton après le bouton de connexion
+                buttonContainer.appendChild(clearBtn);
+                
+                return false; // Ne pas rediriger automatiquement
+            }
+            return true;
+        }
+
+        // Authentification API avec timeout
+        async function authenticate(username, password, role) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 secondes timeout
+            
+            try {
+                const response = await fetch(`${CONFIG.API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password,
+                        role: role
+                    }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    let errorMessage = 'Identifiants incorrects';
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.error || errorMessage;
+                    } catch (e) {
+                        // Si la réponse n'est pas du JSON, on utilise le statut
+                        errorMessage = `Erreur ${response.status}: ${response.statusText}`;
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                return await response.json();
+            } catch (error) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    throw new Error('La connexion a expiré. Veuillez réessayer.');
+                }
+                throw error;
+            }
+        }
+
+        // Gestion de la connexion - CORRIGÉE POUR ÉVITER LE SPINNER INFINI
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            // Empêcher les connexions multiples
+            if (isLoggingIn) {
+                return;
+            }
+            
+            hideMessages();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const role = currentRole;
+            
+            // Validation basique
+            if (!username || !password) {
+                showError('Veuillez remplir tous les champs');
+                return;
+            }
+            
+            // Sauvegarder le nom d'utilisateur pour la prochaine fois
+            localStorage.setItem('last_username', username);
+            
+            setLoading(true);
+            
+            try {
+                const authResult = await authenticate(username, password, role);
+                
+                if (authResult.success && authResult.token) {
+                    // Stocker les données selon le rôle
+                    localStorage.setItem('auth_token', authResult.token);
+                    localStorage.setItem('user_role', role);
+                    localStorage.setItem('user_name', authResult.name || username);
+                    
+                    if (role === CONFIG.ROLES.AGENT) {
+                        localStorage.setItem('agent_id', authResult.agentId || username);
+                        localStorage.setItem('agent_name', authResult.name || username);
+                    }
+                    
+                    if (role === CONFIG.ROLES.SUPERVISOR) {
+                        localStorage.setItem('supervisor_id', authResult.id || username);
+                    }
+                    
+                    if (role === CONFIG.ROLES.OWNER) {
+                        localStorage.setItem('owner_id', authResult.id || username);
+                    }
+                    
+                    // Désactiver le spinner avant la redirection
+                    setLoading(false);
+                    
+                    // Redirection
+                    showSuccess('Connexion réussie! Redirection...');
+                    
+                    setTimeout(() => {
+                        window.location.href = CONFIG.REDIRECTS[role.toUpperCase()];
+                    }, 1000);
+                    
+                } else {
+                    showError(authResult.error || 'Identifiants incorrects');
+                    setLoading(false);
+                }
+                
+            } catch (error) {
+                console.error('Erreur de connexion:', error);
+                showError(error.message || 'Erreur de connexion au serveur. Veuillez vérifier votre connexion internet.');
+                setLoading(false);
+            }
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', () => {
+            checkExistingSession();
+            
+            // Focus sur le premier champ
+            document.getElementById('username').focus();
+            
+            // Gestion des touches
+            document.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const focused = document.activeElement;
+                    if (focused && focused.type !== 'submit' && !isLoggingIn) {
+                        e.preventDefault();
+                        
+                        if (focused.id === 'username') {
+                            document.getElementById('password').focus();
+                        } else if (focused.id === 'password') {
+                            document.getElementById('login-btn').click();
+                        }
+                    }
+                }
+            });
+            
+            // Ajouter une vérification pour afficher le bouton "Effacer session" si nécessaire
+            const token = localStorage.getItem('auth_token');
+            if (token && !document.querySelector('.clear-btn')) {
+                const buttonContainer = document.getElementById('button-container');
+                const clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.className = 'clear-btn';
+                clearBtn.innerHTML = '<i class="fas fa-times"></i> Effacer session';
+                clearBtn.onclick = function() {
+                    clearSessionAndReload();
+                };
+                buttonContainer.appendChild(clearBtn);
+            }
+            
+            // Ajouter un gestionnaire pour reset le spinner si la page est rafraîchie
+            window.addEventListener('beforeunload', () => {
+                setLoading(false);
+            });
+            
+            // S'assurer que le spinner est désactivé au chargement
+            setLoading(false);
+        });
+    </script>
+</body>
+</html>
