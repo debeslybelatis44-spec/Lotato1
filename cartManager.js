@@ -1,5 +1,5 @@
 // ==========================
-// cartManager.js (STABLE + QR + PRINT FIX)
+// cartManager.js (FIXED)
 // ==========================
 
 // ---------- Utils ----------
@@ -97,7 +97,7 @@ var CartManager = {
     }
 };
 
-// ---------- Save & Print ----------
+// ---------- Save & Print Ticket ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
         alert("Panye vid");
@@ -124,27 +124,25 @@ async function processFinalTicket() {
                 total
             };
 
-            const res = await fetch(
-                `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                    },
-                    body: JSON.stringify(payload)
-                }
-            );
+            const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                },
+                body: JSON.stringify(payload)
+            });
 
             if (!res.ok) throw new Error("Erreur serveur");
 
             const data = await res.json();
-            APP_STATE.ticketsHistory.unshift(data.ticket);
             printThermalTicket(data.ticket);
+            APP_STATE.ticketsHistory.unshift(data.ticket);
         }
 
         APP_STATE.currentCart = [];
         CartManager.renderCart();
+
         alert("✅ Tikè sove & enprime");
 
     } catch (err) {
@@ -153,54 +151,63 @@ async function processFinalTicket() {
     }
 }
 
-// ---------- PRINT (FIXED – NO onload dependency) ----------
+// ---------- PRINT (FIXED: using hidden iframe to avoid popup blocker) ----------
 function printThermalTicket(ticket) {
     const html = generateTicketHTML(ticket);
 
-    const win = window.open('', '_blank', 'width=400,height=600');
-    if (!win) {
-        alert("Autorize popup pou enprime");
-        return;
-    }
+    // Créer une iframe cachée
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.top = '-1000px';
+    iframe.style.left = '-1000px';
+    document.body.appendChild(iframe);
 
-    win.document.open();
-    win.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Ticket</title>
-            <style>
-                @page { size: 80mm auto; margin: 2mm; }
-                body {
-                    font-family: monospace;
-                    font-size: 11px;
-                    width: 76mm;
-                    margin: 0 auto;
-                }
-            </style>
-        </head>
-        <body>
-            ${html}
-        </body>
-        </html>
-    `);
-    win.document.close();
+    // Attendre que l'iframe soit prête
+    iframe.onload = function () {
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Ticket</title>
+                <style>
+                    @page { size: 80mm auto; margin: 2mm; }
+                    body {
+                        font-family: monospace;
+                        font-size: 11px;
+                        width: 76mm;
+                        margin: 0 auto;
+                    }
+                </style>
+            </head>
+            <body>
+                ${html}
+            </body>
+            </html>
+        `);
+        doc.close();
 
-    // ✅ Impression forcée (même logique que uiManager)
-    setTimeout(() => {
-        win.focus();
-        win.print();
-        setTimeout(() => win.close(), 800);
-    }, 600);
+        // Lancer l'impression
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+
+        // Supprimer l'iframe après impression (avec un délai pour éviter la suppression trop rapide)
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 1000);
+    };
+
+    // Déclencher l'écriture (l'événement onload se chargera du reste)
+    iframe.src = 'about:blank';
 }
 
-// ---------- Ticket HTML + QR ----------
+// ---------- Ticket HTML ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
-
-    const qrData = `TICKET:${ticket.ticket_id || ticket.id}`;
-    const qrURL =
-        `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`;
 
     const betsHTML = (ticket.bets || []).map(b => `
         <div style="display:flex;justify-content:space-between;">
@@ -211,13 +218,16 @@ function generateTicketHTML(ticket) {
 
     return `
         <div style="text-align:center;border-bottom:1px solid #000;">
-            <strong>${cfg.LOTTERY_NAME || 'LOTATO'}</strong>
+            <strong>${cfg.LOTTERY_NAME || 'LOTATO'}</strong><br>
+            <small>${cfg.slogan || ''}</small>
         </div>
 
-        <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
-        <p>Tiraj: ${ticket.draw_name}</p>
-        <p>Date: ${new Date(ticket.date).toLocaleString('fr-FR')}</p>
-        <p>Ajan: ${ticket.agent_name || APP_STATE.agentName}</p>
+        <div>
+            <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
+            <p>Tiraj: ${ticket.draw_name}</p>
+            <p>Date: ${new Date(ticket.date).toLocaleString('fr-FR')}</p>
+            <p>Ajan: ${ticket.agent_name}</p>
+        </div>
 
         <hr>
         ${betsHTML}
@@ -228,9 +238,8 @@ function generateTicketHTML(ticket) {
             <span>${ticket.total_amount || ticket.total} Gdes</span>
         </div>
 
-        <div style="text-align:center;margin-top:8px;">
-            <img src="${qrURL}" style="width:100px;height:100px;">
-            <div style="font-size:9px;">Scan pou verifye tikè</div>
+        <div style="text-align:center;margin-top:10px;">
+            <p>Mèsi & Bòn Chans</p>
         </div>
     `;
 }
