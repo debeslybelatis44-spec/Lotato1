@@ -1,0 +1,952 @@
+:root {
+    --primary: #ad00f1;
+    --secondary: #00d4ff;
+    --accent: #ff007a;
+    --bg: #0a0b1e;
+    --surface: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(81, 6, 75, 0.699);
+    --text-main: #ffffff;
+    --text-dim: #a0a0b8;
+    --success: #00f190;
+    --danger: #ff4d4d;
+    --warning: #ffa502;
+    --profit: #00ff88;
+    --loss: #ff4757;
+    --miami: #ff4757;
+    --newyork: #ffa502;
+    --georgia: #2ed573;
+    --texas: #ff6b35;
+    --tunisia: #00cec9;
+    --florida: #ff4757;
+}
+
+* {
+    margin: 0; padding: 0; box-sizing: border-box;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background-color: var(--bg);
+    color: var(--text-main);
+    min-height: 100vh;
+    background: radial-gradient(circle at top right, #1a1b3a, #0a0b1e);
+    overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+@keyframes pulseActive { 0% { box-shadow: 0 0 0 0 rgba(173, 0, 241, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(173, 0, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(173, 0, 241, 0); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes bounce { 0%, 20%, 60%, 100% { transform: translateY(0); } 40% { transform: translateY(-5px); } 80% { transform: translateY(-2px); } }
+
+.animate-fade { animation: fadeIn 0.4s ease-out forwards; }
+.pulse-active { animation: pulseActive 1.5s infinite; }
+.animate-bounce { animation: bounce 0.5s; }
+
+.app-shell {
+    max-width: 500px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+header {
+    padding: 15px 20px;
+    backdrop-filter: blur(15px);
+    position: sticky;
+    top: 0; z-index: 1000;
+    display: flex; justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.brand h1 {
+    font-size: 1.3rem;
+}
+
+.pro-badge {
+    background: var(--primary);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#multi-draw-continue {
+    position: sticky;
+    top: 80px;
+    z-index: 999;
+    background: var(--bg);
+    padding: 15px 20px;
+    margin: 0;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.btn-success-full {
+    background: var(--success);
+    border: none;
+    border-radius: 16px;
+    color: black;
+    font-weight: bold;
+    padding: 16px;
+    width: 100%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s;
+}
+
+.btn-success-full:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 20px rgba(0, 241, 144, 0.5);
+}
+
+.draw-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    padding: 20px;
+    margin-top: 20px;
+    min-height: 70vh;
+    overflow-y: auto;
+}
+
+.draw-card {
+    background: var(--surface);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 20px 15px;
+    text-align: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.draw-card.active {
+    background: rgba(173, 0, 241, 0.1);
+    border-color: var(--primary);
+    box-shadow: 0 10px 20px rgba(173, 0, 241, 0.2);
+}
+
+.draw-card.blocked {
+    opacity: 0.5;
+    cursor: not-allowed;
+    position: relative;
+}
+
+.draw-card.blocked::after {
+    content: "BLOKÉ";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--danger);
+    color: white;
+    padding: 4px 10px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.draw-name {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.draw-time {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.betting-panel {
+    background: var(--surface);
+    backdrop-filter: blur(20px);
+    border-radius: 32px 32px 0 0;
+    padding: 25px 20px;
+    border-top: 1px solid var(--glass-border);
+    margin-top: auto;
+}
+
+.game-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    overflow-x: auto;
+    padding-bottom: 5px;
+}
+
+.game-selector::-webkit-scrollbar {
+    height: 3px;
+}
+
+.chip {
+    padding: 8px 14px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.3s ease;
+}
+
+.chip.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+    box-shadow: 0 0 15px rgba(173, 0, 241, 0.3);
+}
+
+.chip.numeric-chip {
+    background: rgba(0, 212, 255, 0.1);
+    border-color: var(--secondary);
+    color: var(--secondary);
+}
+
+.chip.numeric-chip.active {
+    background: var(--secondary);
+    color: black;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+}
+
+.chip.special-chip {
+    background: rgba(255, 0, 122, 0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.chip.special-chip.active {
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 0 15px rgba(255, 0, 122, 0.5);
+}
+
+.chip.auto-chip {
+    background: rgba(0, 241, 144, 0.1);
+    border-color: var(--success);
+    color: var(--success);
+}
+
+.chip.auto-chip.active {
+    background: var(--success);
+    color: black;
+    box-shadow: 0 0 15px rgba(0, 241, 144, 0.5);
+}
+
+.chip.lotto-chip {
+    background: rgba(255, 165, 2, 0.1);
+    border-color: #ffa502;
+    color: #ffa502;
+}
+
+.chip.lotto-chip.active {
+    background: #ffa502;
+    color: black;
+    box-shadow: 0 0 15px rgba(255, 165, 2, 0.5);
+}
+
+.input-container {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+input {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid var(--glass-border);
+    padding: 16px;
+    border-radius: 16px;
+    color: white;
+    font-size: 1.1rem;
+    width: 100%;
+    outline: none;
+    transition: 0.2s;
+    text-align: center;
+}
+
+input:focus { border-color: var(--secondary); background: rgba(0,0,0,0.4); }
+
+.btn-primary-gradient {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    border: none;
+    border-radius: 16px;
+    color: white;
+    font-size: 1.4rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    min-width: 60px;
+    transition: all 0.3s;
+}
+
+.btn-primary-gradient:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(173, 0, 241, 0.5);
+}
+
+.cart-section {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 400px);
+    min-height: 300px;
+}
+
+.cart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.cart-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.cart-total {
+    background: rgba(173, 0, 241, 0.1);
+    padding: 10px 15px;
+    border-radius: 12px;
+    font-weight: bold;
+    border: 1px solid var(--primary);
+}
+
+.print-btn {
+    background: var(--success);
+    border: none;
+    border-radius: 12px;
+    color: black;
+    font-weight: bold;
+    padding: 10px 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    transition: all 0.3s;
+}
+
+.print-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(0, 241, 144, 0.5);
+}
+
+.cart-list {
+    flex: 1;
+    overflow-y: auto;
+    margin: 15px 0;
+}
+
+.cart-item {
+    background: rgba(255,255,255,0.03);
+    border-radius: 16px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-left: 4px solid var(--primary);
+    animation: fadeIn 0.3s ease;
+}
+
+.nav-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(10, 11, 30, 0.95);
+    backdrop-filter: blur(20px);
+    display: flex; justify-content: space-around;
+    padding: 15px 10px 25px 10px;
+    border-top: 1px solid var(--glass-border);
+    z-index: 1000;
+}
+
+.nav-item {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 0.75rem;
+    text-align: center;
+    flex: 1;
+    transition: color 0.3s;
+}
+
+.nav-item.active { 
+    color: var(--secondary); 
+    transform: translateY(-5px);
+}
+.nav-item.active i { 
+    text-shadow: 0 0 10px var(--secondary);
+}
+.nav-item i { font-size: 1.4rem; display: block; margin-bottom: 4px; transition: all 0.3s; }
+
+.history-screen {
+    padding: 20px;
+}
+.history-list { display: flex; flex-direction: column; gap: 15px; padding-bottom: 100px; }
+.history-card {
+    background: var(--surface);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px; padding: 15px;
+}
+.card-header { display: flex; justify-content: space-between; border-bottom: 1px solid var(--glass-border); padding-bottom: 8px; margin-bottom: 10px; font-size: 0.8rem; color: var(--text-dim); }
+.card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.btn-small { background: rgba(255,255,255,0.1); border: none; color: white; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+
+.badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; }
+.badge-wait { background: #555; color: white; }
+.badge-win { background: var(--success); color: black; box-shadow: 0 0 10px var(--success); }
+.badge-lost { background: rgba(255,0,0,0.2); color: #ff4d4d; }
+
+.reports-screen {
+    padding: 20px;
+}
+.report-card {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 20px;
+    border: 1px solid var(--glass-border);
+    margin-bottom: 20px;
+}
+.report-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    font-size: 1rem;
+}
+.report-row.total {
+    font-weight: 800;
+    font-size: 1.2rem;
+    border-top: 2px solid var(--glass-border);
+    margin-top: 10px;
+}
+.val { font-family: 'Courier New', monospace; font-weight: bold; }
+
+.winners-screen {
+    padding: 20px;
+}
+
+.winners-summary {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid var(--glass-border);
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.summary-row.total {
+    font-weight: bold;
+    font-size: 1.2rem;
+    border-top: 2px solid var(--glass-border);
+    margin-top: 10px;
+    padding-top: 15px;
+}
+
+.profit { color: var(--profit); }
+.loss { color: var(--loss); }
+
+.winner-ticket {
+    background: rgba(255,255,255,0.03);
+    border-radius: 16px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid var(--glass-border);
+}
+
+.winner-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.winner-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn-paid {
+    background: var(--secondary);
+    border: none;
+    border-radius: 10px;
+    color: black;
+    padding: 8px 15px;
+    font-weight: bold;
+    flex: 1;
+}
+
+.empty-msg {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 20px;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+}
+
+.winner-modal {
+    background: var(--bg);
+    border-radius: 24px;
+    padding: 30px;
+    text-align: center;
+    max-width: 90%;
+    border: 2px solid var(--success);
+}
+
+.trophy-icon {
+    font-size: 4rem;
+    color: gold;
+    margin-bottom: 20px;
+}
+
+.btn-close {
+    background: var(--primary);
+    border: none;
+    color: white;
+    padding: 12px 30px;
+    border-radius: 12px;
+    margin-top: 20px;
+    cursor: pointer;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--success);
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+.config-btn {
+    display: none;
+}
+
+.lottery-config {
+    display: none;
+}
+
+.screen {
+    display: none;
+}
+
+.screen.active {
+    display: block;
+}
+
+.multi-draw-selector {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 15px 20px;
+    padding: 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+}
+
+.multi-draw-checkbox {
+    display: none;
+}
+
+.multi-draw-label {
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.multi-draw-checkbox:checked + .multi-draw-label {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 0 10px rgba(173, 0, 241, 0.5);
+}
+
+.multi-draw-toggle {
+    padding: 8px 16px;
+    background: rgba(0, 212, 255, 0.2);
+    border: 1px solid var(--secondary);
+    border-radius: 12px;
+    color: var(--secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    margin: 10px 0;
+    font-size: 1.2rem;
+}
+
+.multi-draw-indicator {
+    background: rgba(0,212,255,0.1);
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    margin: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.back-button {
+    background: none;
+    border: none;
+    color: var(--secondary);
+    font-size: 1.2rem;
+    padding: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.numeric-chips-container {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    animation: slideDown 0.3s ease-out;
+}
+
+.numeric-chips-container.visible {
+    display: flex;
+}
+
+.lotto-options {
+    display: none;
+    gap: 10px;
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    flex-wrap: wrap;
+}
+
+.lotto-options.visible {
+    display: flex;
+}
+
+.option-chip {
+    flex: 1;
+    text-align: center;
+    padding: 10px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+    min-width: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.option-chip.active {
+    background: rgba(0, 212, 255, 0.2);
+    border-color: var(--secondary);
+    color: var(--secondary);
+    transform: scale(1.05);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+.option-chip input {
+    display: none;
+}
+
+.special-games-container {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    animation: slideDown 0.3s ease-out;
+}
+
+.special-games-container.visible {
+    display: flex;
+}
+
+.lotto-games-container {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    animation: slideDown 0.3s ease-out;
+}
+
+.lotto-games-container.visible {
+    display: flex;
+}
+
+.toggle-btn {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid var(--secondary);
+    border-radius: 12px;
+    color: var(--secondary);
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toggle-btn.active {
+    background: var(--secondary);
+    color: black;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+}
+
+.sub-game-btn {
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    transition: all 0.3s;
+}
+
+.sub-game-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.warning-message {
+    background: rgba(255, 165, 2, 0.1);
+    border: 1px solid var(--warning);
+    color: var(--warning);
+    padding: 10px 15px;
+    border-radius: 12px;
+    margin: 10px 20px;
+    font-size: 0.9rem;
+    display: none;
+    align-items: center;
+    gap: 10px;
+}
+
+.section-title {
+    padding: 20px 20px 10px 20px;
+    font-size: 1.5rem;
+}
+
+.sync-status-bar {
+    padding: 5px 20px;
+    text-align: center;
+    font-size: 0.8rem;
+    background: rgba(0,0,0,0.2);
+}
+
+.sync-idle {
+    background: rgba(0, 212, 255, 0.1);
+    color: var(--secondary);
+}
+
+#live-clock {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+
+.report-draw-selector {
+    margin: 15px 20px;
+}
+
+.print-report-btn {
+    background: var(--secondary);
+    border: none;
+    border-radius: 12px;
+    color: black;
+    font-weight: bold;
+    padding: 10px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 20px auto;
+}
+
+.draw-report-summary {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid var(--glass-border);
+}
+
+.delete-history-btn {
+    background: rgba(255, 77, 77, 0.1);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.delete-history-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.logout-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.2rem;
+    cursor: pointer;
+    margin-left: 10px;
+    transition: color 0.2s;
+}
+.logout-btn:hover {
+    color: var(--danger);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.edit-history-btn, .delete-history-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 15px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.edit-history-btn {
+    color: var(--warning);
+    border-color: var(--warning);
+}
+.edit-history-btn:hover {
+    background: var(--warning);
+    color: white;
+}
+.edit-history-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.delete-history-btn {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+.delete-history-btn:hover {
+    background: var(--danger);
+    color: white;
+}
+.delete-history-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
