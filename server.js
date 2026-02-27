@@ -188,6 +188,58 @@ async function initializeDatabase() {
       }
     }
 
+    // ========== CRÉATION DES TABLES MANQUANTES ==========
+    // Table tickets
+    await createTableIfNotExists('tickets', `
+      CREATE TABLE tickets (
+        id SERIAL PRIMARY KEY,
+        ticket_id VARCHAR(50) UNIQUE NOT NULL,
+        agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+        agent_name VARCHAR(100),
+        draw_id INTEGER REFERENCES draws(id) ON DELETE SET NULL,
+        draw_name VARCHAR(50),
+        bets JSONB NOT NULL,
+        total_amount DECIMAL(10,2) NOT NULL,
+        win_amount DECIMAL(10,2) DEFAULT 0,
+        paid BOOLEAN DEFAULT false,
+        paid_at TIMESTAMP,
+        checked BOOLEAN DEFAULT false,
+        date TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // Table draw_results
+    await createTableIfNotExists('draw_results', `
+      CREATE TABLE draw_results (
+        id SERIAL PRIMARY KEY,
+        draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+        name VARCHAR(50),
+        results JSONB NOT NULL,
+        draw_time TIMESTAMP,
+        published_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // Table activity_log
+    await createTableIfNotExists('activity_log', `
+      CREATE TABLE activity_log (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        user_role VARCHAR(20),
+        action VARCHAR(50),
+        ip_address INET,
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // Index pour améliorer les performances
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_tickets_agent_id ON tickets(agent_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_tickets_draw_id ON tickets(draw_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_tickets_date ON tickets(date)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_tickets_checked ON tickets(checked)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_draw_results_draw_id ON draw_results(draw_id)');
+
     console.log('✅ Base de données prête');
   } catch (error) {
     console.error('❌ Erreur initialisation:', error);
