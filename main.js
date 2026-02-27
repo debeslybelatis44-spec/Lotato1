@@ -1,3 +1,5 @@
+// main.js
+
 async function initApp() {
     // Vérifier si l'utilisateur est connecté
     const token = localStorage.getItem('auth_token');
@@ -5,12 +7,10 @@ async function initApp() {
     const agentName = localStorage.getItem('agent_name');
 
     if (!token || !agentId) {
-        // Rediriger vers la page de connexion
         window.location.href = 'index.html';
         return;
     }
 
-    // Mettre à jour APP_STATE avec les valeurs du localStorage
     APP_STATE.agentId = agentId;
     APP_STATE.agentName = agentName;
 
@@ -40,7 +40,8 @@ async function initApp() {
 // Charger les tirages depuis le serveur
 async function loadDrawsFromServer() {
     try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/draws`, {
+        // Utiliser l'endpoint défini dans API_CONFIG
+        const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_DRAWS}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
         });
         if (!response.ok) throw new Error('Erreur chargement tirages');
@@ -57,7 +58,7 @@ async function loadDrawsFromServer() {
 async function loadBlockedNumbers() {
     try {
         // Numéros globaux
-        const globalRes = await fetch(`${API_CONFIG.BASE_URL}/blocked-numbers/global`, {
+        const globalRes = await fetch(`${API_CONFIG.BASE_URL}/api/blocked-numbers/global`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
         });
         if (globalRes.ok) {
@@ -72,7 +73,7 @@ async function loadBlockedNumbers() {
         APP_STATE.drawBlockedNumbers = {};
         for (const draw of draws) {
             try {
-                const drawRes = await fetch(`${API_CONFIG.BASE_URL}/blocked-numbers/draw/${draw.id}`, {
+                const drawRes = await fetch(`${API_CONFIG.BASE_URL}/api/blocked-numbers/draw/${draw.id}`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
                 });
                 if (drawRes.ok) {
@@ -126,7 +127,6 @@ window.addEventListener('beforeinstallprompt', (e) => {
     console.log('📦 Événement beforeinstallprompt capturé !');
     e.preventDefault();
     deferredPrompt = e;
-    // Afficher le message après un délai (pour laisser la page se stabiliser)
     setTimeout(() => {
         console.log('📢 Tentative d\'affichage du message d\'installation');
         showInstallPromotion();
@@ -134,7 +134,6 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 function showInstallPromotion() {
-    // Éviter les doublons
     if (document.getElementById('install-message')) return;
 
     const installMessage = document.createElement('div');
@@ -194,6 +193,7 @@ window.addEventListener('appinstalled', () => {
     const msg = document.getElementById('install-message');
     if (msg) msg.remove();
 });
+
 // ========== FIN CODE PWA ==========
 
 // Exécution conditionnelle : si on est sur la page agent (présence de #draws-container), on initialise l'interface
