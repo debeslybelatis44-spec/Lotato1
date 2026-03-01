@@ -1,5 +1,6 @@
+// cartManager.js complet
 // ==========================
-// cartManager.js (FIXED)
+// cartManager.js (FINAL - ajustements supplémentaires)
 // ==========================
 
 // ---------- Utils ----------
@@ -151,95 +152,144 @@ async function processFinalTicket() {
     }
 }
 
-// ---------- PRINT (FIXED: using hidden iframe to avoid popup blocker) ----------
+// ---------- PRINT (fenêtre pop-up) ----------
 function printThermalTicket(ticket) {
     const html = generateTicketHTML(ticket);
 
-    // Créer une iframe cachée
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    iframe.style.top = '-1000px';
-    iframe.style.left = '-1000px';
-    document.body.appendChild(iframe);
+    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    if (!printWindow) {
+        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
+        return;
+    }
 
-    // Attendre que l'iframe soit prête
-    iframe.onload = function () {
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Ticket</title>
-                <style>
-                    @page { size: 80mm auto; margin: 2mm; }
-                    body {
-                        font-family: monospace;
-                        font-size: 11px;
-                        width: 76mm;
-                        margin: 0 auto;
-                    }
-                </style>
-            </head>
-            <body>
-                ${html}
-            </body>
-            </html>
-        `);
-        doc.close();
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Ticket</title>
+            <style>
+                @page {
+                    size: 80mm auto;
+                    margin: 2mm;
+                }
+                body {
+                    font-family: 'Courier New', monospace;
+                    font-size: 30px; /* Texte général */
+                    width: 76mm;
+                    margin: 0 auto;
+                    padding: 4mm;
+                    background: white;
+                    color: black;
+                }
+                .header {
+                    text-align: center !important;
+                    border-bottom: 2px dashed #000;
+                    padding-bottom: 12px;
+                    margin-bottom: 12px;
+                }
+                .header img {
+                    display: block !important;
+                    margin: 0 auto 10px auto !important;
+                    max-height: 250px; /* Logo agrandi */
+                    max-width: 100%;
+                }
+                .header strong {
+                    display: block;
+                    font-size: 34px;
+                }
+                .header small {
+                    display: block;
+                    font-size: 22px;
+                    color: #555;
+                }
+                .info {
+                    margin: 10px 0;
+                }
+                .info p {
+                    margin: 5px 0;
+                }
+                hr {
+                    border: none;
+                    border-top: 2px dashed #000;
+                    margin: 10px 0;
+                }
+                .bet-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 5px 0;
+                }
+                .total-row {
+                    display: flex;
+                    justify-content: space-between;
+                    font-weight: bold;
+                    margin-top: 10px;
+                    font-size: 34px; /* Total */
+                }
+                .footer {
+                    text-align: center;
+                    margin-top: 20px;
+                    font-style: italic;
+                    font-size: 26px; /* Footer */
+                }
+            </style>
+        </head>
+        <body>
+            ${html}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
 
-        // Lancer l'impression
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-
-        // Supprimer l'iframe après impression (avec un délai pour éviter la suppression trop rapide)
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-        }, 1000);
+    printWindow.onload = function() {
+        printWindow.focus();
+        printWindow.print();
     };
-
-    // Déclencher l'écriture (l'événement onload se chargera du reste)
-    iframe.src = 'about:blank';
 }
 
 // ---------- Ticket HTML ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
 
-    const betsHTML = (ticket.bets || []).map(b => `
-        <div style="display:flex;justify-content:space-between;">
-            <span>${b.game.toUpperCase()} ${b.number}</span>
-            <span>${b.amount} G</span>
-        </div>
-    `).join('');
+    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
+    const slogan = cfg.slogan || '';
+    const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
+
+    // MODIFICATION : ajout de la mention (gratuit) pour les paris gratuits
+    const betsHTML = (ticket.bets || []).map(b => {
+        const freeLabel = b.free ? ' (gratuit)' : '';
+        return `
+            <div class="bet-row">
+                <span>${b.game?.toUpperCase() || ''} ${b.number || ''}${freeLabel}</span>
+                <span>${b.amount || 0} G</span>
+            </div>
+        `;
+    }).join('');
 
     return `
-        <div style="text-align:center;border-bottom:1px solid #000;">
-            <strong>${cfg.LOTTERY_NAME || 'LOTATO'}</strong><br>
-            <small>${cfg.slogan || ''}</small>
+        <div class="header">
+            ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
+            <strong>${lotteryName}</strong>
+            ${slogan ? `<small>${slogan}</small>` : ''}
         </div>
 
-        <div>
+        <div class="info">
             <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
-            <p>Tiraj: ${ticket.draw_name}</p>
+            <p>Tiraj: ${ticket.draw_name || ticket.drawName || ''}</p>
             <p>Date: ${new Date(ticket.date).toLocaleString('fr-FR')}</p>
-            <p>Ajan: ${ticket.agent_name}</p>
+            <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
         </div>
 
         <hr>
         ${betsHTML}
         <hr>
 
-        <div style="display:flex;justify-content:space-between;font-weight:bold;">
+        <div class="total-row">
             <span>TOTAL</span>
-            <span>${ticket.total_amount || ticket.total} Gdes</span>
+            <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
         </div>
 
-        <div style="text-align:center;margin-top:10px;">
-            <p>Mèsi & Bòn Chans</p>
+        <div class="footer">
+            <p>tickets valable jusqu'à 90 jours</p>
         </div>
     `;
 }
