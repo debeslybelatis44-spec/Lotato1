@@ -646,8 +646,7 @@ app.post('/api/tickets/save', async (req, res) => {
            FROM tickets, jsonb_array_elements(bets) AS bet
            WHERE draw_id = $1 
              AND DATE(date) = CURRENT_DATE 
-             AND bet->>'cleanNumber' = $2
-             AND paid = false`, // On ne compte que les tickets non annulés ? Ici on considère tous les tickets
+             AND bet->>'cleanNumber' = $2`,
           [drawId, cleanNumber]
         );
         const currentTotal = parseFloat(todayBetsResult.rows[0]?.total) || 0;
@@ -673,7 +672,7 @@ app.post('/api/tickets/save', async (req, res) => {
     res.json({ success: true, ticket: result.rows[0] });
   } catch (error) {
     console.error('❌ Erreur sauvegarde ticket:', error);
-    // Envoyer un message d'erreur détaillé pour le débogage (à désactiver en production)
+    // Renvoyer le message d'erreur détaillé au front-end
     res.status(500).json({ 
       error: 'Erreur serveur', 
       details: error.message,
@@ -682,13 +681,10 @@ app.post('/api/tickets/save', async (req, res) => {
   }
 });
 
-// ... (autres routes pour tickets, winners, etc., à adapter avec filtres par owner_id)
-
-// ==================== Routes propriétaire ====================
+// ==================== Routes propriétaire (exemples) ====================
 const ownerRouter = express.Router();
 ownerRouter.use(authorize('owner'));
 
-// Exemple : obtenir les agents du propriétaire
 ownerRouter.get('/agents', async (req, res) => {
   try {
     const ownerId = req.user.ownerId;
@@ -708,11 +704,11 @@ ownerRouter.get('/agents', async (req, res) => {
   }
 });
 
-// ... (autres routes propriétaire)
+// ... autres routes propriétaire
 
 app.use('/api/owner', ownerRouter);
 
-// ==================== Routes superviseur ====================
+// ==================== Routes superviseur (exemples) ====================
 const supervisorRouter = express.Router();
 supervisorRouter.use(authorize('supervisor'));
 
@@ -740,7 +736,7 @@ supervisorRouter.get('/agents', async (req, res) => {
   }
 });
 
-// ... (autres routes superviseur)
+// ... autres routes superviseur
 
 app.use('/api/supervisor', supervisorRouter);
 
