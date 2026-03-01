@@ -1,6 +1,5 @@
-// cartManager.js complet
 // ==========================
-// cartManager.js (FINAL - ajustements supplémentaires)
+// cartManager.js (STABLE + QR + PRINT FIX + AMÉLIORATION GESTION ERREURS)
 // ==========================
 
 // ---------- Utils ----------
@@ -98,18 +97,22 @@ var CartManager = {
     }
 };
 
-// ---------- Save & Print Ticket ----------
+// ---------- Save & Print (avec gestion d'erreur améliorée) ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
         alert("Panye vid");
         return;
     }
 
+    // Regrouper les paris par tirage
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
         if (!betsByDraw[b.drawId]) betsByDraw[b.drawId] = [];
         betsByDraw[b.drawId].push(b);
     });
+
+    let allSuccess = true;
+    const savedTickets = [];
 
     try {
         for (const drawId in betsByDraw) {
@@ -125,111 +128,79 @@ async function processFinalTicket() {
                 total
             };
 
-            const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                },
-                body: JSON.stringify(payload)
-            });
+            // Afficher le payload dans la console (debug)
+            console.log('Envoi ticket:', payload);
 
-            if (!res.ok) throw new Error("Erreur serveur");
+            const res = await fetch(
+                `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                    },
+                    body: JSON.stringify(payload)
+                }
+            );
+
+            if (!res.ok) {
+                // Lire la réponse d'erreur (texte ou JSON)
+                let errorMessage = '';
+                try {
+                    const errorData = await res.json();
+                    errorMessage = errorData.error || errorData.message || JSON.stringify(errorData);
+                } catch (e) {
+                    errorMessage = await res.text();
+                }
+                throw new Error(`Erreur serveur (${res.status}): ${errorMessage}`);
+            }
 
             const data = await res.json();
-            printThermalTicket(data.ticket);
+            if (!data.success && !data.ticket) {
+                throw new Error('Réponse serveur invalide : ' + JSON.stringify(data));
+            }
+
+            // Ticket sauvegardé avec succès
+            savedTickets.push(data.ticket);
             APP_STATE.ticketsHistory.unshift(data.ticket);
+            printThermalTicket(data.ticket);
         }
 
+        // Si on arrive ici, tout s'est bien passé
         APP_STATE.currentCart = [];
         CartManager.renderCart();
-
-        alert("✅ Tikè sove & enprime");
+        alert(`✅ ${savedTickets.length} tikè sove & enprime ak siksè.`);
 
     } catch (err) {
-        console.error(err);
-        alert("❌ Erè pandan enpresyon");
+        console.error('❌ Erreur lors de la sauvegarde:', err);
+        alert(`❌ Erreur : ${err.message}\n\nPanye a pa vide. Tanpri verifye done yo epi reeseye.`);
+        allSuccess = false;
     }
 }
 
-// ---------- PRINT (fenêtre pop-up) ----------
+// ---------- PRINT (FIXED – NO onload dependency) ----------
 function printThermalTicket(ticket) {
     const html = generateTicketHTML(ticket);
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
-    if (!printWindow) {
-        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
+    const win = window.open('', '_blank', 'width=400,height=600');
+    if (!win) {
+        alert("Autorize popup pou enprime");
         return;
     }
 
-    printWindow.document.write(`
+    win.document.open();
+    win.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
             <title>Ticket</title>
             <style>
-                @page {
-                    size: 80mm auto;
-                    margin: 2mm;
-                }
+                @page { size: 80mm auto; margin: 2mm; }
                 body {
-                    font-family: 'Courier New', monospace;
-                    font-size: 30px; /* Texte général */
+                    font-family: monospace;
+                    font-size: 11px;
                     width: 76mm;
                     margin: 0 auto;
-                    padding: 4mm;
-                    background: white;
-                    color: black;
-                }
-                .header {
-                    text-align: center !important;
-                    border-bottom: 2px dashed #000;
-                    padding-bottom: 12px;
-                    margin-bottom: 12px;
-                }
-                .header img {
-                    display: block !important;
-                    margin: 0 auto 10px auto !important;
-                    max-height: 250px; /* Logo agrandi */
-                    max-width: 100%;
-                }
-                .header strong {
-                    display: block;
-                    font-size: 34px;
-                }
-                .header small {
-                    display: block;
-                    font-size: 22px;
-                    color: #555;
-                }
-                .info {
-                    margin: 10px 0;
-                }
-                .info p {
-                    margin: 5px 0;
-                }
-                hr {
-                    border: none;
-                    border-top: 2px dashed #000;
-                    margin: 10px 0;
-                }
-                .bet-row {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 5px 0;
-                }
-                .total-row {
-                    display: flex;
-                    justify-content: space-between;
-                    font-weight: bold;
-                    margin-top: 10px;
-                    font-size: 34px; /* Total */
-                }
-                .footer {
-                    text-align: center;
-                    margin-top: 20px;
-                    font-style: italic;
-                    font-size: 26px; /* Footer */
                 }
             </style>
         </head>
@@ -238,58 +209,53 @@ function printThermalTicket(ticket) {
         </body>
         </html>
     `);
-    printWindow.document.close();
+    win.document.close();
 
-    printWindow.onload = function() {
-        printWindow.focus();
-        printWindow.print();
-    };
+    // Impression forcée
+    setTimeout(() => {
+        win.focus();
+        win.print();
+        setTimeout(() => win.close(), 800);
+    }, 600);
 }
 
-// ---------- Ticket HTML ----------
+// ---------- Ticket HTML + QR ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
 
-    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
-    const slogan = cfg.slogan || '';
-    const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
+    const qrData = `TICKET:${ticket.ticket_id || ticket.id}`;
+    const qrURL =
+        `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`;
 
-    // MODIFICATION : ajout de la mention (gratuit) pour les paris gratuits
-    const betsHTML = (ticket.bets || []).map(b => {
-        const freeLabel = b.free ? ' (gratuit)' : '';
-        return `
-            <div class="bet-row">
-                <span>${b.game?.toUpperCase() || ''} ${b.number || ''}${freeLabel}</span>
-                <span>${b.amount || 0} G</span>
-            </div>
-        `;
-    }).join('');
+    const betsHTML = (ticket.bets || []).map(b => `
+        <div style="display:flex;justify-content:space-between;">
+            <span>${b.game.toUpperCase()} ${b.number}</span>
+            <span>${b.amount} G</span>
+        </div>
+    `).join('');
 
     return `
-        <div class="header">
-            ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
-            <strong>${lotteryName}</strong>
-            ${slogan ? `<small>${slogan}</small>` : ''}
+        <div style="text-align:center;border-bottom:1px solid #000;">
+            <strong>${cfg.LOTTERY_NAME || 'LOTATO'}</strong>
         </div>
 
-        <div class="info">
-            <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
-            <p>Tiraj: ${ticket.draw_name || ticket.drawName || ''}</p>
-            <p>Date: ${new Date(ticket.date).toLocaleString('fr-FR')}</p>
-            <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
-        </div>
+        <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
+        <p>Tiraj: ${ticket.draw_name}</p>
+        <p>Date: ${new Date(ticket.date).toLocaleString('fr-FR')}</p>
+        <p>Ajan: ${ticket.agent_name || APP_STATE.agentName}</p>
 
         <hr>
         ${betsHTML}
         <hr>
 
-        <div class="total-row">
+        <div style="display:flex;justify-content:space-between;font-weight:bold;">
             <span>TOTAL</span>
-            <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
+            <span>${ticket.total_amount || ticket.total} Gdes</span>
         </div>
 
-        <div class="footer">
-            <p>tickets valable jusqu'à 90 jours</p>
+        <div style="text-align:center;margin-top:8px;">
+            <img src="${qrURL}" style="width:100px;height:100px;">
+            <div style="font-size:9px;">Scan pou verifye tikè</div>
         </div>
     `;
 }
