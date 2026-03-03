@@ -59,7 +59,7 @@ async function addColumnIfNotExists(table, column, definition) {
   }
 }
 
-// Initialisation des tables
+// Initialisation des tables (ajout de colonnes manquantes)
 async function initializeDatabase() {
   try {
     console.log('🔄 Vérification de la base de données...');
@@ -78,41 +78,100 @@ async function initializeDatabase() {
 // ==================== Création des utilisateurs de test ====================
 async function createTestUsers() {
   try {
-    // Vérifier s'il existe déjà des superviseurs (ou tout autre utilisateur)
-    const supervisors = await pool.query('SELECT id FROM supervisors LIMIT 1');
-    if (supervisors.rows.length === 0) {
-      console.log('👤 Création des utilisateurs de test...');
+    console.log('👤 Tentative de création des utilisateurs de test...');
 
-      // 1. Créer un propriétaire (owner)
+    // Vérifier la structure des tables
+    const tables = ['owners', 'supervisors', 'agents'];
+    for (const table of tables) {
+      const exists = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = $1
+        )`, [table]);
+      if (!exists.rows[0].exists) {
+        console.error(`❌ La table ${table} n'existe pas. Veuillez créer les tables d'abord.`);
+        return;
+      }
+    }
+
+    // Vérifier si la colonne password est assez grande
+    const passwordCol = await pool.query(`
+      SELECT data_type, character_maximum_length 
+      FROM information_schema.columns 
+      WHERE table_name = 'owners' AND column_name = 'password'
+    `);
+    if (passwordCol.rows.length > 0) {
+      const type = passwordCol.rows[0].data_type;
+      const maxLen = passwordCol.rows[0].character_maximum_length;
+      console.log(`Colonne password dans owners : type=${type}, max_length=${maxLen}`);
+      if (type === 'character varying' && maxLen < 60) {
+        console.warn('⚠️ La colonne password est trop courte (moins de 60 caractères). Les hash bcrypt seront tronqués.');
+      }
+    }
+
+    // 1. Créer un propriétaire (owner)
+    let ownerId;
+    const existingOwner = await pool.query('SELECT id FROM owners WHERE email = $1', ['owner@test.com']);
+    if (existingOwner.rows.length > 0) {
+      ownerId = existingOwner.rows[0].id;
+      console.log('Propriétaire déjà existant avec id :', ownerId);
+    } else {
+      console.log('Création du propriétaire...');
       const ownerPassword = await bcrypt.hash('owner123', 10);
-      const owner = await pool.query(
+      console.log('Hash généré pour owner :', ownerPassword);
+      const result = await pool.query(
         `INSERT INTO owners (name, email, password, phone, active) 
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         ['Propriétaire Test', 'owner@test.com', ownerPassword, '000000', true]
       );
-      const ownerId = owner.rows[0].id;
+      ownerId = result.rows[0].id;
+      console.log('Propriétaire créé avec id :', ownerId);
+    }
 
-      // 2. Créer un superviseur lié à ce propriétaire
+    // 2. Créer un superviseur
+    let supervisorId;
+    const existingSuper = await pool.query('SELECT id FROM supervisors WHERE email = $1', ['super@test.com']);
+    if (existingSuper.rows.length > 0) {
+      supervisorId = existingSuper.rows[0].id;
+      console.log('Superviseur déjà existant avec id :', supervisorId);
+    } else {
+      console.log('Création du superviseur...');
       const supPassword = await bcrypt.hash('super123', 10);
-      const supervisor = await pool.query(
+      console.log('Hash généré pour superviseur :', supPassword);
+      const result = await pool.query(
         `INSERT INTO supervisors (name, email, password, phone, active, owner_id) 
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         ['Superviseur Test', 'super@test.com', supPassword, '111111', true, ownerId]
       );
-      const supervisorId = supervisor.rows[0].id;
-
-      // 3. Créer un agent lié à ce superviseur
-      const agentPassword = await bcrypt.hash('agent123', 10);
-      await pool.query(
-        `INSERT INTO agents (name, email, password, phone, supervisor_id, location, active) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        ['Agent Test', 'agent@test.com', agentPassword, '222222', supervisorId, 'Zone A', true]
-      );
-
-      console.log('✅ Utilisateurs de test créés avec succès.');
-    } else {
-      console.log('ℹ️ Des utilisateurs existent déjà, pas de création de test.');
+      supervisorId = result.rows[0].id;
+      console.log('Superviseur créé avec id :', supervisorId);
     }
+
+    // 3. Créer un agent
+    const existingAgent = await pool.query('SELECT id FROM agents WHERE email = $1', ['agent@test.com']);
+    if (existingAgent.rows.length > 0) {
+      console.log('Agent déjà existant avec id :', existingAgent.rows[0].id);
+    } else {
+      console.log('Création de l\'agent...');
+      const agentPassword = await bcrypt.hash('agent123', 10);
+      console.log('Hash généré pour agent :', agentPassword);
+      // Vérifier si la colonne location existe, sinon on l'omet
+      const locationExists = await columnExists('agents', 'location');
+      let query, params;
+      if (locationExists) {
+        query = `INSERT INTO agents (name, email, password, phone, supervisor_id, location, active) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`;
+        params = ['Agent Test', 'agent@test.com', agentPassword, '222222', supervisorId, 'Zone A', true];
+      } else {
+        query = `INSERT INTO agents (name, email, password, phone, supervisor_id, active) 
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`;
+        params = ['Agent Test', 'agent@test.com', agentPassword, '222222', supervisorId, true];
+      }
+      const result = await pool.query(query, params);
+      console.log('Agent créé avec id :', result.rows[0].id);
+    }
+
+    console.log('✅ Utilisateurs de test créés/vérifiés avec succès.');
   } catch (error) {
     console.error('❌ Erreur lors de la création des utilisateurs de test :', error);
   }
@@ -1650,8 +1709,9 @@ app.use((err, req, res, next) => {
 
 // Démarrage
 initializeDatabase().then(() => {
-  createTestUsers(); // Ajout pour créer les utilisateurs de test si nécessaire
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${PORT}`);
+  createTestUsers().then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${PORT}`);
+    });
   });
 });
