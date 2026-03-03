@@ -1606,60 +1606,8 @@ app.use((err, req, res, next) => {
 });
 
 // Démarrage
-async function initializeDatabase() {
-  try {
-    console.log('🔄 Vérification de la base de données...');
-    await addColumnIfNotExists('tickets', 'paid', 'BOOLEAN DEFAULT FALSE');
-    await addColumnIfNotExists('tickets', 'paid_at', 'TIMESTAMP');
-    await addColumnIfNotExists('lottery_config', 'slogan', 'TEXT');
-    await addColumnIfNotExists('lottery_config', 'multipliers', 'JSONB');
-    await addColumnIfNotExists('lottery_config', 'game_limits', 'JSONB');
-    await addColumnIfNotExists('supervisors', 'owner_id', 'INTEGER REFERENCES owners(id) ON DELETE CASCADE');
-    // Ajout de la colonne active dans owners si elle n'existe pas
-    await addColumnIfNotExists('owners', 'active', 'BOOLEAN DEFAULT true');
-
-    // === CRÉATION AUTOMATIQUE DES 20 PROPRIÉTAIRES ===
-    const ownersToCreate = [
-      { name: 'bor1nou1', password: 'bor123nou456' },
-      { name: 'bor2nou2', password: 'bor456nou789' },
-      { name: 'bor3nou3', password: 'bor789nou112' },
-      { name: 'bor4nou4', password: 'bor112nou223' },
-      { name: 'bor5nou5', password: 'bor223nou334' },
-      { name: 'bor6nou6', password: 'bor334nou445' },
-      { name: 'bor7nou7', password: 'bor445nou556' },
-      { name: 'bor8nou8', password: 'bor556nou667' },
-      { name: 'bor9nou9', password: 'bor667nou778' },
-      { name: 'bor10nou10', password: 'bor778nou889' },
-      { name: 'bor11nou11', password: 'bor889nou990' },
-      { name: 'bor12nou12', password: 'bor990nou101' },
-      { name: 'bor13nou13', password: 'bor101nou112' },
-      { name: 'bor14nou14', password: 'bor112nou223' },
-      { name: 'bor15nou15', password: 'bor223nou334' },
-      { name: 'bor16nou16', password: 'bor334nou445' },
-      { name: 'bor17nou17', password: 'bor445nou556' },
-      { name: 'bor18nou18', password: 'bor556nou667' },
-      { name: 'bor19nou19', password: 'bor667nou778' },
-      { name: 'bor20nou20', password: 'bor778nou889' }
-    ];
-
-    for (const owner of ownersToCreate) {
-      // Vérifier si le propriétaire existe déjà
-      const existing = await pool.query('SELECT id FROM owners WHERE name = $1', [owner.name]);
-      if (existing.rows.length === 0) {
-        const hashedPassword = bcrypt.hashSync(owner.password, 10);
-        await pool.query(
-          'INSERT INTO owners (name, email, password, active) VALUES ($1, $2, $3, $4)',
-          [owner.name, `${owner.name}@lotato.com`, hashedPassword, true]
-        );
-        console.log(`✅ Propriétaire ${owner.name} créé.`);
-      } else {
-        console.log(`ℹ️ Propriétaire ${owner.name} existe déjà.`);
-      }
-    }
-    // === FIN DE LA CRÉATION ===
-
-    console.log('✅ Base de données prête');
-  } catch (error) {
-    console.error('❌ Erreur initialisation:', error);
-  }
-}
+initializeDatabase().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${PORT}`);
+  });
+});
