@@ -75,6 +75,49 @@ async function initializeDatabase() {
   }
 }
 
+// ==================== Création des utilisateurs de test ====================
+async function createTestUsers() {
+  try {
+    // Vérifier s'il existe déjà des superviseurs (ou tout autre utilisateur)
+    const supervisors = await pool.query('SELECT id FROM supervisors LIMIT 1');
+    if (supervisors.rows.length === 0) {
+      console.log('👤 Création des utilisateurs de test...');
+
+      // 1. Créer un propriétaire (owner)
+      const ownerPassword = await bcrypt.hash('owner123', 10);
+      const owner = await pool.query(
+        `INSERT INTO owners (name, email, password, phone, active) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        ['Propriétaire Test', 'owner@test.com', ownerPassword, '000000', true]
+      );
+      const ownerId = owner.rows[0].id;
+
+      // 2. Créer un superviseur lié à ce propriétaire
+      const supPassword = await bcrypt.hash('super123', 10);
+      const supervisor = await pool.query(
+        `INSERT INTO supervisors (name, email, password, phone, active, owner_id) 
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        ['Superviseur Test', 'super@test.com', supPassword, '111111', true, ownerId]
+      );
+      const supervisorId = supervisor.rows[0].id;
+
+      // 3. Créer un agent lié à ce superviseur
+      const agentPassword = await bcrypt.hash('agent123', 10);
+      await pool.query(
+        `INSERT INTO agents (name, email, password, phone, supervisor_id, location, active) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        ['Agent Test', 'agent@test.com', agentPassword, '222222', supervisorId, 'Zone A', true]
+      );
+
+      console.log('✅ Utilisateurs de test créés avec succès.');
+    } else {
+      console.log('ℹ️ Des utilisateurs existent déjà, pas de création de test.');
+    }
+  } catch (error) {
+    console.error('❌ Erreur lors de la création des utilisateurs de test :', error);
+  }
+}
+
 // ==================== Authentification ====================
 const JWT_SECRET = process.env.JWT_SECRET || 'lotato-pro-secret-key-change-in-production';
 
@@ -1607,6 +1650,7 @@ app.use((err, req, res, next) => {
 
 // Démarrage
 initializeDatabase().then(() => {
+  createTestUsers(); // Ajout pour créer les utilisateurs de test si nécessaire
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${PORT}`);
   });
