@@ -17,22 +17,34 @@ const PORT = process.env.PORT || 10000;
 
 // ==================== Middlewares ====================
 app.use(compression());
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(cors({ origin: '*', credentials: true }));
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+app.use(cors({
+  origin: '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(morgan('dev'));
 
-// Rate limiting
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
-app.use('/api/', limiter);
-
-// Configuration de multer pour l'upload de logo
+// Configuration de multer pour l'upload de logo (stockage en mémoire)
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 } // 5 Mo max
 });
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  keyGenerator: (req) => req.ip
+});
+app.use('/api/', limiter);
 
 // ==================== Base de données ====================
 const pool = new Pool({
@@ -59,7 +71,7 @@ async function addColumnIfNotExists(table, column, definition) {
   }
 }
 
-// Initialisation des tables
+// Initialisation des tables (ajout des colonnes manquantes)
 async function initializeDatabase() {
   try {
     console.log('🔄 Vérification de la base de données...');
@@ -68,7 +80,12 @@ async function initializeDatabase() {
     await addColumnIfNotExists('lottery_config', 'slogan', 'TEXT');
     await addColumnIfNotExists('lottery_config', 'multipliers', 'JSONB');
     await addColumnIfNotExists('lottery_config', 'game_limits', 'JSONB');
-    await addColumnIfNotExists('supervisors', 'owner_id', 'INTEGER REFERENCES owners(id) ON DELETE CASCADE');
+    
+    // NOUVEAU : Ajout des colonnes pour l'isolation propriétaire
+    await addColumnIfNotExists('supervisors', 'owner_id', 'INTEGER REFERENCES supervisors(id)');
+    await addColumnIfNotExists('supervisors', 'is_owner', 'BOOLEAN DEFAULT FALSE');
+    await addColumnIfNotExists('agents', 'owner_id', 'INTEGER REFERENCES supervisors(id)');
+
     console.log('✅ Base de données prête');
   } catch (error) {
     console.error('❌ Erreur initialisation:', error);
@@ -121,19 +138,20 @@ app.post('/api/auth/login', async (req, res) => {
     let user = null;
     let table = '';
     let ownerId = null;
+    let isOwner = false;
 
     if (role === 'supervisor') {
       table = 'supervisors';
     } else if (role === 'agent') {
       table = 'agents';
     } else if (role === 'owner') {
-      table = 'owners';
+      table = 'supervisors';
     } else {
       return res.status(400).json({ error: 'Rôle invalide' });
     }
 
     const result = await pool.query(
-      `SELECT id, name, email, password, active FROM ${table} WHERE email = $1 OR name = $1`,
+      `SELECT id, name, email, password, active, owner_id, is_owner FROM ${table} WHERE email = $1 OR name = $1`,
       [username]
     );
     if (result.rows.length === 0) {
@@ -141,7 +159,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     user = result.rows[0];
 
-    if (role !== 'owner' && !user.active) {
+    if (!user.active) {
       return res.status(403).json({ error: 'Compte désactivé' });
     }
 
@@ -150,18 +168,14 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Identifiants incorrects' });
     }
 
-    // Récupérer l'owner_id selon le rôle
-    if (role === 'supervisor') {
-      const ownerRes = await pool.query('SELECT owner_id FROM supervisors WHERE id = $1', [user.id]);
-      ownerId = ownerRes.rows[0]?.owner_id || null;
+    // Déterminer l'owner_id
+    if (role === 'owner') {
+      ownerId = user.id;
+      isOwner = true;
+    } else if (role === 'supervisor') {
+      ownerId = user.owner_id;
     } else if (role === 'agent') {
-      const ownerRes = await pool.query(
-        `SELECT s.owner_id FROM agents a JOIN supervisors s ON a.supervisor_id = s.id WHERE a.id = $1`,
-        [user.id]
-      );
-      ownerId = ownerRes.rows[0]?.owner_id || null;
-    } else if (role === 'owner') {
-      ownerId = user.id; // Le propriétaire est son propre owner
+      ownerId = user.owner_id;
     }
 
     const token = jwt.sign(
@@ -171,6 +185,7 @@ app.post('/api/auth/login', async (req, res) => {
         email: user.email,
         role: role,
         ownerId: ownerId,
+        isOwner: isOwner,
         agentId: role === 'agent' ? user.id : null,
         supervisorId: role === 'supervisor' ? user.id : null
       },
@@ -190,7 +205,7 @@ app.post('/api/auth/login', async (req, res) => {
       role: role,
       agentId: role === 'agent' ? user.id : null,
       supervisorId: role === 'supervisor' ? user.id : null,
-      ownerId: ownerId
+      ownerId: role === 'owner' ? user.id : null
     });
   } catch (error) {
     console.error('❌ Erreur login:', error);
@@ -208,6 +223,7 @@ app.post('/api/auth/refresh', authenticateToken, (req, res) => {
       email: user.email,
       role: user.role,
       ownerId: user.ownerId,
+      isOwner: user.isOwner,
       agentId: user.agentId,
       supervisorId: user.supervisorId
     },
@@ -246,6 +262,15 @@ app.post('/api/tickets/save', async (req, res) => {
       return res.status(403).json({ error: 'Vous ne pouvez enregistrer que vos propres tickets' });
     }
 
+    // Vérifier que l'agent appartient au bon propriétaire (via req.user.ownerId)
+    const agentCheck = await pool.query(
+      'SELECT owner_id FROM agents WHERE id = $1',
+      [agentId]
+    );
+    if (agentCheck.rows.length === 0 || agentCheck.rows[0].owner_id !== req.user.ownerId) {
+      return res.status(403).json({ error: 'Agent non autorisé' });
+    }
+
     // Vérifier que le tirage est actif
     const drawCheck = await pool.query('SELECT active FROM draws WHERE id = $1', [drawId]);
     if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) {
@@ -269,14 +294,18 @@ app.post('/api/tickets/save', async (req, res) => {
       const cleanNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
       if (!cleanNumber) continue;
 
+      // Blocage global
       if (globalBlockedSet.has(cleanNumber)) {
         return res.status(403).json({ error: `Numéro ${cleanNumber} est bloqué globalement` });
       }
+      // Blocage par tirage
       if (drawBlockedSet.has(cleanNumber)) {
         return res.status(403).json({ error: `Numéro ${cleanNumber} est bloqué pour ce tirage` });
       }
+      // Limite de mise
       if (limitsMap.has(cleanNumber)) {
         const limit = limitsMap.get(cleanNumber);
+        // Calculer le total déjà mis aujourd'hui sur ce numéro
         const todayBetsResult = await pool.query(
           `SELECT SUM((bets->>'amount')::numeric) as total
            FROM tickets, jsonb_array_elements(bets::jsonb) as bet
@@ -290,54 +319,81 @@ app.post('/api/tickets/save', async (req, res) => {
         }
       }
     }
-
-    // Vérification des limites par type de jeu
+    // ===== AJOUT : Vérification des limites par type de jeu =====
     const configResult = await pool.query('SELECT game_limits FROM lottery_config LIMIT 1');
     let gameLimits = {};
     if (configResult.rows.length > 0 && configResult.rows[0].game_limits) {
-      const raw = configResult.rows[0].game_limits;
-      gameLimits = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        const raw = configResult.rows[0].game_limits;
+        gameLimits = typeof raw === 'string' ? JSON.parse(raw) : raw;
     }
 
     const totalsByGame = {};
     for (const bet of bets) {
-      const game = bet.game || bet.specialType;
-      let category = null;
-      if (game === 'lotto3' || game === 'auto_lotto3') category = 'lotto3';
-      else if (game === 'lotto4' || game === 'auto_lotto4') category = 'lotto4';
-      else if (game === 'lotto5' || game === 'auto_lotto5') category = 'lotto5';
-      else continue;
+        const game = bet.game || bet.specialType;
+        let category = null;
+        if (game === 'lotto3' || game === 'auto_lotto3') category = 'lotto3';
+        else if (game === 'lotto4' || game === 'auto_lotto4') category = 'lotto4';
+        else if (game === 'lotto5' || game === 'auto_lotto5') category = 'lotto5';
+        else continue;
 
-      const amount = parseFloat(bet.amount) || 0;
-      totalsByGame[category] = (totalsByGame[category] || 0) + amount;
+        const amount = parseFloat(bet.amount) || 0;
+        totalsByGame[category] = (totalsByGame[category] || 0) + amount;
     }
 
     for (const [category, total] of Object.entries(totalsByGame)) {
-      const limit = gameLimits[category] || 0;
-      if (limit > 0 && total > limit) {
-        return res.status(403).json({ error: `Limite de mise pour ${category} dépassée (max ${limit} Gdes par ticket)` });
-      }
+        const limit = gameLimits[category] || 0;
+        if (limit > 0 && total > limit) {
+            return res.status(403).json({
+                error: `Limite de mise pour ${category} dépassée (max ${limit} Gdes par ticket)`
+            });
+        }
     }
+    // ===== FIN AJOUT =====
 
-    // Génération des mariages gratuits (identique)
+    // ===== DÉBUT AJOUT : MARIAGES SPÉCIAUX GRATUITS =====
     function generateFreeMarriageBets() {
-      const freeBets = [];
-      freeBets.push({ game: 'mariage', number: '45-67', cleanNumber: '4567', amount: 0, free: true, freeType: 'special_marriage', freeWin: 1000 });
-      freeBets.push({ game: 'mariage', number: '60-21', cleanNumber: '6021', amount: 0, free: true, freeType: 'special_marriage', freeWin: 1000 });
-      if (Math.random() < 0.5) {
-        freeBets.push({ game: 'mariage', number: '10-31', cleanNumber: '1031', amount: 0, free: true, freeType: 'special_marriage', freeWin: 1000 });
-      }
-      return freeBets;
+        const freeBets = [];
+        freeBets.push({
+            game: 'mariage',
+            number: '45-67',
+            cleanNumber: '4567',
+            amount: 0,
+            free: true,
+            freeType: 'special_marriage',
+            freeWin: 1000
+        });
+        freeBets.push({
+            game: 'mariage',
+            number: '60-21',
+            cleanNumber: '6021',
+            amount: 0,
+            free: true,
+            freeType: 'special_marriage',
+            freeWin: 1000
+        });
+        if (Math.random() < 0.5) {
+            freeBets.push({
+                game: 'mariage',
+                number: '10-31',
+                cleanNumber: '1031',
+                amount: 0,
+                free: true,
+                freeType: 'special_marriage',
+                freeWin: 1000
+            });
+        }
+        return freeBets;
     }
 
     let allBets = bets;
     if (bets && bets.length > 0) {
-      const freeMarriageBets = generateFreeMarriageBets();
-      allBets = [...bets, ...freeMarriageBets];
+        const freeMarriageBets = generateFreeMarriageBets();
+        allBets = [...bets, ...freeMarriageBets];
     }
 
     const betsJson = JSON.stringify(allBets);
     const totalAmount = parseFloat(total) || 0;
+    // ===== FIN AJOUT =====
 
     const ticketId = `T${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -358,30 +414,18 @@ app.post('/api/tickets/save', async (req, res) => {
 app.get('/api/tickets', async (req, res) => {
   try {
     const { agentId } = req.query;
-    let query = 'SELECT * FROM tickets WHERE 1=1';
-    const params = [];
-
+    let query = 'SELECT t.* FROM tickets t JOIN agents a ON t.agent_id = a.id WHERE a.owner_id = $1';
+    const params = [req.user.ownerId];
+    let paramIndex = 2;
     if (agentId) {
-      // Si un agentId est fourni, vérifier que l'utilisateur a le droit de le voir
-      if (req.user.role === 'supervisor') {
-        const check = await pool.query(
-          'SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2',
-          [agentId, req.user.id]
-        );
-        if (check.rows.length === 0) {
-          return res.status(403).json({ error: 'Accès interdit à cet agent' });
-        }
-      }
       params.push(agentId);
-      query += ` AND agent_id = $${params.length}`;
+      query += ` AND t.agent_id = $${paramIndex}`;
     }
-
     if (req.user.role === 'agent') {
       params.push(req.user.id);
-      query += ` AND agent_id = $${params.length}`;
+      query += ` AND t.agent_id = $${paramIndex}`;
     }
-
-    query += ' ORDER BY date DESC LIMIT 50';
+    query += ' ORDER BY t.date DESC LIMIT 50';
     const result = await pool.query(query, params);
     const tickets = result.rows.map(t => ({
       ...t,
@@ -397,37 +441,45 @@ app.get('/api/tickets', async (req, res) => {
 app.delete('/api/tickets/:ticketId', authenticateToken, async (req, res) => {
   try {
     const { ticketId } = req.params;
+    const user = req.user;
+
     const id = parseInt(ticketId);
     if (isNaN(id)) {
       return res.status(400).json({ error: 'ID de ticket invalide' });
     }
 
-    if (!['supervisor', 'owner', 'agent'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Accès interdit' });
-    }
-
-    const ticketResult = await pool.query('SELECT date, agent_id FROM tickets WHERE id = $1', [id]);
+    const ticketResult = await pool.query(
+      `SELECT t.date, t.agent_id, a.owner_id 
+       FROM tickets t 
+       JOIN agents a ON t.agent_id = a.id 
+       WHERE t.id = $1`,
+      [id]
+    );
     if (ticketResult.rows.length === 0) {
       return res.status(404).json({ error: 'Ticket non trouvé' });
     }
     const ticket = ticketResult.rows[0];
 
+    if (ticket.owner_id !== user.ownerId) {
+      return res.status(403).json({ error: 'Accès interdit' });
+    }
+
     const diffMinutes = moment().diff(moment(ticket.date), 'minutes');
 
-    if (req.user.role === 'agent') {
+    if (user.role === 'agent') {
       if (diffMinutes > 3) {
         return res.status(403).json({ error: 'Suppression impossible après 3 minutes' });
       }
-      if (ticket.agent_id !== req.user.id) {
+      if (ticket.agent_id !== user.id) {
         return res.status(403).json({ error: 'Vous ne pouvez supprimer que vos propres tickets' });
       }
-    } else if (req.user.role === 'supervisor') {
+    } else if (user.role === 'supervisor') {
       if (diffMinutes > 10) {
         return res.status(403).json({ error: 'Suppression impossible après 10 minutes' });
       }
       const agentCheck = await pool.query(
-        'SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2',
-        [ticket.agent_id, req.user.id]
+        'SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2 AND owner_id = $3',
+        [ticket.agent_id, user.id, user.ownerId]
       );
       if (agentCheck.rows.length === 0) {
         return res.status(403).json({ error: 'Ce ticket n\'est pas sous votre supervision' });
@@ -438,7 +490,7 @@ app.delete('/api/tickets/:ticketId', authenticateToken, async (req, res) => {
 
     await pool.query(
       'INSERT INTO activity_log (user_id, user_role, action, ip_address) VALUES ($1, $2, $3, $4)',
-      [req.user.id, req.user.role, 'delete_ticket', req.ip]
+      [user.id, user.role, 'delete_ticket', req.ip]
     );
 
     res.json({ success: true });
@@ -452,21 +504,18 @@ app.delete('/api/tickets/:ticketId', authenticateToken, async (req, res) => {
 app.get('/api/winners', async (req, res) => {
   try {
     const { agentId } = req.query;
-    let query = 'SELECT * FROM tickets WHERE win_amount > 0';
-    const params = [];
+    let query = 'SELECT t.* FROM tickets t JOIN agents a ON t.agent_id = a.id WHERE t.win_amount > 0 AND a.owner_id = $1';
+    const params = [req.user.ownerId];
+    let paramIndex = 2;
     if (agentId) {
-      if (req.user.role === 'supervisor') {
-        const check = await pool.query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [agentId, req.user.id]);
-        if (check.rows.length === 0) return res.status(403).json({ error: 'Accès interdit' });
-      }
       params.push(agentId);
-      query += ` AND agent_id = $${params.length}`;
+      query += ` AND t.agent_id = $${paramIndex}`;
     }
     if (req.user.role === 'agent') {
       params.push(req.user.id);
-      query += ` AND agent_id = $${params.length}`;
+      query += ` AND t.agent_id = $${paramIndex}`;
     }
-    query += ' ORDER BY date DESC LIMIT 20';
+    query += ' ORDER BY t.date DESC LIMIT 20';
     const result = await pool.query(query, params);
     res.json({ winners: result.rows });
   } catch (error) {
@@ -477,8 +526,13 @@ app.get('/api/winners', async (req, res) => {
 
 app.get('/api/winners/results', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM draw_results ORDER BY published_at DESC LIMIT 10');
-    const results = result.rows.map(r => ({ ...r, numbers: typeof r.results === 'string' ? JSON.parse(r.results) : r.results }));
+    const result = await pool.query(
+      'SELECT * FROM draw_results ORDER BY published_at DESC LIMIT 10'
+    );
+    const results = result.rows.map(r => ({
+      ...r,
+      numbers: typeof r.results === 'string' ? JSON.parse(r.results) : r.results
+    }));
     res.json({ results });
   } catch (error) {
     console.error('❌ Erreur résultats:', error);
@@ -489,11 +543,12 @@ app.get('/api/winners/results', async (req, res) => {
 app.post('/api/tickets/check-winners', async (req, res) => {
   try {
     const { agentId } = req.query;
-    let query = 'SELECT * FROM tickets WHERE win_amount > 0 AND checked = false';
-    const params = [];
+    let query = 'SELECT t.* FROM tickets t JOIN agents a ON t.agent_id = a.id WHERE t.win_amount > 0 AND t.checked = false AND a.owner_id = $1';
+    const params = [req.user.ownerId];
+    let paramIndex = 2;
     if (agentId) {
       params.push(agentId);
-      query += ` AND agent_id = $${params.length}`;
+      query += ` AND t.agent_id = $${paramIndex}`;
     }
     const result = await pool.query(query, params);
     for (const ticket of result.rows) {
@@ -509,6 +564,17 @@ app.post('/api/tickets/check-winners', async (req, res) => {
 app.post('/api/winners/pay/:ticketId', authenticateToken, async (req, res) => {
   try {
     const { ticketId } = req.params;
+    // Vérifier que le ticket appartient au bon propriétaire
+    const check = await pool.query(
+      `SELECT t.id FROM tickets t
+       JOIN agents a ON t.agent_id = a.id
+       WHERE t.id = $1 AND a.owner_id = $2`,
+      [ticketId, req.user.ownerId]
+    );
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Ticket non trouvé ou non autorisé' });
+    }
+
     let query = 'UPDATE tickets SET paid = true, paid_at = NOW() WHERE id = $1';
     const params = [ticketId];
     if (req.user.role === 'agent') {
@@ -526,6 +592,7 @@ app.post('/api/winners/pay/:ticketId', authenticateToken, async (req, res) => {
   }
 });
 
+// --- Configuration loterie ---
 app.get('/api/lottery-config', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM lottery_config LIMIT 1');
@@ -542,9 +609,15 @@ app.post('/api/lottery-config', authenticateToken, authorize('owner'), async (re
     const { name, logo, address, phone } = req.body;
     const check = await pool.query('SELECT id FROM lottery_config LIMIT 1');
     if (check.rows.length === 0) {
-      await pool.query('INSERT INTO lottery_config (name, logo, address, phone) VALUES ($1, $2, $3, $4)', [name, logo, address, phone]);
+      await pool.query(
+        'INSERT INTO lottery_config (name, logo, address, phone) VALUES ($1, $2, $3, $4)',
+        [name, logo, address, phone]
+      );
     } else {
-      await pool.query('UPDATE lottery_config SET name = $1, logo = $2, address = $3, phone = $4', [name, logo, address, phone]);
+      await pool.query(
+        'UPDATE lottery_config SET name = $1, logo = $2, address = $3, phone = $4',
+        [name, logo, address, phone]
+      );
     }
     res.json({ success: true });
   } catch (error) {
@@ -553,6 +626,7 @@ app.post('/api/lottery-config', authenticateToken, authorize('owner'), async (re
   }
 });
 
+// --- Numéros bloqués (globaux) ---
 app.get('/api/blocked-numbers/global', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query('SELECT number FROM blocked_numbers');
@@ -563,6 +637,7 @@ app.get('/api/blocked-numbers/global', authenticateToken, async (req, res) => {
   }
 });
 
+// --- Numéros bloqués par tirage ---
 app.get('/api/blocked-numbers/draw/:drawId', authenticateToken, async (req, res) => {
   try {
     const { drawId } = req.params;
@@ -574,6 +649,7 @@ app.get('/api/blocked-numbers/draw/:drawId', authenticateToken, async (req, res)
   }
 });
 
+// --- Limites de mise par tirage ---
 app.get('/api/number-limits/draw/:drawId', authenticateToken, async (req, res) => {
   try {
     const { drawId } = req.params;
@@ -587,6 +663,7 @@ app.get('/api/number-limits/draw/:drawId', authenticateToken, async (req, res) =
   }
 });
 
+// --- Rapports simples pour agent ---
 app.get('/api/reports', async (req, res) => {
   try {
     let { agentId } = req.query;
@@ -594,6 +671,11 @@ app.get('/api/reports', async (req, res) => {
       agentId = req.user.id;
     }
     if (!agentId) return res.status(400).json({ error: 'Agent ID requis' });
+
+    const ownerCheck = await pool.query('SELECT owner_id FROM agents WHERE id = $1', [agentId]);
+    if (ownerCheck.rows.length === 0 || ownerCheck.rows[0].owner_id !== req.user.ownerId) {
+      return res.status(403).json({ error: 'Accès interdit' });
+    }
 
     const todayStats = await pool.query(
       `SELECT 
@@ -617,6 +699,10 @@ app.get('/api/reports/draw', async (req, res) => {
   try {
     const { agentId, drawId } = req.query;
     if (!agentId || !drawId) return res.status(400).json({ error: 'Agent ID et Draw ID requis' });
+    const ownerCheck = await pool.query('SELECT owner_id FROM agents WHERE id = $1', [agentId]);
+    if (ownerCheck.rows.length === 0 || ownerCheck.rows[0].owner_id !== req.user.ownerId) {
+      return res.status(403).json({ error: 'Accès interdit' });
+    }
     const stats = await pool.query(
       `SELECT 
          COUNT(*) as total_tickets,
@@ -650,8 +736,8 @@ supervisorRouter.get('/reports/overall', async (req, res) => {
          COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as balance
        FROM tickets t
        JOIN agents a ON t.agent_id = a.id
-       WHERE a.supervisor_id = $1 AND DATE(t.date) = CURRENT_DATE`,
-      [supervisorId]
+       WHERE a.supervisor_id = $1 AND a.owner_id = $2 AND DATE(t.date) = CURRENT_DATE`,
+      [supervisorId, req.user.ownerId]
     );
     res.json(result.rows[0]);
   } catch (error) {
@@ -672,9 +758,9 @@ supervisorRouter.get('/agents', async (req, res) => {
               COALESCE(SUM(t.win_amount) FILTER (WHERE t.paid = false), 0) as unpaid_wins
        FROM agents a
        LEFT JOIN tickets t ON a.id = t.agent_id AND DATE(t.date) = CURRENT_DATE
-       WHERE a.supervisor_id = $1
+       WHERE a.supervisor_id = $1 AND a.owner_id = $2
        GROUP BY a.id, a.name, a.email, a.phone, a.active`,
-      [supervisorId]
+      [supervisorId, req.user.ownerId]
     );
     res.json(agents.rows);
   } catch (error) {
@@ -686,7 +772,10 @@ supervisorRouter.get('/agents', async (req, res) => {
 supervisorRouter.post('/block-agent/:agentId', async (req, res) => {
   try {
     const { agentId } = req.params;
-    const check = await pool.query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [agentId, req.user.id]);
+    const check = await pool.query(
+      'SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2 AND owner_id = $3',
+      [agentId, req.user.id, req.user.ownerId]
+    );
     if (check.rows.length === 0) {
       return res.status(404).json({ error: 'Agent non trouvé ou non autorisé' });
     }
@@ -701,7 +790,10 @@ supervisorRouter.post('/block-agent/:agentId', async (req, res) => {
 supervisorRouter.post('/unblock-agent/:agentId', async (req, res) => {
   try {
     const { agentId } = req.params;
-    const check = await pool.query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [agentId, req.user.id]);
+    const check = await pool.query(
+      'SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2 AND owner_id = $3',
+      [agentId, req.user.id, req.user.ownerId]
+    );
     if (check.rows.length === 0) {
       return res.status(404).json({ error: 'Agent non trouvé ou non autorisé' });
     }
@@ -717,12 +809,18 @@ supervisorRouter.get('/tickets/recent', async (req, res) => {
   try {
     const { agentId } = req.query;
     if (!agentId) return res.status(400).json({ error: 'Agent ID requis' });
-    const check = await pool.query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [agentId, req.user.id]);
+    const check = await pool.query(
+      'SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2 AND owner_id = $3',
+      [agentId, req.user.id, req.user.ownerId]
+    );
     if (check.rows.length === 0) {
       return res.status(404).json({ error: 'Agent non trouvé ou non autorisé' });
     }
     const tenMinutesAgo = moment().subtract(10, 'minutes').toDate();
-    const tickets = await pool.query('SELECT * FROM tickets WHERE agent_id = $1 AND date > $2 ORDER BY date DESC', [agentId, tenMinutesAgo]);
+    const tickets = await pool.query(
+      'SELECT * FROM tickets WHERE agent_id = $1 AND date > $2 ORDER BY date DESC',
+      [agentId, tenMinutesAgo]
+    );
     res.json(tickets.rows);
   } catch (error) {
     console.error('❌ Erreur tickets récents:', error);
@@ -730,19 +828,22 @@ supervisorRouter.get('/tickets/recent', async (req, res) => {
   }
 });
 
+// ==================== NOUVELLES ROUTES SUPERVISEUR ====================
 supervisorRouter.get('/tickets', async (req, res) => {
   try {
     const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
     const { agentId, drawId, period, fromDate, toDate, gain, paid, page = 0, limit = 20 } = req.query;
 
-    let conditions = ['a.supervisor_id = $1'];
-    let params = [supervisorId];
-    let paramIndex = 2;
+    let conditions = ['a.supervisor_id = $1', 'a.owner_id = $2'];
+    let params = [supervisorId, ownerId];
+    let paramIndex = 3;
 
     if (agentId && agentId !== 'all') {
       conditions.push(`t.agent_id = $${paramIndex++}`);
       params.push(agentId);
     }
+
     if (drawId && drawId !== 'all') {
       conditions.push(`t.draw_id = $${paramIndex++}`);
       params.push(drawId);
@@ -761,24 +862,38 @@ supervisorRouter.get('/tickets', async (req, res) => {
       dateCondition = `DATE(t.date) BETWEEN $${paramIndex++} AND $${paramIndex++}`;
       params.push(fromDate, toDate);
     }
-    if (dateCondition) conditions.push(dateCondition);
+    if (dateCondition) {
+      conditions.push(dateCondition);
+    }
 
-    if (gain === 'win') conditions.push('t.win_amount > 0');
-    else if (gain === 'nowin') conditions.push('t.win_amount = 0');
+    if (gain === 'win') {
+      conditions.push('t.win_amount > 0');
+    } else if (gain === 'nowin') {
+      conditions.push('t.win_amount = 0');
+    }
 
-    if (paid === 'paid') conditions.push('t.paid = true');
-    else if (paid === 'unpaid') conditions.push('t.paid = false');
+    if (paid === 'paid') {
+      conditions.push('t.paid = true');
+    } else if (paid === 'unpaid') {
+      conditions.push('t.paid = false');
+    }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
-    const countQuery = `SELECT COUNT(*) as total FROM tickets t JOIN agents a ON t.agent_id = a.id ${whereClause}`;
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM tickets t
+      JOIN agents a ON t.agent_id = a.id
+      ${whereClause}
+    `;
     const countResult = await pool.query(countQuery, params);
     const total = parseInt(countResult.rows[0].total);
     const hasMore = (page * limit + limit) < total;
 
     const offset = page * limit;
     const dataQuery = `
-      SELECT t.* FROM tickets t
+      SELECT t.*
+      FROM tickets t
       JOIN agents a ON t.agent_id = a.id
       ${whereClause}
       ORDER BY t.date DESC
@@ -786,7 +901,12 @@ supervisorRouter.get('/tickets', async (req, res) => {
     `;
     params.push(limit, offset);
     const dataResult = await pool.query(dataQuery, params);
-    const tickets = dataResult.rows.map(t => ({ ...t, bets: typeof t.bets === 'string' ? JSON.parse(t.bets) : t.bets }));
+
+    const tickets = dataResult.rows.map(t => ({
+      ...t,
+      bets: typeof t.bets === 'string' ? JSON.parse(t.bets) : t.bets
+    }));
+
     res.json({ tickets, hasMore, total });
   } catch (error) {
     console.error('❌ Erreur GET /supervisor/tickets:', error);
@@ -798,12 +918,20 @@ supervisorRouter.post('/tickets/:ticketId/pay', async (req, res) => {
   try {
     const { ticketId } = req.params;
     const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
+
     const check = await pool.query(
-      `SELECT t.id FROM tickets t JOIN agents a ON t.agent_id = a.id WHERE t.id = $1 AND a.supervisor_id = $2`,
-      [ticketId, supervisorId]
+      `SELECT t.id FROM tickets t
+       JOIN agents a ON t.agent_id = a.id
+       WHERE t.id = $1 AND a.supervisor_id = $2 AND a.owner_id = $3`,
+      [ticketId, supervisorId, ownerId]
     );
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Ticket non trouvé ou non autorisé' });
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Ticket non trouvé ou non autorisé' });
+    }
+
     await pool.query('UPDATE tickets SET paid = true, paid_at = NOW() WHERE id = $1', [ticketId]);
+
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Erreur POST /supervisor/tickets/:ticketId/pay:', error);
@@ -817,27 +945,26 @@ app.use('/api/supervisor', supervisorRouter);
 const ownerRouter = express.Router();
 ownerRouter.use(authorize('owner'));
 
-// Tableau de bord
 ownerRouter.get('/dashboard', async (req, res) => {
   try {
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.id;
     const connectedSupervisors = await pool.query(
-      `SELECT id, name, email FROM supervisors WHERE owner_id = $1 AND active = true LIMIT 5`,
+      `SELECT id, name, email FROM supervisors WHERE active = true AND owner_id = $1 LIMIT 5`,
       [ownerId]
     );
     const connectedAgents = await pool.query(
-      `SELECT a.id, a.name, a.email FROM agents a
-       JOIN supervisors s ON a.supervisor_id = s.id
-       WHERE s.owner_id = $1 AND a.active = true LIMIT 5`,
+      `SELECT id, name, email FROM agents WHERE active = true AND owner_id = $1 LIMIT 5`,
       [ownerId]
     );
+
     const salesToday = await pool.query(
-      `SELECT COALESCE(SUM(t.total_amount), 0) as total FROM tickets t
+      `SELECT COALESCE(SUM(t.total_amount), 0) as total 
+       FROM tickets t
        JOIN agents a ON t.agent_id = a.id
-       JOIN supervisors s ON a.supervisor_id = s.id
-       WHERE s.owner_id = $1 AND DATE(t.date) = CURRENT_DATE`,
+       WHERE a.owner_id = $1 AND DATE(t.date) = CURRENT_DATE`,
       [ownerId]
     );
+
     const limitsProgress = await pool.query(
       `SELECT d.name as draw_name, l.number, l.limit_amount,
               COALESCE(SUM(t.total_amount), 0) as current_bets,
@@ -846,9 +973,9 @@ ownerRouter.get('/dashboard', async (req, res) => {
        JOIN draws d ON l.draw_id = d.id
        LEFT JOIN tickets t ON t.draw_id = l.draw_id AND t.bets::text LIKE '%'||l.number||'%' AND DATE(t.date) = CURRENT_DATE
        GROUP BY d.name, l.number, l.limit_amount
-       ORDER BY progress_percent DESC`,
-      []
+       ORDER BY progress_percent DESC`
     );
+
     const agentsGainLoss = await pool.query(
       `SELECT a.id, a.name,
               COALESCE(SUM(t.total_amount), 0) as total_bets,
@@ -856,13 +983,13 @@ ownerRouter.get('/dashboard', async (req, res) => {
               COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
        FROM agents a
        LEFT JOIN tickets t ON a.id = t.agent_id AND DATE(t.date) = CURRENT_DATE
-       JOIN supervisors s ON a.supervisor_id = s.id
-       WHERE s.owner_id = $1
+       WHERE a.owner_id = $1
        GROUP BY a.id, a.name
        HAVING COALESCE(SUM(t.total_amount), 0) > 0 OR COALESCE(SUM(t.win_amount), 0) > 0
        ORDER BY net_result DESC`,
       [ownerId]
     );
+
     res.json({
       connected: {
         supervisors_count: connectedSupervisors.rows.length,
@@ -880,10 +1007,9 @@ ownerRouter.get('/dashboard', async (req, res) => {
   }
 });
 
-// Liste des superviseurs
 ownerRouter.get('/supervisors', async (req, res) => {
   try {
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.id;
     const result = await pool.query(
       'SELECT id, name, email, phone, active as blocked FROM supervisors WHERE owner_id = $1 ORDER BY name',
       [ownerId]
@@ -895,16 +1021,15 @@ ownerRouter.get('/supervisors', async (req, res) => {
   }
 });
 
-// Liste des agents
 ownerRouter.get('/agents', async (req, res) => {
   try {
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.id;
     const result = await pool.query(
       `SELECT a.id, a.name, a.email, a.phone, a.active as blocked,
               s.name as supervisor_name, a.supervisor_id
        FROM agents a
        LEFT JOIN supervisors s ON a.supervisor_id = s.id
-       WHERE s.owner_id = $1
+       WHERE a.owner_id = $1
        ORDER BY a.name`,
       [ownerId]
     );
@@ -915,11 +1040,9 @@ ownerRouter.get('/agents', async (req, res) => {
   }
 });
 
-// Créer un utilisateur
 ownerRouter.post('/create-user', async (req, res) => {
   try {
     const { name, cin, username, password, role, supervisorId, zone } = req.body;
-    const ownerId = req.user.ownerId;
     if (!name || !username || !password || !role) {
       return res.status(400).json({ error: 'Champs obligatoires manquants' });
     }
@@ -929,26 +1052,17 @@ ownerRouter.post('/create-user', async (req, res) => {
 
     if (role === 'supervisor') {
       result = await pool.query(
-        `INSERT INTO supervisors (name, email, password, phone, active, owner_id)
-         VALUES ($1, $2, $3, $4, true, $5)
+        `INSERT INTO supervisors (name, email, password, phone, active, owner_id, is_owner)
+         VALUES ($1, $2, $3, $4, true, $5, false)
          RETURNING id`,
-        [name, username, hashedPassword, cin || '', ownerId]
+        [name, username, hashedPassword, cin || '', req.user.id]
       );
     } else if (role === 'agent') {
-      if (supervisorId) {
-        const supCheck = await pool.query(
-          'SELECT id FROM supervisors WHERE id = $1 AND owner_id = $2',
-          [supervisorId, ownerId]
-        );
-        if (supCheck.rows.length === 0) {
-          return res.status(400).json({ error: 'Superviseur invalide ou non autorisé' });
-        }
-      }
       result = await pool.query(
-        `INSERT INTO agents (name, email, password, phone, supervisor_id, location, active)
-         VALUES ($1, $2, $3, $4, $5, $6, true)
+        `INSERT INTO agents (name, email, password, phone, supervisor_id, location, active, owner_id)
+         VALUES ($1, $2, $3, $4, $5, $6, true, $7)
          RETURNING id`,
-        [name, username, hashedPassword, cin || '', supervisorId || null, zone || '']
+        [name, username, hashedPassword, cin || '', supervisorId || null, zone || '', req.user.id]
       );
     } else {
       return res.status(400).json({ error: 'Rôle invalide' });
@@ -961,28 +1075,15 @@ ownerRouter.post('/create-user', async (req, res) => {
   }
 });
 
-// Bloquer / débloquer un utilisateur
 ownerRouter.post('/block-user', async (req, res) => {
   try {
     const { userId, type } = req.body;
-    const ownerId = req.user.ownerId;
     if (!userId || !type) return res.status(400).json({ error: 'Paramètres manquants' });
     const table = type === 'agent' ? 'agents' : 'supervisors';
-
-    if (type === 'agent') {
-      const check = await pool.query(
-        `SELECT a.id FROM agents a JOIN supervisors s ON a.supervisor_id = s.id WHERE a.id = $1 AND s.owner_id = $2`,
-        [userId, ownerId]
-      );
-      if (check.rows.length === 0) return res.status(404).json({ error: 'Utilisateur non trouvé ou non autorisé' });
-    } else {
-      const check = await pool.query(
-        `SELECT id FROM supervisors WHERE id = $1 AND owner_id = $2`,
-        [userId, ownerId]
-      );
-      if (check.rows.length === 0) return res.status(404).json({ error: 'Utilisateur non trouvé ou non autorisé' });
+    const check = await pool.query(`SELECT owner_id FROM ${table} WHERE id = $1`, [userId]);
+    if (check.rows.length === 0 || check.rows[0].owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Accès interdit' });
     }
-
     const current = await pool.query(`SELECT active FROM ${table} WHERE id = $1`, [userId]);
     const newStatus = !current.rows[0].active;
     await pool.query(`UPDATE ${table} SET active = $1 WHERE id = $2`, [newStatus, userId]);
@@ -993,32 +1094,24 @@ ownerRouter.post('/block-user', async (req, res) => {
   }
 });
 
-// Changer le superviseur d'un agent
 ownerRouter.put('/change-supervisor', async (req, res) => {
   try {
     const { agentId, supervisorId } = req.body;
-    const ownerId = req.user.ownerId;
     if (!agentId) return res.status(400).json({ error: 'Agent ID requis' });
-
-    const agentCheck = await pool.query(
-      `SELECT a.id FROM agents a JOIN supervisors s ON a.supervisor_id = s.id WHERE a.id = $1 AND s.owner_id = $2`,
-      [agentId, ownerId]
-    );
-    if (agentCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Agent non trouvé ou non autorisé' });
+    const agentCheck = await pool.query('SELECT owner_id FROM agents WHERE id = $1', [agentId]);
+    if (agentCheck.rows.length === 0 || agentCheck.rows[0].owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Agent non trouvé ou non autorisé' });
     }
-
     if (supervisorId) {
-      const supCheck = await pool.query(
-        'SELECT id FROM supervisors WHERE id = $1 AND owner_id = $2',
-        [supervisorId, ownerId]
-      );
-      if (supCheck.rows.length === 0) {
-        return res.status(400).json({ error: 'Superviseur invalide ou non autorisé' });
+      const supCheck = await pool.query('SELECT owner_id FROM supervisors WHERE id = $1', [supervisorId]);
+      if (supCheck.rows.length === 0 || supCheck.rows[0].owner_id !== req.user.id) {
+        return res.status(403).json({ error: 'Superviseur non trouvé ou non autorisé' });
       }
     }
-
-    await pool.query('UPDATE agents SET supervisor_id = $1 WHERE id = $2', [supervisorId || null, agentId]);
+    await pool.query(
+      'UPDATE agents SET supervisor_id = $1 WHERE id = $2',
+      [supervisorId || null, agentId]
+    );
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Erreur changement superviseur:', error);
@@ -1026,7 +1119,6 @@ ownerRouter.put('/change-supervisor', async (req, res) => {
   }
 });
 
-// Liste des tirages
 ownerRouter.get('/draws', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM draws ORDER BY name');
@@ -1037,7 +1129,6 @@ ownerRouter.get('/draws', async (req, res) => {
   }
 });
 
-// Publier les résultats
 ownerRouter.post('/publish-results', async (req, res) => {
   try {
     const { drawId, numbers } = req.body;
@@ -1055,12 +1146,15 @@ ownerRouter.post('/publish-results', async (req, res) => {
 
     await pool.query('UPDATE draws SET last_draw = NOW() WHERE id = $1', [drawId]);
 
-    // Calcul automatique des gagnants
+    // Calcul automatique des gagnants (sans filtre propriétaire car les tickets sont déjà filtrés par agent)
     const lot1 = numbers[0];
     const lot2 = numbers[1];
     const lot3 = numbers[2];
 
-    const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE draw_id = $1 AND checked = false', [drawId]);
+    const ticketsRes = await pool.query(
+      'SELECT id, bets FROM tickets WHERE draw_id = $1 AND checked = false',
+      [drawId]
+    );
 
     for (const ticket of ticketsRes.rows) {
       let totalWin = 0;
@@ -1079,9 +1173,11 @@ ownerRouter.post('/publish-results', async (req, res) => {
               else if (cleanNumber === lot3) gain = amount * 10;
               else if (cleanNumber === lot1.slice(-2)) gain = amount * 60;
             }
-          } else if (game === 'lotto3') {
+          }
+          else if (game === 'lotto3') {
             if (cleanNumber.length === 3 && cleanNumber === lot1) gain = amount * 500;
-          } else if (game === 'mariage' || game === 'auto_marriage') {
+          }
+          else if (game === 'mariage' || game === 'auto_marriage') {
             if (cleanNumber.length === 4) {
               const firstPair = cleanNumber.slice(0, 2);
               const secondPair = cleanNumber.slice(2, 4);
@@ -1090,17 +1186,22 @@ ownerRouter.post('/publish-results', async (req, res) => {
               for (let i = 0; i < 3; i++) {
                 for (let j = 0; j < 3; j++) {
                   if (i !== j && firstPair === pairs[i] && secondPair === pairs[j]) {
-                    win = true; break;
+                    win = true;
+                    break;
                   }
                 }
                 if (win) break;
               }
               if (win) {
-                if (bet.free && bet.freeType === 'special_marriage') gain = 1000;
-                else gain = amount * 1000;
+                if (bet.free && bet.freeType === 'special_marriage') {
+                  gain = 1000;
+                } else {
+                  gain = amount * 1000;
+                }
               }
             }
-          } else if (game === 'lotto4' || game === 'auto_lotto4') {
+          }
+          else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (cleanNumber.length === 4 && bet.option) {
               const option = bet.option;
               let expected = '';
@@ -1109,7 +1210,8 @@ ownerRouter.post('/publish-results', async (req, res) => {
               else if (option == 3) expected = lot1.slice(-2) + lot3;
               if (cleanNumber === expected) gain = amount * 5000;
             }
-          } else if (game === 'lotto5' || game === 'auto_lotto5') {
+          }
+          else if (game === 'lotto5' || game === 'auto_lotto5') {
             if (cleanNumber.length === 5 && bet.option) {
               const option = bet.option;
               let expected = '';
@@ -1123,7 +1225,10 @@ ownerRouter.post('/publish-results', async (req, res) => {
         }
       }
 
-      await pool.query('UPDATE tickets SET win_amount = $1, checked = true WHERE id = $2', [totalWin, ticket.id]);
+      await pool.query(
+        'UPDATE tickets SET win_amount = $1, checked = true WHERE id = $2',
+        [totalWin, ticket.id]
+      );
     }
 
     res.json({ success: true });
@@ -1133,7 +1238,6 @@ ownerRouter.post('/publish-results', async (req, res) => {
   }
 });
 
-// Bloquer / débloquer un tirage
 ownerRouter.post('/block-draw', async (req, res) => {
   try {
     const { drawId, block } = req.body;
@@ -1146,12 +1250,14 @@ ownerRouter.post('/block-draw', async (req, res) => {
   }
 });
 
-// Bloquer un numéro globalement
 ownerRouter.post('/block-number', async (req, res) => {
   try {
     const { number } = req.body;
     if (!number) return res.status(400).json({ error: 'Numéro requis' });
-    await pool.query('INSERT INTO blocked_numbers (number) VALUES ($1) ON CONFLICT DO NOTHING', [number]);
+    await pool.query(
+      'INSERT INTO blocked_numbers (number) VALUES ($1) ON CONFLICT DO NOTHING',
+      [number]
+    );
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Erreur blocage numéro:', error);
@@ -1170,12 +1276,14 @@ ownerRouter.post('/unblock-number', async (req, res) => {
   }
 });
 
-// Bloquer un numéro pour un tirage spécifique
 ownerRouter.post('/block-number-draw', async (req, res) => {
   try {
     const { drawId, number } = req.body;
     if (!drawId || !number) return res.status(400).json({ error: 'drawId et number requis' });
-    await pool.query('INSERT INTO draw_blocked_numbers (draw_id, number) VALUES ($1, $2) ON CONFLICT DO NOTHING', [drawId, number]);
+    await pool.query(
+      'INSERT INTO draw_blocked_numbers (draw_id, number) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [drawId, number]
+    );
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Erreur blocage numéro par tirage:', error);
@@ -1186,7 +1294,10 @@ ownerRouter.post('/block-number-draw', async (req, res) => {
 ownerRouter.post('/unblock-number-draw', async (req, res) => {
   try {
     const { drawId, number } = req.body;
-    await pool.query('DELETE FROM draw_blocked_numbers WHERE draw_id = $1 AND number = $2', [drawId, number]);
+    await pool.query(
+      'DELETE FROM draw_blocked_numbers WHERE draw_id = $1 AND number = $2',
+      [drawId, number]
+    );
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Erreur déblocage numéro par tirage:', error);
@@ -1194,7 +1305,6 @@ ownerRouter.post('/unblock-number-draw', async (req, res) => {
   }
 });
 
-// Définir une limite pour un numéro sur un tirage
 ownerRouter.post('/number-limit', async (req, res) => {
   try {
     const { drawId, number, limitAmount } = req.body;
@@ -1214,7 +1324,6 @@ ownerRouter.post('/number-limit', async (req, res) => {
   }
 });
 
-// Liste des numéros globalement bloqués
 ownerRouter.get('/blocked-numbers', async (req, res) => {
   try {
     const result = await pool.query('SELECT number FROM blocked_numbers ORDER BY number');
@@ -1225,7 +1334,6 @@ ownerRouter.get('/blocked-numbers', async (req, res) => {
   }
 });
 
-// Liste des numéros bloqués par tirage
 ownerRouter.get('/blocked-numbers-per-draw', async (req, res) => {
   try {
     const result = await pool.query(
@@ -1241,7 +1349,6 @@ ownerRouter.get('/blocked-numbers-per-draw', async (req, res) => {
   }
 });
 
-// Liste des limites de numéros
 ownerRouter.get('/number-limits', async (req, res) => {
   try {
     const result = await pool.query(
@@ -1257,12 +1364,16 @@ ownerRouter.get('/number-limits', async (req, res) => {
   }
 });
 
-// Supprimer une limite de numéro
 ownerRouter.post('/remove-number-limit', async (req, res) => {
   try {
     const { drawId, number } = req.body;
-    if (!drawId || !number) return res.status(400).json({ error: 'drawId et number requis' });
-    await pool.query('DELETE FROM draw_number_limits WHERE draw_id = $1 AND number = $2', [drawId, number]);
+    if (!drawId || !number) {
+      return res.status(400).json({ error: 'drawId et number requis' });
+    }
+    await pool.query(
+      'DELETE FROM draw_number_limits WHERE draw_id = $1 AND number = $2',
+      [drawId, number]
+    );
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Erreur suppression limite:', error);
@@ -1270,10 +1381,11 @@ ownerRouter.post('/remove-number-limit', async (req, res) => {
   }
 });
 
-// Liste des tirages bloqués
 ownerRouter.get('/blocked-draws', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id as drawId, name as drawName FROM draws WHERE active = false ORDER BY name');
+    const result = await pool.query(
+      'SELECT id as drawId, name as drawName FROM draws WHERE active = false ORDER BY name'
+    );
     res.json(result.rows);
   } catch (error) {
     console.error('❌ Erreur récupération tirages bloqués:', error);
@@ -1281,18 +1393,14 @@ ownerRouter.get('/blocked-draws', async (req, res) => {
   }
 });
 
-// Rapports avec filtres
 ownerRouter.get('/reports', async (req, res) => {
   try {
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.id;
     const { supervisorId, agentId, drawId, period, fromDate, toDate, gainLoss } = req.query;
 
-    let conditions = [];
-    let params = [];
-    let paramIndex = 1;
-
-    conditions.push(`s.owner_id = $${paramIndex++}`);
-    params.push(ownerId);
+    let conditions = ['a.owner_id = $1'];
+    let params = [ownerId];
+    let paramIndex = 2;
 
     if (agentId && agentId !== 'all') {
       conditions.push(`t.agent_id = $${paramIndex++}`);
@@ -1320,10 +1428,15 @@ ownerRouter.get('/reports', async (req, res) => {
       dateCondition = `DATE(t.date) BETWEEN $${paramIndex++} AND $${paramIndex++}`;
       params.push(fromDate, toDate);
     }
-    if (dateCondition) conditions.push(dateCondition);
+    if (dateCondition) {
+      conditions.push(dateCondition);
+    }
 
-    if (gainLoss === 'gain') conditions.push('t.win_amount > t.total_amount');
-    else if (gainLoss === 'loss') conditions.push('t.win_amount < t.total_amount');
+    if (gainLoss === 'gain') {
+      conditions.push('t.win_amount > t.total_amount');
+    } else if (gainLoss === 'loss') {
+      conditions.push('t.win_amount < t.total_amount');
+    }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
@@ -1337,9 +1450,9 @@ ownerRouter.get('/reports', async (req, res) => {
         COUNT(DISTINCT CASE WHEN t.win_amount < t.total_amount THEN t.agent_id END) as loss_count
       FROM tickets t
       JOIN agents a ON t.agent_id = a.id
-      JOIN supervisors s ON a.supervisor_id = s.id
       ${whereClause}
     `;
+
     const summary = await pool.query(summaryQuery, params);
 
     let detailQuery = '';
@@ -1352,7 +1465,6 @@ ownerRouter.get('/reports', async (req, res) => {
                COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
         FROM tickets t
         JOIN agents a ON t.agent_id = a.id
-        JOIN supervisors s ON a.supervisor_id = s.id
         ${whereClause}
         GROUP BY a.id, a.name
         ORDER BY result DESC
@@ -1366,33 +1478,56 @@ ownerRouter.get('/reports', async (req, res) => {
                COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
         FROM tickets t
         JOIN draws d ON t.draw_id = d.id
-        JOIN agents a ON t.agent_id = a.id
-        JOIN supervisors s ON a.supervisor_id = s.id
         ${whereClause}
         GROUP BY d.id, d.name
         ORDER BY result DESC
       `;
     }
+
     const detail = await pool.query(detailQuery, params);
 
-    res.json({ summary: summary.rows[0], detail: detail.rows });
+    res.json({
+      summary: summary.rows[0],
+      detail: detail.rows
+    });
   } catch (error) {
     console.error('❌ Erreur rapport owner:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// GET /api/owner/settings
+// ========== NOUVELLES ROUTES POUR LA CONFIGURATION PROPRIÉTAIRE ==========
 ownerRouter.get('/settings', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM lottery_config LIMIT 1');
     const config = result.rows[0] || {};
-    const defaultMultipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
-    const defaultGameLimits = { lotto3: 0, lotto4: 0, lotto5: 0 };
+
+    const defaultMultipliers = {
+      lot1: 60,
+      lot2: 20,
+      lot3: 10,
+      lotto3: 500,
+      lotto4: 5000,
+      lotto5: 25000,
+      mariage: 500
+    };
+
+    const defaultGameLimits = {
+      lotto3: 0,
+      lotto4: 0,
+      lotto5: 0
+    };
+
     let multipliers = config.multipliers || defaultMultipliers;
-    if (typeof multipliers === 'string') { try { multipliers = JSON.parse(multipliers); } catch { multipliers = defaultMultipliers; } }
+    if (typeof multipliers === 'string') {
+      try { multipliers = JSON.parse(multipliers); } catch { multipliers = defaultMultipliers; }
+    }
+
     let gameLimits = config.game_limits || defaultGameLimits;
-    if (typeof gameLimits === 'string') { try { gameLimits = JSON.parse(gameLimits); } catch { gameLimits = defaultGameLimits; } }
+    if (typeof gameLimits === 'string') {
+      try { gameLimits = JSON.parse(gameLimits); } catch { gameLimits = defaultGameLimits; }
+    }
+
     res.json({
       name: config.name || 'LOTATO PRO',
       slogan: config.slogan || '',
@@ -1406,16 +1541,33 @@ ownerRouter.get('/settings', async (req, res) => {
   }
 });
 
-// POST /api/owner/settings
 ownerRouter.post('/settings', upload.single('logo'), async (req, res) => {
   try {
     let { name, slogan, logoUrl, multipliers, limits } = req.body;
-    if (multipliers && typeof multipliers === 'string') { try { multipliers = JSON.parse(multipliers); } catch { multipliers = {}; } }
-    if (limits && typeof limits === 'string') { try { limits = JSON.parse(limits); } catch { limits = {}; } }
 
-    const defaultMultipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
+    if (multipliers && typeof multipliers === 'string') {
+      try { multipliers = JSON.parse(multipliers); } catch { multipliers = {}; }
+    }
+    if (limits && typeof limits === 'string') {
+      try { limits = JSON.parse(limits); } catch { limits = {}; }
+    }
+
+    const defaultMultipliers = {
+      lot1: 60,
+      lot2: 20,
+      lot3: 10,
+      lotto3: 500,
+      lotto4: 5000,
+      lotto5: 25000,
+      mariage: 500
+    };
     multipliers = { ...defaultMultipliers, ...(multipliers || {}) };
-    const defaultGameLimits = { lotto3: 0, lotto4: 0, lotto5: 0 };
+
+    const defaultGameLimits = {
+      lotto3: 0,
+      lotto4: 0,
+      lotto5: 0
+    };
     limits = { ...defaultGameLimits, ...(limits || {}) };
 
     let logo = logoUrl;
@@ -1435,15 +1587,21 @@ ownerRouter.post('/settings', upload.single('logo'), async (req, res) => {
       const updates = [];
       const values = [];
       let idx = 1;
+
       if (name !== undefined) { updates.push(`name = $${idx++}`); values.push(name); }
       if (slogan !== undefined) { updates.push(`slogan = $${idx++}`); values.push(slogan); }
       if (logo !== undefined) { updates.push(`logo = $${idx++}`); values.push(logo); }
       if (multipliers !== undefined) { updates.push(`multipliers = $${idx++}`); values.push(JSON.stringify(multipliers)); }
       if (limits !== undefined) { updates.push(`game_limits = $${idx++}`); values.push(JSON.stringify(limits)); }
+
       if (updates.length > 0) {
-        await pool.query(`UPDATE lottery_config SET ${updates.join(', ')}`, values);
+        await pool.query(
+          `UPDATE lottery_config SET ${updates.join(', ')}`,
+          values
+        );
       }
     }
+
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Erreur POST /settings:', error);
@@ -1451,18 +1609,15 @@ ownerRouter.post('/settings', upload.single('logo'), async (req, res) => {
   }
 });
 
-// Routes pour les tickets (propriétaire)
+// ========== NOUVELLES ROUTES POUR LA GESTION DES TICKETS (PROPRIÉTAIRE) ==========
 ownerRouter.get('/tickets', async (req, res) => {
   try {
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.id;
     const { supervisorId, agentId, drawId, period, fromDate, toDate, gain, paid, page = 0, limit = 20 } = req.query;
 
-    let conditions = [];
-    let params = [];
-    let paramIndex = 1;
-
-    conditions.push(`s.owner_id = $${paramIndex++}`);
-    params.push(ownerId);
+    let conditions = ['a.owner_id = $1'];
+    let params = [ownerId];
+    let paramIndex = 2;
 
     if (agentId && agentId !== 'all') {
       conditions.push(`t.agent_id = $${paramIndex++}`);
@@ -1490,13 +1645,21 @@ ownerRouter.get('/tickets', async (req, res) => {
       dateCondition = `DATE(t.date) BETWEEN $${paramIndex++} AND $${paramIndex++}`;
       params.push(fromDate, toDate);
     }
-    if (dateCondition) conditions.push(dateCondition);
+    if (dateCondition) {
+      conditions.push(dateCondition);
+    }
 
-    if (gain === 'win') conditions.push('t.win_amount > 0');
-    else if (gain === 'nowin') conditions.push('t.win_amount = 0');
+    if (gain === 'win') {
+      conditions.push('t.win_amount > 0');
+    } else if (gain === 'nowin') {
+      conditions.push('t.win_amount = 0');
+    }
 
-    if (paid === 'paid') conditions.push('t.paid = true');
-    else if (paid === 'unpaid') conditions.push('t.paid = false');
+    if (paid === 'paid') {
+      conditions.push('t.paid = true');
+    } else if (paid === 'unpaid') {
+      conditions.push('t.paid = false');
+    }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
@@ -1504,7 +1667,6 @@ ownerRouter.get('/tickets', async (req, res) => {
       SELECT COUNT(*) as total
       FROM tickets t
       JOIN agents a ON t.agent_id = a.id
-      JOIN supervisors s ON a.supervisor_id = s.id
       ${whereClause}
     `;
     const countResult = await pool.query(countQuery, params);
@@ -1516,15 +1678,23 @@ ownerRouter.get('/tickets', async (req, res) => {
       SELECT t.*
       FROM tickets t
       JOIN agents a ON t.agent_id = a.id
-      JOIN supervisors s ON a.supervisor_id = s.id
       ${whereClause}
       ORDER BY t.date DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
     params.push(limit, offset);
     const dataResult = await pool.query(dataQuery, params);
-    const tickets = dataResult.rows.map(t => ({ ...t, bets: typeof t.bets === 'string' ? JSON.parse(t.bets) : t.bets }));
-    res.json({ tickets, hasMore, total });
+
+    const tickets = dataResult.rows.map(t => ({
+      ...t,
+      bets: typeof t.bets === 'string' ? JSON.parse(t.bets) : t.bets
+    }));
+
+    res.json({
+      tickets,
+      hasMore,
+      total
+    });
   } catch (error) {
     console.error('❌ Erreur GET /tickets (owner):', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -1534,15 +1704,16 @@ ownerRouter.get('/tickets', async (req, res) => {
 ownerRouter.get('/tickets/:ticketId', async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.id;
     const result = await pool.query(
       `SELECT t.* FROM tickets t
        JOIN agents a ON t.agent_id = a.id
-       JOIN supervisors s ON a.supervisor_id = s.id
-       WHERE t.id = $1 AND s.owner_id = $2`,
+       WHERE t.id = $1 AND a.owner_id = $2`,
       [ticketId, ownerId]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Ticket non trouvé' });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Ticket non trouvé' });
+    }
     const ticket = result.rows[0];
     ticket.bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
     res.json(ticket);
@@ -1555,15 +1726,17 @@ ownerRouter.get('/tickets/:ticketId', async (req, res) => {
 ownerRouter.delete('/tickets/:ticketId', async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.id;
+    // Vérifier si le ticket existe et appartient au propriétaire
     const check = await pool.query(
       `SELECT t.id FROM tickets t
        JOIN agents a ON t.agent_id = a.id
-       JOIN supervisors s ON a.supervisor_id = s.id
-       WHERE t.id = $1 AND s.owner_id = $2`,
+       WHERE t.id = $1 AND a.owner_id = $2`,
       [ticketId, ownerId]
     );
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Ticket non trouvé ou non autorisé' });
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Ticket non trouvé ou non autorisé' });
+    }
 
     await pool.query('DELETE FROM tickets WHERE id = $1', [ticketId]);
 
