@@ -1,5 +1,5 @@
 const API_CONFIG = {
-    BASE_URL: 'https://lotata-islp.onrender.com/api',
+    BASE_URL: 'https://lotato1.onrender.com/api',
     ENDPOINTS: {
         LOGIN: '/auth/login',
         SAVE_TICKET: '/tickets/save',
