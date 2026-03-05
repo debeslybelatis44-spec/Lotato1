@@ -979,6 +979,10 @@ app.post('/api/owner/settings', authenticate, allowRoles('owner'), upload.single
   }
 });
 
+// ==================== FICHIERS STATIQUES (FRONT-END) ====================
+// Cette ligne doit être placée APRÈS toutes les routes API
+app.use(express.static(path.join(__dirname)));
+
 // ==================== DÉMARRAGE DU SERVEUR ====================
 app.listen(PORT, () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
