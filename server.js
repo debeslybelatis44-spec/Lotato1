@@ -23,6 +23,25 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_securise';
 
+// ==================== Vérification de la base de données au démarrage ====================
+console.log('🔄 Vérification de la base de données...');
+
+async function checkDatabaseConnection() {
+    try {
+        const client = await pool.connect();
+        console.log('✅ Connecté à PostgreSQL');
+        client.release();
+
+        // Test d'une requête simple
+        const result = await pool.query('SELECT NOW() as current_time');
+        console.log(`🕒 Heure du serveur DB : ${result.rows[0].current_time}`);
+        console.log('✅ Base de données prête');
+    } catch (err) {
+        console.error('❌ Erreur de connexion à la base de données :', err.message);
+        process.exit(1); // Arrête le processus si la DB n'est pas accessible
+    }
+}
+
 // ==================== Middleware d'authentification ====================
 const authenticate = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -647,7 +666,12 @@ app.get('/api/supervisor/tickets/recent', authenticate, requireRole('supervisor'
     }
 });
 
-// ==================== Démarrage ====================
-app.listen(port, () => {
-    console.log(`Serveur démarré sur le port ${port} avec fichiers statiques`);
+// ==================== Démarrage du serveur (après vérification DB) ====================
+checkDatabaseConnection().then(() => {
+    app.listen(port, '0.0.0.0', () => {
+        console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${port}`);
+    });
+}).catch(err => {
+    console.error('❌ Impossible de démarrer le serveur:', err);
+    process.exit(1);
 });
