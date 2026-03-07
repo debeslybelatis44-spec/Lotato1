@@ -18,7 +18,7 @@ function isDrawBlocked(drawTime) {
 
 function checkSelectedDrawStatus() {
     const draws = APP_STATE.draws || CONFIG.DRAWS;
-    const selectedDraw = draws.find(d => d.id === APP_STATE.selectedDraw);
+    const selectedDraw = draws.find(d => d.id == APP_STATE.selectedDraw);
     if (!selectedDraw) return false;
     
     // Blocage si tirage désactivé par admin OU dans la fenêtre 3 min
@@ -52,7 +52,7 @@ function renderDraws() {
         const timeBlocked = isDrawBlocked(draw.time);
         const adminBlocked = draw.active === false;
         const blocked = timeBlocked || adminBlocked;
-        const isActive = APP_STATE.selectedDraw === draw.id && !blocked;
+        const isActive = APP_STATE.selectedDraw == draw.id && !blocked;
         
         let blockReason = '';
         if (adminBlocked) blockReason = 'BLOKÉ (admin)';
@@ -74,7 +74,12 @@ function selectDraw(id) {
     if (APP_STATE.multiDrawMode) return;
     
     const draws = APP_STATE.draws || CONFIG.DRAWS;
-    const draw = draws.find(d => d.id === id);
+    // Comparaison faible pour accepter les ID numériques ou textuels
+    const draw = draws.find(d => d.id == id);
+    if (!draw) {
+        console.error("Tirage non trouvé avec l'ID :", id);
+        return;
+    }
     if (!draw.active) {
         alert("Tiraj sa a bloke pa administratè a. Ou pa ka jwe li.");
         return;
@@ -151,7 +156,7 @@ function renderMultiDrawSelector() {
         const timeBlocked = isDrawBlocked(draw.time);
         const adminBlocked = draw.active === false;
         const blocked = timeBlocked || adminBlocked;
-        const isSelected = APP_STATE.selectedDraws.includes(draw.id);
+        const isSelected = APP_STATE.selectedDraws.includes(draw.id.toString());
         return `
             <input type="checkbox" class="multi-draw-checkbox" id="multi-${draw.id}" 
                    value="${draw.id}" ${isSelected && !blocked ? 'checked' : ''}
@@ -169,11 +174,11 @@ function renderMultiDrawSelector() {
 function toggleMultiDrawSelection(drawId) {
     const checkbox = document.getElementById(`multi-${drawId}`);
     if (checkbox.checked) {
-        if (!APP_STATE.selectedDraws.includes(drawId)) {
-            APP_STATE.selectedDraws.push(drawId);
+        if (!APP_STATE.selectedDraws.includes(drawId.toString())) {
+            APP_STATE.selectedDraws.push(drawId.toString());
         }
     } else {
-        APP_STATE.selectedDraws = APP_STATE.selectedDraws.filter(id => id !== drawId);
+        APP_STATE.selectedDraws = APP_STATE.selectedDraws.filter(id => id != drawId);
     }
     
     document.getElementById('selected-draws-count-multi').textContent = APP_STATE.selectedDraws.length;
@@ -189,7 +194,7 @@ function continueToBettingWithMultiDraw() {
     // Vérifier qu'aucun tirage sélectionné n'est bloqué
     const draws = APP_STATE.draws || CONFIG.DRAWS;
     for (const drawId of APP_STATE.selectedDraws) {
-        const draw = draws.find(d => d.id === drawId);
+        const draw = draws.find(d => d.id == drawId);
         if (!draw.active || isDrawBlocked(draw.time)) {
             alert(`Tiraj ${draw.name} bloke, retire li anvan ou kontinye.`);
             return;
@@ -197,7 +202,7 @@ function continueToBettingWithMultiDraw() {
     }
     
     APP_STATE.selectedDraw = APP_STATE.selectedDraws[0];
-    const draw = draws.find(d => d.id === APP_STATE.selectedDraw);
+    const draw = draws.find(d => d.id == APP_STATE.selectedDraw);
     document.getElementById('current-draw-title').textContent = draw.name;
     
     const indicator = document.getElementById('multi-draw-indicator');
