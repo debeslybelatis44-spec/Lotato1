@@ -1,4 +1,5 @@
-// cartManager.js (avec gestion des jeux automatiques et abréviations courtes)
+// ==========================
+// cartManager.js (corrigé - gestion dynamique des gratuits avec seuils modifiés)
 // ==========================
 
 // ---------- Utils ----------
@@ -10,6 +11,67 @@ function isNumberBlocked(number, drawId) {
 
 // ---------- Cart Manager ----------
 var CartManager = {
+
+    // Met à jour le nombre de mariages gratuits pour chaque tirage en fonction du total payant
+    updateFreeMarriages() {
+        // Regrouper les paris par drawId
+        const betsByDraw = {};
+        APP_STATE.currentCart.forEach(bet => {
+            if (!betsByDraw[bet.drawId]) betsByDraw[bet.drawId] = [];
+            betsByDraw[bet.drawId].push(bet);
+        });
+
+        // Pour chaque tirage
+        Object.keys(betsByDraw).forEach(drawId => {
+            const bets = betsByDraw[drawId];
+            // Calculer le total des paris payants (amount > 0)
+            const totalPayant = bets.reduce((sum, b) => sum + (b.amount > 0 ? b.amount : 0), 0);
+            
+            // Déterminer le nombre de gratuits requis selon les nouveaux seuils
+            let requiredFree = 0;
+            if (totalPayant >= 1 && totalPayant <= 200) requiredFree = 1;
+            else if (totalPayant >= 201 && totalPayant <= 500) requiredFree = 2;
+            else if (totalPayant >= 501) requiredFree = 3;
+
+            // Compter les gratuits existants pour ce tirage
+            const existingFree = bets.filter(b => b.free && b.freeType === 'special_marriage').length;
+
+            // Trouver un modèle de pari normal (non gratuit) pour ce tirage
+            const normalBet = bets.find(b => !b.free);
+            if (!normalBet) {
+                // Si pas de pari normal, on ne peut pas ajouter de gratuit (mais normalement il y en a)
+                return;
+            }
+
+            if (existingFree < requiredFree) {
+                // Ajouter des gratuits
+                for (let i = 0; i < requiredFree - existingFree; i++) {
+                    const newFree = {
+                        ...normalBet,
+                        id: Date.now() + Math.random() + i,
+                        amount: 0,
+                        free: true,
+                        freeType: 'special_marriage'
+                    };
+                    APP_STATE.currentCart.push(newFree);
+                }
+            } else if (existingFree > requiredFree) {
+                // Supprimer des gratuits en trop (on supprime les derniers ajoutés)
+                const freeBets = bets.filter(b => b.free && b.freeType === 'special_marriage');
+                const toRemove = existingFree - requiredFree;
+                for (let i = 0; i < toRemove; i++) {
+                    const lastFree = freeBets[freeBets.length - 1 - i];
+                    if (lastFree) {
+                        const index = APP_STATE.currentCart.findIndex(b => b.id === lastFree.id);
+                        if (index !== -1) APP_STATE.currentCart.splice(index, 1);
+                    }
+                }
+            }
+        });
+
+        // Re-rendre le panier
+        this.renderCart();
+    },
 
     addBet() {
         if (APP_STATE.isDrawBlocked) {
@@ -33,6 +95,7 @@ var CartManager = {
             let autoBets = [];
             switch (game) {
                 case 'auto_marriage':
+                    // On ne prend que les paris normaux, sans gratuits (ils seront ajoutés via updateFreeMarriages)
                     autoBets = GameEngine.generateAutoMarriageBets(amt);
                     break;
                 case 'bo':
@@ -59,7 +122,7 @@ var CartManager = {
                 ? APP_STATE.selectedDraws
                 : [APP_STATE.selectedDraw];
 
-            // Pour chaque tirage, ajouter une copie de chaque pari
+            // Pour chaque tirage, ajouter une copie de chaque pari normal
             draws.forEach(drawId => {
                 const drawName = CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId;
                 autoBets.forEach(bet => {
@@ -72,8 +135,57 @@ var CartManager = {
                 });
             });
 
-            this.renderCart();
+            // Ajuster les gratuits en fonction du nouveau total
+            this.updateFreeMarriages();
+
             amtInput.value = '';
+            numInput.focus();
+            return;
+        }
+
+        // --- Gestion des jeux NX (n0 à n9) ---
+        if (/^n[0-9]$/.test(game)) {
+            const lastDigit = parseInt(game.substring(1), 10);
+            const numbers = [];
+            for (let tens = 0; tens <= 9; tens++) {
+                numbers.push(tens.toString() + lastDigit.toString());
+            }
+
+            const draws = APP_STATE.multiDrawMode
+                ? APP_STATE.selectedDraws
+                : [APP_STATE.selectedDraw];
+
+            // Vérification des numéros bloqués
+            for (const drawId of draws) {
+                for (const num of numbers) {
+                    if (isNumberBlocked(num, drawId)) {
+                        alert(`Nimewo ${num} bloke pou tiraj sa a`);
+                        return;
+                    }
+                }
+            }
+
+            // Ajout des paris
+            draws.forEach(drawId => {
+                const drawName = CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId;
+                numbers.forEach(num => {
+                    APP_STATE.currentCart.push({
+                        id: Date.now() + Math.random(),
+                        game: game,
+                        number: num,
+                        cleanNumber: num,
+                        amount: amt,
+                        drawId: drawId,
+                        drawName: drawName,
+                        timestamp: new Date().toISOString()
+                    });
+                });
+            });
+
+            this.renderCart();
+            numInput.value = '';
+            amtInput.value = '';
+            numInput.focus();
             return;
         }
 
@@ -99,7 +211,6 @@ var CartManager = {
         }
 
         draws.forEach(drawId => {
-            // Pour les jeux Lotto 4/5 avec options multiples
             if (game === 'lotto4' || game === 'lotto5') {
                 const optionBets = GameEngine.generateLottoBetsWithOptions(game, num, amt);
                 optionBets.forEach(bet => {
@@ -126,11 +237,13 @@ var CartManager = {
         this.renderCart();
         numInput.value = '';
         amtInput.value = '';
+        numInput.focus();
     },
 
     removeBet(id) {
         APP_STATE.currentCart = APP_STATE.currentCart.filter(b => b.id != id);
-        this.renderCart();
+        // Après suppression, on ajuste les gratuits
+        this.updateFreeMarriages();
     },
 
     renderCart() {
@@ -153,7 +266,7 @@ var CartManager = {
             count++;
             const gameAbbr = getGameAbbreviation(bet.game, bet);
             let displayNumber = bet.number;
-            if (bet.game === 'auto_marriage' && bet.number.includes('&')) {
+            if (bet.game === 'auto_marriage' && bet.number && bet.number.includes('&')) {
                 displayNumber = bet.number.replace('&', '*');
             }
             return `
@@ -172,6 +285,7 @@ var CartManager = {
 
 // ---------- Fonction d'abréviation des jeux (version courte) ----------
 function getGameAbbreviation(gameName, bet) {
+    // Cas spécial : mariage gratuit (freeType 'special_marriage')
     if (bet && bet.free && bet.freeType === 'special_marriage') {
         return 'marg';
     }
@@ -191,7 +305,17 @@ function getGameAbbreviation(gameName, bet) {
         'loto4': 'lo4',
         'loto5': 'lo5',
         'bo': 'bo',
-        'grap': 'grap'
+        'grap': 'grap',
+        'n0': 'n0',
+        'n1': 'n1',
+        'n2': 'n2',
+        'n3': 'n3',
+        'n4': 'n4',
+        'n5': 'n5',
+        'n6': 'n6',
+        'n7': 'n7',
+        'n8': 'n8',
+        'n9': 'n9'
     };
     const key = (gameName || '').trim().toLowerCase();
     return map[key] || gameName;
@@ -426,3 +550,4 @@ function generateTicketHTML(ticket) {
 // ---------- Global ----------
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
+window.printThermalTicket = printThermalTicket;
