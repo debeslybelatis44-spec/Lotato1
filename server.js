@@ -111,6 +111,26 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// ==================== Route publique pour les paramètres de la loterie (accessible à tous les utilisateurs connectés) ====================
+app.get('/api/settings', authenticate, async (req, res) => {
+    const ownerId = req.user.ownerId; // Pour les agents et superviseurs, ownerId est défini ; pour le propriétaire, c'est son propre id
+    try {
+        const result = await pool.query(
+            'SELECT name, slogan, logo_url as "logoUrl" FROM lottery_settings WHERE owner_id = $1',
+            [ownerId]
+        );
+        if (result.rows.length === 0) {
+            // Valeurs par défaut si aucun paramètre n'est défini
+            res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '' });
+        } else {
+            res.json(result.rows[0]);
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 // ==================== Routes communes ====================
 app.get('/api/draws', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
@@ -570,7 +590,11 @@ app.get('/api/owner/settings', authenticate, requireRole('owner'), async (req, r
         if (result.rows.length === 0) {
             res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {} });
         } else {
-            res.json(result.rows[0]);
+            // On renomme logo_url en logoUrl pour le frontend
+            const row = result.rows[0];
+            row.logoUrl = row.logo_url;
+            delete row.logo_url;
+            res.json(row);
         }
     } catch (err) {
         console.error(err);
