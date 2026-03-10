@@ -147,6 +147,11 @@
                     <label>Zone / Localisation</label>
                     <input type="text" id="create-zone" placeholder="Port-au-Prince">
                 </div>
+                <!-- Nouveau champ commission -->
+                <div class="form-group">
+                    <label>Commission (%)</label>
+                    <input type="number" id="create-commission" value="0" min="0" step="0.01" placeholder="10">
+                </div>
                 <div style="display:flex; align-items:end;">
                     <button class="btn-primary" onclick="createUser()"><i class="fas fa-save"></i> Créer</button>
                 </div>
@@ -623,6 +628,7 @@
                         agentHtml += `<div class="item-row">
                             <span><strong>${a.name}</strong> (${a.email})</span>
                             <span>Superviseur: ${a.supervisor_name || 'libre'}</span>
+                            <span>Commission: ${a.commission_percentage || 0}%</span>
                             <span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span>
                             <button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button>
                         </div>`;
@@ -659,7 +665,8 @@
                     password: document.getElementById('create-password').value,
                     role: document.getElementById('create-role').value,
                     supervisorId: document.getElementById('create-supervisor').value || null,
-                    zone: document.getElementById('create-zone').value
+                    zone: document.getElementById('create-zone').value,
+                    commissionPercentage: parseFloat(document.getElementById('create-commission').value) || 0
                 };
                 if (!data.name || !data.username || !data.password) {
                     showMessage('user-create-message', 'Veuillez remplir tous les champs obligatoires', false);
@@ -684,6 +691,7 @@
                                 <p><strong>CIN :</strong> ${user.cin || 'Non renseigné'}</p>
                                 <p><strong>Zone :</strong> ${user.zone || 'Non renseignée'}</p>
                                 <p><strong>Superviseur :</strong> ${user.supervisor_name || 'Aucun'}</p>
+                                <p><strong>Commission :</strong> ${user.commission_percentage || 0}%</p>
                             `;
                             document.getElementById('created-user-details').innerHTML = details;
                             document.getElementById('user-created-info').style.display = 'block';
@@ -695,6 +703,7 @@
                         document.getElementById('create-username').value = '';
                         document.getElementById('create-password').value = 'default123';
                         document.getElementById('create-zone').value = '';
+                        document.getElementById('create-commission').value = '0';
                     } else {
                         showMessage('user-create-message', '❌ ' + (result.error || 'Erreur'), false);
                     }

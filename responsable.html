@@ -677,6 +677,7 @@
                 const unpaidWins = agent.unpaid_wins || 0;
                 const totalBets = agent.total_bets || 0;
                 const totalWins = agent.total_wins || 0;
+                const commission = agent.commission_percentage || 0;
                 
                 let statusText = '';
                 let statusClass = '';
@@ -709,6 +710,9 @@
                                 ${balance.toLocaleString()} G
                                 ${statusText ? `<span class="status-badge ${statusClass}">${statusText}</span>` : ''}
                             </span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span>Commission:</span><span>${commission}%</span>
                         </div>
                         <div style="margin-top:10px; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;">
                             <span>💰 Gains non payés: <strong>${unpaidWins.toLocaleString()} G</strong></span>
@@ -799,6 +803,7 @@
                 <div class="detail-stat"><span>📉 Mise moyenne :</span> <strong>${avgBet} G</strong></div>
                 <div class="detail-stat"><span>📈 Taux de gain :</span> <strong>${winRate}%</strong></div>
                 <div class="detail-stat"><span>💸 Gains non payés :</span> <strong class="loss">${(agent.unpaid_wins || 0).toLocaleString()} G</strong></div>
+                <div class="detail-stat"><span>📊 Commission :</span> <strong>${agent.commission_percentage || 0}%</strong></div>
             `;
             document.getElementById('modal-agent-stats').innerHTML = statsHtml;
 
