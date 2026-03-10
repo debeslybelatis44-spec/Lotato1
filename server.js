@@ -1,4 +1,4 @@
-// server.js (version longue corrigée)
+// server.js
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -70,7 +70,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { username, password, role } = req.body;
     try {
         const result = await pool.query(
-            'SELECT id, name, username, password, role, owner_id, commission_percentage FROM users WHERE username = $1 AND role = $2',
+            'SELECT id, name, username, password, role, owner_id FROM users WHERE username = $1 AND role = $2',
             [username, role]
         );
         if (result.rows.length === 0) {
@@ -86,8 +86,7 @@ app.post('/api/auth/login', async (req, res) => {
             id: user.id,
             username: user.username,
             role: user.role,
-            name: user.name,
-            commissionPercentage: user.commission_percentage || 0
+            name: user.name
         };
         if (user.role === 'agent' || user.role === 'supervisor') {
             payload.ownerId = user.owner_id;
@@ -104,8 +103,7 @@ app.post('/api/auth/login', async (req, res) => {
             role: user.role,
             ownerId: payload.ownerId,
             agentId: user.role === 'agent' ? user.id : undefined,
-            supervisorId: user.role === 'supervisor' ? user.id : undefined,
-            commissionPercentage: user.commission_percentage
+            supervisorId: user.role === 'supervisor' ? user.id : undefined
         });
     } catch (err) {
         console.error(err);
@@ -124,25 +122,6 @@ app.get('/api/settings', authenticate, async (req, res) => {
         if (result.rows.length === 0) {
             // Valeurs par défaut si aucun paramètre n'est défini
             res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '' });
-        } else {
-            res.json(result.rows[0]);
-        }
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// ==================== Nouvelle route : configuration complète de la loterie ====================
-app.get('/api/lottery-config', authenticate, async (req, res) => {
-    const ownerId = req.user.ownerId;
-    try {
-        const result = await pool.query(
-            'SELECT name, slogan, logo_url as "logoUrl", multipliers, limits FROM lottery_settings WHERE owner_id = $1',
-            [ownerId]
-        );
-        if (result.rows.length === 0) {
-            res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {} });
         } else {
             res.json(result.rows[0]);
         }
@@ -190,21 +169,6 @@ app.get('/api/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
             [ownerId, drawId]
         );
         res.json({ blockedNumbers: result.rows.map(r => r.number) });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// ==================== Nouvelle route : limites par numéro ====================
-app.get('/api/number-limits', authenticate, async (req, res) => {
-    const ownerId = req.user.ownerId;
-    try {
-        const result = await pool.query(
-            'SELECT draw_id, number, limit_amount FROM number_limits WHERE owner_id = $1',
-            [ownerId]
-        );
-        res.json(result.rows);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Erreur serveur' });
@@ -292,8 +256,7 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
     const ownerId = req.user.id;
     try {
         const result = await pool.query(
-            `SELECT u.id, u.name, u.username, u.blocked, u.zone, u.cin, u.commission_percentage,
-                    s.name as supervisor_name
+            `SELECT u.id, u.name, u.username, u.blocked, u.zone, u.cin, s.name as supervisor_name
              FROM users u
              LEFT JOIN users s ON u.supervisor_id = s.id
              WHERE u.owner_id = $1 AND u.role = $2`,
@@ -308,16 +271,16 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
 
 app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
-    const { name, cin, username, password, role, supervisorId, zone, commissionPercentage } = req.body;
+    const { name, cin, username, password, role, supervisorId, zone } = req.body;
     if (!name || !username || !password || !role) {
         return res.status(400).json({ error: 'Champs obligatoires manquants' });
     }
     try {
         const hashed = await bcrypt.hash(password, 10);
         const result = await pool.query(
-            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, commission_percentage, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
-            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
+            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, name, username, role, cin, zone`,
+            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null]
         );
         res.json({ success: true, user: result.rows[0] });
     } catch (err) {
@@ -689,7 +652,7 @@ app.get('/api/supervisor/agents', authenticate, requireRole('supervisor'), async
     const ownerId = req.user.ownerId;
     try {
         const result = await pool.query(
-            `SELECT u.id, u.name, u.username, u.blocked, u.zone, u.commission_percentage,
+            `SELECT u.id, u.name, u.username, u.blocked, u.zone,
                     COALESCE(SUM(t.total_amount), 0) as total_bets,
                     COALESCE(SUM(t.win_amount), 0) as total_wins,
                     COUNT(t.id) as total_tickets,
