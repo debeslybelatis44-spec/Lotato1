@@ -15,6 +15,7 @@ async function initApp() {
     await loadLotteryConfig();
     await loadDrawsFromServer();
     await loadBlockedNumbers();
+    await loadNumberLimits(); // nouvelle fonction
     await APIService.getTickets();
     await APIService.getWinningTickets();
     await APIService.getWinningResults();
@@ -80,6 +81,48 @@ async function loadBlockedNumbers() {
         console.error('❌ Erreur chargement numéros bloqués:', error);
         APP_STATE.globalBlockedNumbers = [];
         APP_STATE.drawBlockedNumbers = {};
+    }
+}
+
+// Nouvelle fonction pour charger les limites de mise
+async function loadNumberLimits() {
+    try {
+        const limits = await APIService.getNumberLimits();
+        // Transformer en objet pour accès rapide : clé "drawId_number" -> montant
+        APP_STATE.numberLimits = {};
+        limits.forEach(limit => {
+            const key = `${limit.draw_id}_${limit.number}`;
+            APP_STATE.numberLimits[key] = parseFloat(limit.limit_amount);
+        });
+        console.log('✅ Limites chargées:', APP_STATE.numberLimits);
+    } catch (error) {
+        console.error('❌ Erreur chargement limites:', error);
+        APP_STATE.numberLimits = {};
+    }
+}
+
+async function loadLotteryConfig() {
+    try {
+        const config = await APIService.getLotteryConfig();
+        if (config) {
+            APP_STATE.lotteryConfig = config;
+
+            CONFIG.LOTTERY_NAME = config.name || 'LOTATO';
+            CONFIG.LOTTERY_LOGO = config.logo || config.logoUrl || '';
+            CONFIG.slogan = config.slogan || '';
+            CONFIG.LOTTERY_ADDRESS = config.address || '';
+            CONFIG.LOTTERY_PHONE = config.phone || '';
+
+            document.getElementById('lottery-name').innerHTML = `${config.name} <span class="pro-badge">version 6</span>`;
+            const sloganEl = document.getElementById('lottery-slogan');
+            if (sloganEl) sloganEl.textContent = config.slogan || '';
+
+            console.log('✅ Configuration chargée :', config);
+        } else {
+            console.warn('⚠️ Aucune configuration reçue, utilisation des valeurs par défaut.');
+        }
+    } catch (error) {
+        console.error('❌ Erreur chargement configuration:', error);
     }
 }
 

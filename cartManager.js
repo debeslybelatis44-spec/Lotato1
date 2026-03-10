@@ -1,5 +1,5 @@
 // ==========================
-// cartManager.js (corrigé - gestion dynamique des gratuits avec seuils modifiés)
+// cartManager.js (corrigé - gestion dynamique des gratuits + vérification limites)
 // ==========================
 
 // ---------- Utils ----------
@@ -9,67 +9,79 @@ function isNumberBlocked(number, drawId) {
     return drawBlocked.includes(number);
 }
 
+// Vérifie si le montant dépasse la limite pour ce numéro et ce tirage
+function checkNumberLimit(number, drawId, amountToAdd) {
+    const key = `${drawId}_${number}`;
+    const limit = APP_STATE.numberLimits[key];
+    if (!limit) return true; // pas de limite
+
+    // Calculer le total déjà misé pour ce numéro dans le panier actuel (même tirage)
+    const currentTotal = APP_STATE.currentCart
+        .filter(bet => bet.drawId === drawId && bet.cleanNumber === number)
+        .reduce((sum, bet) => sum + bet.amount, 0);
+
+    const newTotal = currentTotal + amountToAdd;
+    if (newTotal > limit) {
+        alert(`Limite atteinte pour le numéro ${number} (${drawId}). Maximum: ${limit} G, déjà misé: ${currentTotal} G, tentative: ${amountToAdd} G.`);
+        return false;
+    }
+    return true;
+}
+
+// ---------- Génération aléatoire d'un mariage ----------
+function generateRandomMarriageBet(amount) {
+    const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+    const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+    return {
+        game: 'auto_marriage',
+        number: `${num1}&${num2}`,
+        cleanNumber: `${num1}&${num2}`,
+        amount: amount
+    };
+}
+
 // ---------- Cart Manager ----------
 var CartManager = {
 
-    // Met à jour le nombre de mariages gratuits pour chaque tirage en fonction du total payant
+    // Met à jour les mariages gratuits
     updateFreeMarriages() {
-        // Regrouper les paris par drawId
-        const betsByDraw = {};
+        // 1. Supprimer tous les gratuits existants
+        APP_STATE.currentCart = APP_STATE.currentCart.filter(b => !(b.free && b.freeType === 'special_marriage'));
+
+        // 2. Regrouper les paris payants par tirage
+        const payantsByDraw = {};
         APP_STATE.currentCart.forEach(bet => {
-            if (!betsByDraw[bet.drawId]) betsByDraw[bet.drawId] = [];
-            betsByDraw[bet.drawId].push(bet);
+            if (bet.amount > 0) {
+                if (!payantsByDraw[bet.drawId]) payantsByDraw[bet.drawId] = [];
+                payantsByDraw[bet.drawId].push(bet);
+            }
         });
 
-        // Pour chaque tirage
-        Object.keys(betsByDraw).forEach(drawId => {
-            const bets = betsByDraw[drawId];
-            // Calculer le total des paris payants (amount > 0)
-            const totalPayant = bets.reduce((sum, b) => sum + (b.amount > 0 ? b.amount : 0), 0);
-            
-            // Déterminer le nombre de gratuits requis selon les nouveaux seuils
+        // 3. Pour chaque tirage, calculer le nombre de gratuits requis
+        Object.keys(payantsByDraw).forEach(drawId => {
+            const payants = payantsByDraw[drawId];
+            const totalPayant = payants.reduce((sum, b) => sum + b.amount, 0);
+
             let requiredFree = 0;
-            if (totalPayant >= 1 && totalPayant <= 200) requiredFree = 1;
-            else if (totalPayant >= 201 && totalPayant <= 500) requiredFree = 2;
-            else if (totalPayant >= 501) requiredFree = 3;
+            if (totalPayant >= 1 && totalPayant <= 50) requiredFree = 1;
+            else if (totalPayant >= 51 && totalPayant <= 150) requiredFree = 2;
+            else if (totalPayant >= 151) requiredFree = 3;
 
-            // Compter les gratuits existants pour ce tirage
-            const existingFree = bets.filter(b => b.free && b.freeType === 'special_marriage').length;
-
-            // Trouver un modèle de pari normal (non gratuit) pour ce tirage
-            const normalBet = bets.find(b => !b.free);
-            if (!normalBet) {
-                // Si pas de pari normal, on ne peut pas ajouter de gratuit (mais normalement il y en a)
-                return;
-            }
-
-            if (existingFree < requiredFree) {
-                // Ajouter des gratuits
-                for (let i = 0; i < requiredFree - existingFree; i++) {
-                    const newFree = {
-                        ...normalBet,
-                        id: Date.now() + Math.random() + i,
-                        amount: 0,
-                        free: true,
-                        freeType: 'special_marriage'
-                    };
-                    APP_STATE.currentCart.push(newFree);
-                }
-            } else if (existingFree > requiredFree) {
-                // Supprimer des gratuits en trop (on supprime les derniers ajoutés)
-                const freeBets = bets.filter(b => b.free && b.freeType === 'special_marriage');
-                const toRemove = existingFree - requiredFree;
-                for (let i = 0; i < toRemove; i++) {
-                    const lastFree = freeBets[freeBets.length - 1 - i];
-                    if (lastFree) {
-                        const index = APP_STATE.currentCart.findIndex(b => b.id === lastFree.id);
-                        if (index !== -1) APP_STATE.currentCart.splice(index, 1);
-                    }
-                }
+            // 4. Ajouter les gratuits
+            for (let i = 0; i < requiredFree; i++) {
+                const freeBet = generateRandomMarriageBet(0);
+                const newFree = {
+                    ...freeBet,
+                    id: Date.now() + Math.random() + i,
+                    drawId: drawId,
+                    drawName: payants[0]?.drawName || 'Tiraj',
+                    free: true,
+                    freeType: 'special_marriage'
+                };
+                APP_STATE.currentCart.push(newFree);
             }
         });
 
-        // Re-rendre le panier
         this.renderCart();
     },
 
@@ -95,7 +107,6 @@ var CartManager = {
             let autoBets = [];
             switch (game) {
                 case 'auto_marriage':
-                    // On ne prend que les paris normaux, sans gratuits (ils seront ajoutés via updateFreeMarriages)
                     autoBets = GameEngine.generateAutoMarriageBets(amt);
                     break;
                 case 'bo':
@@ -117,27 +128,33 @@ var CartManager = {
                 return;
             }
 
-            // Récupérer les tirages sélectionnés
             const draws = APP_STATE.multiDrawMode
                 ? APP_STATE.selectedDraws
                 : [APP_STATE.selectedDraw];
 
-            // Pour chaque tirage, ajouter une copie de chaque pari normal
+            // Vérification des limites pour chaque pari auto-généré
+            for (const drawId of draws) {
+                for (const bet of autoBets) {
+                    const number = bet.cleanNumber || bet.number;
+                    if (!checkNumberLimit(number, drawId, amt)) {
+                        return;
+                    }
+                }
+            }
+
             draws.forEach(drawId => {
                 const drawName = CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId;
                 autoBets.forEach(bet => {
                     APP_STATE.currentCart.push({
                         ...bet,
-                        id: Date.now() + Math.random(), // nouvel ID unique
+                        id: Date.now() + Math.random(),
                         drawId: drawId,
                         drawName: drawName
                     });
                 });
             });
 
-            // Ajuster les gratuits en fonction du nouveau total
             this.updateFreeMarriages();
-
             amtInput.value = '';
             numInput.focus();
             return;
@@ -155,17 +172,19 @@ var CartManager = {
                 ? APP_STATE.selectedDraws
                 : [APP_STATE.selectedDraw];
 
-            // Vérification des numéros bloqués
+            // Vérification blocage et limites pour chaque numéro
             for (const drawId of draws) {
                 for (const num of numbers) {
                     if (isNumberBlocked(num, drawId)) {
                         alert(`Nimewo ${num} bloke pou tiraj sa a`);
                         return;
                     }
+                    if (!checkNumberLimit(num, drawId, amt)) {
+                        return;
+                    }
                 }
             }
 
-            // Ajout des paris
             draws.forEach(drawId => {
                 const drawName = CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId;
                 numbers.forEach(num => {
@@ -182,7 +201,7 @@ var CartManager = {
                 });
             });
 
-            this.renderCart();
+            this.updateFreeMarriages();
             numInput.value = '';
             amtInput.value = '';
             numInput.focus();
@@ -203,9 +222,13 @@ var CartManager = {
             ? APP_STATE.selectedDraws
             : [APP_STATE.selectedDraw];
 
+        // Vérification blocage et limites pour chaque tirage
         for (const drawId of draws) {
             if (isNumberBlocked(num, drawId)) {
                 alert(`Nimewo ${num} bloke`);
+                return;
+            }
+            if (!checkNumberLimit(num, drawId, amt)) {
                 return;
             }
         }
@@ -234,7 +257,7 @@ var CartManager = {
             }
         });
 
-        this.renderCart();
+        this.updateFreeMarriages();
         numInput.value = '';
         amtInput.value = '';
         numInput.focus();
@@ -242,7 +265,6 @@ var CartManager = {
 
     removeBet(id) {
         APP_STATE.currentCart = APP_STATE.currentCart.filter(b => b.id != id);
-        // Après suppression, on ajuste les gratuits
         this.updateFreeMarriages();
     },
 
@@ -283,9 +305,8 @@ var CartManager = {
     }
 };
 
-// ---------- Fonction d'abréviation des jeux (version courte) ----------
+// ---------- Fonction d'abréviation des jeux ----------
 function getGameAbbreviation(gameName, bet) {
-    // Cas spécial : mariage gratuit (freeType 'special_marriage')
     if (bet && bet.free && bet.freeType === 'special_marriage') {
         return 'marg';
     }

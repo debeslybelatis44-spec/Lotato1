@@ -14,7 +14,8 @@ const API_CONFIG = {
         DELETE_TICKET: '/tickets',
         GET_DRAW_REPORT: '/reports/draw',
         GET_LOTTERY_CONFIG: '/lottery-config',
-        CHECK_WINNING_TICKETS: '/tickets/check-winners'
+        CHECK_WINNING_TICKETS: '/tickets/check-winners',
+        GET_LIMITS: '/number-limits' // nouvelle route
     }
 };
 
@@ -70,5 +71,6 @@ let APP_STATE = {
     ownerId: localStorage.getItem('owner_id') || null,
     draws: null,
     globalBlockedNumbers: [],
-    drawBlockedNumbers: {}
+    drawBlockedNumbers: {},
+    numberLimits: {} // nouvelle propriété { drawId_number: limitAmount }
 };

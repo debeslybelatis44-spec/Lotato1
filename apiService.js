@@ -168,5 +168,23 @@ const APIService = {
             console.error('Erreur vérification tickets gagnants:', error);
             throw error;
         }
+    },
+
+    // Nouvelle méthode pour récupérer les limites de mise
+    async getNumberLimits() {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_LIMITS}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (!response.ok) throw new Error('Erreur réseau');
+            const data = await response.json();
+            return data; // tableau d'objets { draw_id, number, limit_amount }
+        } catch (error) {
+            console.error('Erreur récupération limites:', error);
+            return [];
+        }
     }
 };

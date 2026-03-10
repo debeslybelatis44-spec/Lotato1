@@ -13,7 +13,7 @@ const port = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname))); // sert index.html, agent1.html, etc.
+app.use(express.static(path.join(__dirname)));
 
 // Connexion PostgreSQL (Neon)
 const pool = new Pool({
@@ -23,22 +23,19 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_securise';
 
-// ==================== Vérification de la base de données au démarrage ====================
+// ==================== Vérification DB ====================
 console.log('🔄 Vérification de la base de données...');
-
 async function checkDatabaseConnection() {
     try {
         const client = await pool.connect();
         console.log('✅ Connecté à PostgreSQL');
         client.release();
-
-        // Test d'une requête simple
         const result = await pool.query('SELECT NOW() as current_time');
         console.log(`🕒 Heure du serveur DB : ${result.rows[0].current_time}`);
         console.log('✅ Base de données prête');
     } catch (err) {
-        console.error('❌ Erreur de connexion à la base de données :', err.message);
-        process.exit(1); // Arrête le processus si la DB n'est pas accessible
+        console.error('❌ Erreur de connexion DB :', err.message);
+        process.exit(1);
     }
 }
 
@@ -70,7 +67,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { username, password, role } = req.body;
     try {
         const result = await pool.query(
-            'SELECT id, name, username, password, role, owner_id FROM users WHERE username = $1 AND role = $2',
+            'SELECT id, name, username, password, role, owner_id, commission_percentage FROM users WHERE username = $1 AND role = $2',
             [username, role]
         );
         if (result.rows.length === 0) {
@@ -86,7 +83,8 @@ app.post('/api/auth/login', async (req, res) => {
             id: user.id,
             username: user.username,
             role: user.role,
-            name: user.name
+            name: user.name,
+            commissionPercentage: user.commission_percentage || 0
         };
         if (user.role === 'agent' || user.role === 'supervisor') {
             payload.ownerId = user.owner_id;
@@ -103,7 +101,8 @@ app.post('/api/auth/login', async (req, res) => {
             role: user.role,
             ownerId: payload.ownerId,
             agentId: user.role === 'agent' ? user.id : undefined,
-            supervisorId: user.role === 'supervisor' ? user.id : undefined
+            supervisorId: user.role === 'supervisor' ? user.id : undefined,
+            commissionPercentage: user.commission_percentage
         });
     } catch (err) {
         console.error(err);
@@ -111,16 +110,15 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// ==================== Route publique pour les paramètres de la loterie (accessible à tous les utilisateurs connectés) ====================
+// ==================== Routes communes ====================
 app.get('/api/settings', authenticate, async (req, res) => {
-    const ownerId = req.user.ownerId; // Pour les agents et superviseurs, ownerId est défini ; pour le propriétaire, c'est son propre id
+    const ownerId = req.user.ownerId;
     try {
         const result = await pool.query(
             'SELECT name, slogan, logo_url as "logoUrl" FROM lottery_settings WHERE owner_id = $1',
             [ownerId]
         );
         if (result.rows.length === 0) {
-            // Valeurs par défaut si aucun paramètre n'est défini
             res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '' });
         } else {
             res.json(result.rows[0]);
@@ -131,7 +129,24 @@ app.get('/api/settings', authenticate, async (req, res) => {
     }
 });
 
-// ==================== Routes communes ====================
+app.get('/api/lottery-config', authenticate, async (req, res) => {
+    const ownerId = req.user.ownerId;
+    try {
+        const result = await pool.query(
+            'SELECT name, slogan, logo_url as "logoUrl", multipliers, limits FROM lottery_settings WHERE owner_id = $1',
+            [ownerId]
+        );
+        if (result.rows.length === 0) {
+            res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {} });
+        } else {
+            res.json(result.rows[0]);
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 app.get('/api/draws', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -169,6 +184,21 @@ app.get('/api/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
             [ownerId, drawId]
         );
         res.json({ blockedNumbers: result.rows.map(r => r.number) });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Récupérer toutes les limites par numéro pour un propriétaire
+app.get('/api/number-limits', authenticate, async (req, res) => {
+    const ownerId = req.user.ownerId;
+    try {
+        const result = await pool.query(
+            'SELECT draw_id, number, limit_amount FROM number_limits WHERE owner_id = $1',
+            [ownerId]
+        );
+        res.json(result.rows);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Erreur serveur' });
@@ -256,7 +286,8 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
     const ownerId = req.user.id;
     try {
         const result = await pool.query(
-            `SELECT u.id, u.name, u.username, u.blocked, u.zone, u.cin, s.name as supervisor_name
+            `SELECT u.id, u.name, u.username, u.blocked, u.zone, u.cin, u.commission_percentage,
+                    s.name as supervisor_name
              FROM users u
              LEFT JOIN users s ON u.supervisor_id = s.id
              WHERE u.owner_id = $1 AND u.role = $2`,
@@ -271,16 +302,16 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
 
 app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
-    const { name, cin, username, password, role, supervisorId, zone } = req.body;
+    const { name, cin, username, password, role, supervisorId, zone, commissionPercentage } = req.body;
     if (!name || !username || !password || !role) {
         return res.status(400).json({ error: 'Champs obligatoires manquants' });
     }
     try {
         const hashed = await bcrypt.hash(password, 10);
         const result = await pool.query(
-            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, name, username, role, cin, zone`,
-            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null]
+            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, commission_percentage, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
+            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
         );
         res.json({ success: true, user: result.rows[0] });
     } catch (err) {
@@ -524,11 +555,11 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     }
 });
 
-// Rapports (simplifié)
+// Rapports (simplifié) – à compléter selon besoins
 app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     const { period, agentId, drawId, fromDate, toDate } = req.query;
-    // Implémentation à compléter selon vos besoins
+    // Implémentation à compléter
     res.json({ summary: { total_tickets: 0, total_bets: 0, total_wins: 0, net_result: 0 }, detail: [] });
 });
 
@@ -590,7 +621,6 @@ app.get('/api/owner/settings', authenticate, requireRole('owner'), async (req, r
         if (result.rows.length === 0) {
             res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {} });
         } else {
-            // On renomme logo_url en logoUrl pour le frontend
             const row = result.rows[0];
             row.logoUrl = row.logo_url;
             delete row.logo_url;
@@ -652,7 +682,7 @@ app.get('/api/supervisor/agents', authenticate, requireRole('supervisor'), async
     const ownerId = req.user.ownerId;
     try {
         const result = await pool.query(
-            `SELECT u.id, u.name, u.username, u.blocked, u.zone,
+            `SELECT u.id, u.name, u.username, u.blocked, u.zone, u.commission_percentage,
                     COALESCE(SUM(t.total_amount), 0) as total_bets,
                     COALESCE(SUM(t.win_amount), 0) as total_wins,
                     COUNT(t.id) as total_tickets,
@@ -690,7 +720,7 @@ app.get('/api/supervisor/tickets/recent', authenticate, requireRole('supervisor'
     }
 });
 
-// ==================== Démarrage du serveur (après vérification DB) ====================
+// ==================== Démarrage ====================
 checkDatabaseConnection().then(() => {
     app.listen(port, '0.0.0.0', () => {
         console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${port}`);
