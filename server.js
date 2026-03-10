@@ -1,4 +1,4 @@
-// server.js
+// server.js (version longue corrigée)
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -13,7 +13,7 @@ const port = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname))); // sert index.html, agent1.html, etc.
 
 // Connexion PostgreSQL (Neon)
 const pool = new Pool({
@@ -23,19 +23,22 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_securise';
 
-// ==================== Vérification DB ====================
+// ==================== Vérification de la base de données au démarrage ====================
 console.log('🔄 Vérification de la base de données...');
+
 async function checkDatabaseConnection() {
     try {
         const client = await pool.connect();
         console.log('✅ Connecté à PostgreSQL');
         client.release();
+
+        // Test d'une requête simple
         const result = await pool.query('SELECT NOW() as current_time');
         console.log(`🕒 Heure du serveur DB : ${result.rows[0].current_time}`);
         console.log('✅ Base de données prête');
     } catch (err) {
-        console.error('❌ Erreur de connexion DB :', err.message);
-        process.exit(1);
+        console.error('❌ Erreur de connexion à la base de données :', err.message);
+        process.exit(1); // Arrête le processus si la DB n'est pas accessible
     }
 }
 
@@ -110,15 +113,16 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// ==================== Routes communes ====================
+// ==================== Route publique pour les paramètres de la loterie (accessible à tous les utilisateurs connectés) ====================
 app.get('/api/settings', authenticate, async (req, res) => {
-    const ownerId = req.user.ownerId;
+    const ownerId = req.user.ownerId; // Pour les agents et superviseurs, ownerId est défini ; pour le propriétaire, c'est son propre id
     try {
         const result = await pool.query(
             'SELECT name, slogan, logo_url as "logoUrl" FROM lottery_settings WHERE owner_id = $1',
             [ownerId]
         );
         if (result.rows.length === 0) {
+            // Valeurs par défaut si aucun paramètre n'est défini
             res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '' });
         } else {
             res.json(result.rows[0]);
@@ -129,6 +133,7 @@ app.get('/api/settings', authenticate, async (req, res) => {
     }
 });
 
+// ==================== Nouvelle route : configuration complète de la loterie ====================
 app.get('/api/lottery-config', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -147,6 +152,7 @@ app.get('/api/lottery-config', authenticate, async (req, res) => {
     }
 });
 
+// ==================== Routes communes ====================
 app.get('/api/draws', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -190,7 +196,7 @@ app.get('/api/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
     }
 });
 
-// Récupérer toutes les limites par numéro pour un propriétaire
+// ==================== Nouvelle route : limites par numéro ====================
 app.get('/api/number-limits', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -555,11 +561,11 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     }
 });
 
-// Rapports (simplifié) – à compléter selon besoins
+// Rapports (simplifié)
 app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     const { period, agentId, drawId, fromDate, toDate } = req.query;
-    // Implémentation à compléter
+    // Implémentation à compléter selon vos besoins
     res.json({ summary: { total_tickets: 0, total_bets: 0, total_wins: 0, net_result: 0 }, detail: [] });
 });
 
@@ -621,6 +627,7 @@ app.get('/api/owner/settings', authenticate, requireRole('owner'), async (req, r
         if (result.rows.length === 0) {
             res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {} });
         } else {
+            // On renomme logo_url en logoUrl pour le frontend
             const row = result.rows[0];
             row.logoUrl = row.logo_url;
             delete row.logo_url;
@@ -720,7 +727,7 @@ app.get('/api/supervisor/tickets/recent', authenticate, requireRole('supervisor'
     }
 });
 
-// ==================== Démarrage ====================
+// ==================== Démarrage du serveur (après vérification DB) ====================
 checkDatabaseConnection().then(() => {
     app.listen(port, '0.0.0.0', () => {
         console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${port}`);

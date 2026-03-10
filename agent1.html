@@ -5,19 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>LOTATO PRO | System</title>
+    <title>LOTATO PRO |  System</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- PWA Manifest -->
-<link rel="manifest" href="/manifest.json">
-
-<!-- iOS spécifique -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="LOTATO PRO">
-<link rel="apple-touch-icon" href="/192.png">
 </head>
 <body>
     <div class="app-shell">
@@ -193,25 +185,17 @@
                 </div>
             </section>
 
-            <!-- Screen 4: Reports (MODIFIÉ) -->
+            <!-- Screen 4: Reports -->
             <section id="reports-screen" class="screen">
                 <div style="padding: 20px;">
-                    <!-- En-tête avec titre et bouton imprimante -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h2 class="section-title" style="margin:0;">Rapò Jodi a</h2>
-                        <button onclick="printReport()" class="print-report-btn" style="background:var(--primary); color:white; border:none; border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
-                            <i class="fas fa-print"></i>
-                        </button>
-                    </div>
-
-                    <!-- Sélecteur de tirage -->
+                    <h2 class="section-title">Rapò Jodi a</h2>
+                    
                     <div class="report-draw-selector">
                         <select id="draw-report-selector" class="chip" style="width: 100%; padding: 12px;" onchange="loadDrawReport()">
                             <option value="all">Tout Tiraj</option>
                         </select>
                     </div>
-
-                    <!-- Cartes de rapport -->
+                    
                     <div class="report-card" id="draw-report-card">
                         <div class="report-row">
                             <span>Total Tikè:</span>
@@ -234,7 +218,7 @@
                             <span class="val" id="draw-balance">0 Gdes</span>
                         </div>
                     </div>
-
+                    
                     <div class="report-card" id="general-report-card">
                         <h3 style="margin-bottom: 15px;">Rapò Jeneral Jodi a</h3>
                         <div class="report-row">
@@ -258,6 +242,11 @@
                             <span class="val" id="balance">0 Gdes</span>
                         </div>
                     </div>
+                    
+                    <!-- 🔧 Bouton avec style en ligne pour garantir visibilité -->
+                    <button onclick="printReport()" class="print-report-btn" style="display: block; margin: 20px auto; width: fit-content;">
+                        <i class="fas fa-print"></i> Enprime Rapò
+                    </button>
                 </div>
             </section>
 
@@ -320,6 +309,5 @@
     <script src="apiService.js"></script>
     <script src="uiManager.js"></script>
     <script src="main.js"></script>
-    <script src="resultsManager.js"></script>
 </body>
 </html>
