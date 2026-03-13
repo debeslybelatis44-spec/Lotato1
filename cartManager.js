@@ -562,7 +562,7 @@ function generateTicketHTML(ticket) {
 
         <div class="footer">
             <p>tickets valable jusqu'à 90 jours</p>
-            <p>Ref : +509 40 64 3557</p>
+            <p>Ref : +509 </p>
             <p><strong>LOTATO S.A.</strong></p>
         </div>
     `;
