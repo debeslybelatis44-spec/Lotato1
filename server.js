@@ -111,7 +111,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// ==================== Configuration loterie (accessible à tous les utilisateurs authentifiés) ====================
+// Vérification du token
+app.get('/api/auth/verify', authenticate, (req, res) => {
+    res.json({ valid: true, user: req.user });
+});
+
+// Déconnexion (simulée)
+app.post('/api/auth/logout', authenticate, (req, res) => {
+    res.json({ success: true, message: 'Déconnexion réussie' });
+});
+
+// ==================== Configuration loterie ====================
 app.get('/api/lottery-config', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -597,6 +607,12 @@ app.post('/api/supervisor/tickets/:id/pay', authenticate, requireRole('superviso
 });
 
 // ==================== Routes propriétaire ====================
+// Messages pour le propriétaire (exemple statique)
+app.get('/api/owner/messages', authenticate, requireRole('owner'), (req, res) => {
+    // On peut stocker un message en base ou le générer dynamiquement
+    res.json({ message: "Bienvenue dans votre espace propriétaire. Pensez à vérifier les rapports du jour." });
+});
+
 app.get('/api/owner/supervisors', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     try {
@@ -604,7 +620,9 @@ app.get('/api/owner/supervisors', authenticate, requireRole('owner'), async (req
             'SELECT id, name, username, blocked FROM users WHERE owner_id = $1 AND role = $2',
             [ownerId, 'supervisor']
         );
-        res.json(result.rows);
+        // Ajouter un champ email = username pour compatibilité frontend
+        const supervisors = result.rows.map(s => ({ ...s, email: s.username }));
+        res.json(supervisors);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Erreur serveur' });
@@ -621,7 +639,9 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
              WHERE u.owner_id = $1 AND u.role = $2`,
             [ownerId, 'agent']
         );
-        res.json(result.rows);
+        // Ajouter un champ email = username pour compatibilité frontend
+        const agents = result.rows.map(a => ({ ...a, email: a.username }));
+        res.json(agents);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Erreur serveur' });
@@ -641,11 +661,13 @@ app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (re
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
             [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
         );
-        res.json({ success: true, user: result.rows[0] });
+        // Ajouter email = username
+        const user = { ...result.rows[0], email: result.rows[0].username };
+        res.json({ success: true, user });
     } catch (err) {
         console.error(err);
         if (err.code === '23505') {
-            return res.status(400).json({ error: 'Nom d\'utilisateur déjà existant' });
+            return res.status(400).json({ error: "Nom d'utilisateur déjà existant" });
         }
         res.status(500).json({ error: 'Erreur création utilisateur' });
     }
@@ -883,7 +905,7 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     }
 });
 
-// Tableau de bord propriétaire
+// Tableau de bord propriétaire enrichi
 app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     try {
@@ -917,16 +939,37 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
         // Progression des limites (simplifié, vide pour l'instant)
         const limitsProgress = [];
 
+        // Statistiques globales (tous temps)
+        const globalStats = await pool.query(
+            `SELECT 
+                COUNT(*) as total_tickets_all,
+                COUNT(CASE WHEN win_amount > 0 THEN 1 END) as total_winning_tickets_all,
+                COALESCE(SUM(total_amount), 0) as total_bets_all,
+                COALESCE(SUM(win_amount), 0) as total_wins_all,
+                COALESCE(SUM(win_amount) - SUM(total_amount), 0) as balance_all
+             FROM tickets
+             WHERE owner_id = $1`,
+            [ownerId]
+        );
+
+        // Ajouter email = username pour compatibilité frontend
+        const connected = {
+            supervisors_count: supervisors.rows.length,
+            supervisors: supervisors.rows.map(s => ({ ...s, email: s.username })),
+            agents_count: agents.rows.length,
+            agents: agents.rows.map(a => ({ ...a, email: a.username }))
+        };
+
         res.json({
-            connected: {
-                supervisors_count: supervisors.rows.length,
-                supervisors: supervisors.rows,
-                agents_count: agents.rows.length,
-                agents: agents.rows
-            },
+            connected,
             sales_today: parseFloat(sales.rows[0].total),
             limits_progress: limitsProgress,
-            agents_gain_loss: agentsGainLoss.rows
+            agents_gain_loss: agentsGainLoss.rows,
+            global_stats: {
+                total_tickets_all: parseInt(globalStats.rows[0].total_tickets_all),
+                total_winning_tickets_all: parseInt(globalStats.rows[0].total_winning_tickets_all),
+                balance_all: parseFloat(globalStats.rows[0].balance_all)
+            }
         });
     } catch (err) {
         console.error(err);
@@ -934,7 +977,7 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
     }
 });
 
-// Rapports propriétaire (version simplifiée)
+// Rapports propriétaire avec détails
 app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     const { supervisorId, agentId, drawId, period, fromDate, toDate, gainLoss } = req.query;
@@ -990,18 +1033,71 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
         const summaryResult = await pool.query(baseQuery, params);
         const summary = summaryResult.rows[0];
 
-        // Détail (par tirage par défaut)
+        // Détail par tirage
         let detailQuery = `
-            SELECT d.name as draw_name, COUNT(t.id) as tickets, COALESCE(SUM(t.total_amount),0) as bets, COALESCE(SUM(t.win_amount),0) as wins, COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as result
+            SELECT d.id as draw_id, d.name as draw_name, 
+                   COUNT(t.id) as tickets, 
+                   COALESCE(SUM(t.total_amount), 0) as bets, 
+                   COALESCE(SUM(t.win_amount), 0) as wins, 
+                   COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
             FROM tickets t
             JOIN draws d ON t.draw_id = d.id
             WHERE t.owner_id = $1
         `;
-        // On réutilise les mêmes filtres (sauf le group by)
-        // Pour simplifier, on refait la même construction sans les paramètres de pagination
-        // Mais on va exécuter une deuxième requête avec les mêmes filtres
-        // (dans un souci de temps, on renvoie un tableau vide pour le détail)
-        // Idéalement, il faudrait dupliquer la logique de filtre ici.
+        const detailParams = [ownerId];
+        let detailParamIndex = 2;
+
+        if (supervisorId && supervisorId !== 'all') {
+            detailQuery += ` AND t.agent_id IN (SELECT id FROM users WHERE supervisor_id = $${detailParamIndex++})`;
+            detailParams.push(supervisorId);
+        }
+        if (agentId && agentId !== 'all') {
+            detailQuery += ` AND t.agent_id = $${detailParamIndex++}`;
+            detailParams.push(agentId);
+        }
+        if (drawId && drawId !== 'all') {
+            detailQuery += ` AND t.draw_id = $${detailParamIndex++}`;
+            detailParams.push(drawId);
+        }
+
+        if (period === 'today') {
+            detailQuery += ` AND t.date >= CURRENT_DATE`;
+        } else if (period === 'yesterday') {
+            detailQuery += ` AND t.date >= CURRENT_DATE - INTERVAL '1 day' AND t.date < CURRENT_DATE`;
+        } else if (period === 'week') {
+            detailQuery += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
+        } else if (period === 'month') {
+            detailQuery += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+        } else if (period === 'custom' && fromDate && toDate) {
+            detailQuery += ` AND t.date >= $${detailParamIndex} AND t.date <= $${detailParamIndex+1}`;
+            detailParams.push(fromDate, toDate);
+            detailParamIndex += 2;
+        }
+
+        if (gainLoss === 'gain') {
+            detailQuery += ` AND t.win_amount > 0`;
+        } else if (gainLoss === 'loss') {
+            detailQuery += ` AND (t.win_amount = 0 OR t.win_amount IS NULL)`;
+        }
+
+        detailQuery += ` GROUP BY d.id, d.name ORDER BY d.name`;
+
+        const detailResult = await pool.query(detailQuery, detailParams);
+
+        // Calcul gain_count et loss_count (agents en gain/perte aujourd'hui)
+        const gainLossCount = await pool.query(
+            `SELECT 
+                COUNT(CASE WHEN net_result > 0 THEN 1 END) as gain_count,
+                COUNT(CASE WHEN net_result < 0 THEN 1 END) as loss_count
+             FROM (
+                SELECT u.id, COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
+                FROM users u
+                LEFT JOIN tickets t ON u.id = t.agent_id AND t.date >= CURRENT_DATE
+                WHERE u.owner_id = $1 AND u.role = 'agent'
+                GROUP BY u.id
+             ) sub`,
+            [ownerId]
+        );
 
         res.json({
             summary: {
@@ -1009,10 +1105,10 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
                 total_bets: parseFloat(summary.bets),
                 total_wins: parseFloat(summary.wins),
                 net_result: parseFloat(summary.result),
-                gain_count: 0,
-                loss_count: 0
+                gain_count: parseInt(gainLossCount.rows[0].gain_count),
+                loss_count: parseInt(gainLossCount.rows[0].loss_count)
             },
-            detail: [] // À implémenter si nécessaire
+            detail: detailResult.rows
         });
     } catch (err) {
         console.error(err);
@@ -1020,19 +1116,73 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     }
 });
 
+// Tickets propriétaire avec filtres avancés
 app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
-    const { page = 0, limit = 20 } = req.query;
+    const { page = 0, limit = 20, supervisorId, agentId, drawId, period, fromDate, toDate, gain, paid } = req.query;
+
+    let query = `
+        SELECT t.*
+        FROM tickets t
+        WHERE t.owner_id = $1
+    `;
+    const params = [ownerId];
+    let paramIndex = 2;
+
+    if (supervisorId && supervisorId !== 'all') {
+        query += ` AND t.agent_id IN (SELECT id FROM users WHERE supervisor_id = $${paramIndex++})`;
+        params.push(supervisorId);
+    }
+    if (agentId && agentId !== 'all') {
+        query += ` AND t.agent_id = $${paramIndex++}`;
+        params.push(agentId);
+    }
+    if (drawId && drawId !== 'all') {
+        query += ` AND t.draw_id = $${paramIndex++}`;
+        params.push(drawId);
+    }
+
+    // Filtre date
+    if (period === 'today') {
+        query += ` AND t.date >= CURRENT_DATE`;
+    } else if (period === 'yesterday') {
+        query += ` AND t.date >= CURRENT_DATE - INTERVAL '1 day' AND t.date < CURRENT_DATE`;
+    } else if (period === 'week') {
+        query += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
+    } else if (period === 'month') {
+        query += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+    } else if (period === 'custom' && fromDate && toDate) {
+        query += ` AND t.date >= $${paramIndex} AND t.date <= $${paramIndex+1}`;
+        params.push(fromDate, toDate);
+        paramIndex += 2;
+    }
+
+    if (gain === 'win') {
+        query += ` AND t.win_amount > 0`;
+    } else if (gain === 'nowin') {
+        query += ` AND (t.win_amount = 0 OR t.win_amount IS NULL)`;
+    }
+
+    if (paid === 'paid') {
+        query += ` AND t.paid = true`;
+    } else if (paid === 'unpaid') {
+        query += ` AND t.paid = false`;
+    }
+
+    // Compter total
+    const countQuery = query.replace('SELECT t.*', 'SELECT COUNT(*)');
+    const countResult = await pool.query(countQuery, params);
+    const total = parseInt(countResult.rows[0].count);
+
+    // Pagination
+    query += ` ORDER BY t.date DESC LIMIT $${paramIndex} OFFSET $${paramIndex+1}`;
+    params.push(parseInt(limit), parseInt(page) * parseInt(limit));
+
     try {
-        const result = await pool.query(
-            'SELECT * FROM tickets WHERE owner_id = $1 ORDER BY date DESC LIMIT $2 OFFSET $3',
-            [ownerId, limit, page * limit]
-        );
-        const countResult = await pool.query('SELECT COUNT(*) FROM tickets WHERE owner_id = $1', [ownerId]);
-        const total = parseInt(countResult.rows[0].count);
+        const result = await pool.query(query, params);
         res.json({
             tickets: result.rows,
-            hasMore: (page + 1) * limit < total,
+            hasMore: (parseInt(page) + 1) * parseInt(limit) < total,
             total
         });
     } catch (err) {
