@@ -1,4 +1,4 @@
-// server.js (version multi-tenant enrichie)
+// server.js (version enrichie compatible multi-tenant avec table users)
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -15,7 +15,7 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Middlewares
+// Middlewares de sécurité et performance
 app.use(compression());
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors({ origin: '*', credentials: true }));
@@ -599,10 +599,206 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
     }
 });
 
-// Routes superviseur (inchangées mais avec owner_id)
-// ... (garder les routes superviseur existantes de la première version)
+app.post('/api/tickets/check-winners', authenticate, async (req, res) => {
+    // Placeholder – déclencherait normalement un calcul des gains
+    res.json({ success: true, message: 'Vérification des gagnants déclenchée' });
+});
 
-// Routes propriétaire enrichies
+// ==================== Routes superviseur ====================
+app.get('/api/supervisor/reports/overall', authenticate, requireRole('supervisor'), async (req, res) => {
+    const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
+    try {
+        const result = await pool.query(
+            `SELECT 
+                COUNT(t.id) as total_tickets,
+                COALESCE(SUM(t.total_amount), 0) as total_bets,
+                COALESCE(SUM(t.win_amount), 0) as total_wins,
+                COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as balance
+             FROM tickets t
+             JOIN users u ON t.agent_id = u.id
+             WHERE t.owner_id = $1 AND u.supervisor_id = $2`,
+            [ownerId, supervisorId]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/supervisor/agents', authenticate, requireRole('supervisor'), async (req, res) => {
+    const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
+    try {
+        const result = await pool.query(
+            `SELECT u.id, u.name, u.username, u.blocked, u.zone,
+                    COALESCE(SUM(t.total_amount), 0) as total_bets,
+                    COALESCE(SUM(t.win_amount), 0) as total_wins,
+                    COUNT(t.id) as total_tickets,
+                    COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as balance,
+                    COALESCE(SUM(CASE WHEN t.paid = false THEN t.win_amount ELSE 0 END), 0) as unpaid_wins
+             FROM users u
+             LEFT JOIN tickets t ON u.id = t.agent_id AND t.date >= NOW() - INTERVAL '1 day'
+             WHERE u.owner_id = $1 AND u.supervisor_id = $2 AND u.role = 'agent'
+             GROUP BY u.id`,
+            [ownerId, supervisorId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/supervisor/tickets/recent', authenticate, requireRole('supervisor'), async (req, res) => {
+    const { agentId } = req.query;
+    const ownerId = req.user.ownerId;
+    const supervisorId = req.user.id;
+    try {
+        const result = await pool.query(
+            `SELECT t.* FROM tickets t
+             JOIN users u ON t.agent_id = u.id
+             WHERE t.owner_id = $1 AND u.supervisor_id = $2 AND t.agent_id = $3
+             ORDER BY t.date DESC LIMIT 20`,
+            [ownerId, supervisorId, agentId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/supervisor/tickets', authenticate, requireRole('supervisor'), async (req, res) => {
+    const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
+    const { page = 0, limit = 20, agentId, gain, paid, period, fromDate, toDate } = req.query;
+
+    let query = `
+        SELECT t.*
+        FROM tickets t
+        JOIN users u ON t.agent_id = u.id
+        WHERE t.owner_id = $1 AND u.supervisor_id = $2
+    `;
+    const params = [ownerId, supervisorId];
+    let paramIndex = 3;
+
+    if (agentId && agentId !== 'all') {
+        query += ` AND t.agent_id = $${paramIndex++}`;
+        params.push(agentId);
+    }
+    if (gain === 'win') {
+        query += ` AND t.win_amount > 0`;
+    } else if (gain === 'nowin') {
+        query += ` AND (t.win_amount = 0 OR t.win_amount IS NULL)`;
+    }
+    if (paid === 'paid') {
+        query += ` AND t.paid = true`;
+    } else if (paid === 'unpaid') {
+        query += ` AND t.paid = false`;
+    }
+
+    // Filtre date
+    if (period === 'today') {
+        query += ` AND t.date >= CURRENT_DATE`;
+    } else if (period === 'yesterday') {
+        query += ` AND t.date >= CURRENT_DATE - INTERVAL '1 day' AND t.date < CURRENT_DATE`;
+    } else if (period === 'week') {
+        query += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
+    } else if (period === 'month') {
+        query += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+    } else if (period === 'custom' && fromDate && toDate) {
+        query += ` AND t.date >= $${paramIndex} AND t.date <= $${paramIndex+1}`;
+        params.push(fromDate, toDate);
+        paramIndex += 2;
+    }
+
+    // Comptage total
+    const countQuery = query.replace('SELECT t.*', 'SELECT COUNT(*)');
+    const countResult = await pool.query(countQuery, params);
+    const total = parseInt(countResult.rows[0].count);
+
+    // Pagination
+    query += ` ORDER BY t.date DESC LIMIT $${paramIndex} OFFSET $${paramIndex+1}`;
+    params.push(limit, page * limit);
+
+    try {
+        const result = await pool.query(query, params);
+        res.json({
+            tickets: result.rows,
+            hasMore: (page + 1) * limit < total,
+            total
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/supervisor/block-agent/:id', authenticate, requireRole('supervisor'), async (req, res) => {
+    const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
+    const agentId = req.params.id;
+    try {
+        const check = await pool.query(
+            'SELECT id FROM users WHERE id = $1 AND owner_id = $2 AND supervisor_id = $3 AND role = $4',
+            [agentId, ownerId, supervisorId, 'agent']
+        );
+        if (check.rows.length === 0) {
+            return res.status(403).json({ error: 'Agent non trouvé ou non autorisé' });
+        }
+        await pool.query('UPDATE users SET blocked = true WHERE id = $1', [agentId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/supervisor/unblock-agent/:id', authenticate, requireRole('supervisor'), async (req, res) => {
+    const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
+    const agentId = req.params.id;
+    try {
+        const check = await pool.query(
+            'SELECT id FROM users WHERE id = $1 AND owner_id = $2 AND supervisor_id = $3 AND role = $4',
+            [agentId, ownerId, supervisorId, 'agent']
+        );
+        if (check.rows.length === 0) {
+            return res.status(403).json({ error: 'Agent non trouvé ou non autorisé' });
+        }
+        await pool.query('UPDATE users SET blocked = false WHERE id = $1', [agentId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/supervisor/tickets/:id/pay', authenticate, requireRole('supervisor'), async (req, res) => {
+    const supervisorId = req.user.id;
+    const ownerId = req.user.ownerId;
+    const ticketId = req.params.id;
+    try {
+        const check = await pool.query(
+            `SELECT t.id FROM tickets t
+             JOIN users u ON t.agent_id = u.id
+             WHERE t.id = $1 AND t.owner_id = $2 AND u.supervisor_id = $3`,
+            [ticketId, ownerId, supervisorId]
+        );
+        if (check.rows.length === 0) {
+            return res.status(403).json({ error: 'Ticket non trouvé ou non autorisé' });
+        }
+        await pool.query('UPDATE tickets SET paid = true WHERE id = $1', [ticketId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// ==================== Routes propriétaire ====================
 app.get('/api/owner/supervisors', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     try {
@@ -636,16 +832,16 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
 
 app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
-    const { name, cin, username, password, role, supervisorId, zone } = req.body;
+    const { name, cin, username, password, role, supervisorId, zone, commissionPercentage } = req.body;
     if (!name || !username || !password || !role) {
         return res.status(400).json({ error: 'Champs obligatoires manquants' });
     }
     try {
         const hashed = await bcrypt.hash(password, 10);
         const result = await pool.query(
-            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, name, username, role, cin, zone`,
-            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null]
+            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, commission_percentage, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
+            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
         );
         res.json({ success: true, user: result.rows[0] });
     } catch (err) {
@@ -1080,7 +1276,7 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
 // Messages propriétaire
 app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, res) => {
     try {
-        // Exemple : récupérer un message depuis une table ou une variable d'environnement
+        // Exemple : récupérer un message depuis une variable d'environnement
         const message = process.env.OWNER_MESSAGE || '';
         res.json({ message });
     } catch (err) {
