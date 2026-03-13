@@ -48,6 +48,16 @@
         .loss { color:#ff4d4d; }
         .restriction-item { display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #333; }
         #logo-preview img { max-height:60px; border-radius:8px; margin-top:10px; }
+        #owner-message-container {
+            margin: 20px;
+            padding: 15px;
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid #ffc107;
+            border-radius: 10px;
+            color: #ffc107;
+            font-weight: bold;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -62,6 +72,10 @@
                 <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Déconnexion</button>
             </div>
         </header>
+
+        <div id="owner-message-container">
+            <i class="fas fa-bell"></i> <span id="owner-message-text"></span>
+        </div>
 
         <!-- Onglets -->
         <div class="tabs">
@@ -95,6 +109,18 @@
                 <div class="stat-card">
                     <div style="font-size:2rem;" id="sales-today">0 G</div>
                     <div>Ventes totales (aujourd'hui)</div>
+                </div>
+                <div class="stat-card">
+                    <div style="font-size:2rem;" id="total-tickets-all">0</div>
+                    <div>Tickets vendus (total)</div>
+                </div>
+                <div class="stat-card">
+                    <div style="font-size:2rem;" id="total-winning-tickets-all">0</div>
+                    <div>Tickets gagnants (total)</div>
+                </div>
+                <div class="stat-card">
+                    <div style="font-size:2rem;" id="balance-all">0 G</div>
+                    <div>Balance globale (misé - gagné)</div>
                 </div>
             </div>
 
@@ -147,7 +173,7 @@
                     <label>Zone / Localisation</label>
                     <input type="text" id="create-zone" placeholder="Port-au-Prince">
                 </div>
-                <!-- Nouveau champ commission -->
+                <!-- Champ commission (présent dans la version multi-tenant) -->
                 <div class="form-group">
                     <label>Commission (%)</label>
                     <input type="number" id="create-commission" value="0" min="0" step="0.01" placeholder="10">
@@ -454,7 +480,7 @@
                 </div>
             </div>
 
-            <!-- NOUVELLE SECTION : Limites de mise par type de jeu -->
+            <!-- Limites de mise par type de jeu -->
             <div class="section-title"><i class="fas fa-ban"></i> Limites de mise par type de jeu</div>
             <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
                 <div class="form-group">
@@ -485,15 +511,58 @@
             const API_URL = ''; // Laissez vide si même origine
             let chartInstance = null;
 
-            (function() {
+            // Vérification du token et récupération du nom
+            (async function() {
                 const token = localStorage.getItem('auth_token');
                 const role = localStorage.getItem('user_role');
                 if (!token || role !== 'owner') {
                     window.location.href = 'index.html';
+                    return;
                 }
-                document.getElementById('owner-name').innerHTML = `<i class="fas fa-crown"></i> ${localStorage.getItem('user_name') || 'Propriétaire'}`;
+                try {
+                    const res = await fetch(`${API_URL}/api/auth/verify`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) throw new Error('Token invalide');
+                    const data = await res.json();
+                    if (!data.valid) throw new Error('Token invalide');
+                    
+                    document.getElementById('owner-name').innerHTML = `<i class="fas fa-crown"></i> ${localStorage.getItem('user_name') || 'Propriétaire'}`;
+                    fetchOwnerMessages();
+                } catch (error) {
+                    console.error('Erreur de vérification token:', error);
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('user_role');
+                    localStorage.removeItem('user_name');
+                    localStorage.removeItem('owner_id');
+                    window.location.href = 'index.html';
+                }
             })();
 
+            // Récupération des messages propriétaire
+            async function fetchOwnerMessages() {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/messages`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.message) {
+                            document.getElementById('owner-message-text').innerText = data.message;
+                            document.getElementById('owner-message-container').style.display = 'block';
+                            setTimeout(() => {
+                                document.getElementById('owner-message-container').style.display = 'none';
+                            }, 600000); // 10 minutes
+                        }
+                    }
+                } catch (e) {
+                    console.error('Erreur récupération message', e);
+                }
+            }
+
+            // ---------- ONGLETS ----------
             function switchTab(tabId) {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -521,6 +590,7 @@
                 }
             }
 
+            // ---------- UTILITAIRES ----------
             function showMessage(elementId, message, isSuccess = true) {
                 const el = document.getElementById(elementId);
                 if (el) {
@@ -531,14 +601,19 @@
                 }
             }
 
+            // ---------- TABLEAU DE BORD (complet) ----------
             async function loadDashboard() {
                 const token = localStorage.getItem('auth_token');
                 try {
                     const res = await fetch(`${API_URL}/api/owner/dashboard`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    if (!res.ok) throw new Error('Erreur chargement dashboard');
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        throw new Error(`Erreur ${res.status}: ${errorText}`);
+                    }
                     const data = await res.json();
+                    console.log('Dashboard data:', data);
 
                     document.getElementById('connected-sup-count').innerText = data.connected.supervisors_count;
                     document.getElementById('connected-agent-count').innerText = data.connected.agents_count;
@@ -552,6 +627,21 @@
                     document.getElementById('connected-agent-list').innerHTML = agentList || '<span style="opacity:0.7;">Aucun agent connecté</span>';
 
                     document.getElementById('sales-today').innerHTML = `${data.sales_today.toLocaleString()} G`;
+
+                    // Nouvelles stats globales
+                    if (data.global_stats) {
+                        document.getElementById('total-tickets-all').innerHTML = data.global_stats.total_tickets_all.toLocaleString();
+                        document.getElementById('total-winning-tickets-all').innerHTML = data.global_stats.total_winning_tickets_all.toLocaleString();
+                        const balanceAll = data.global_stats.balance_all;
+                        const balanceEl = document.getElementById('balance-all');
+                        balanceEl.innerHTML = `${balanceAll.toLocaleString()} G`;
+                        balanceEl.style.color = balanceAll >= 0 ? '#00f190' : '#ff4d4d';
+                    } else {
+                        console.warn('global_stats manquant dans la réponse');
+                        document.getElementById('total-tickets-all').innerHTML = '0';
+                        document.getElementById('total-winning-tickets-all').innerHTML = '0';
+                        document.getElementById('balance-all').innerHTML = '0 G';
+                    }
 
                     let limitsHtml = '';
                     if (data.limits_progress.length === 0) {
@@ -596,10 +686,11 @@
 
                 } catch (e) {
                     console.error('Dashboard error:', e);
-                    showMessage('', 'Erreur chargement dashboard', false);
+                    showMessage('', 'Erreur chargement dashboard: ' + e.message, false);
                 }
             }
 
+            // ---------- GESTION UTILISATEURS ----------
             async function loadUsersLists() {
                 const token = localStorage.getItem('auth_token');
                 try {
@@ -735,6 +826,7 @@
                 loadUsersLists();
             }
 
+            // ---------- TIRAGES ----------
             async function loadDraws() {
                 const token = localStorage.getItem('auth_token');
                 try {
@@ -785,6 +877,7 @@
                 loadDraws();
             }
 
+            // ---------- BOULES & LIMITES ----------
             async function loadDrawsForSelects() {
                 const token = localStorage.getItem('auth_token');
                 const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -1016,6 +1109,7 @@
                 loadBlockedNumbers();
             }
 
+            // ---------- RAPPORTS ----------
             async function loadSupervisorsAndAgents() {
                 const token = localStorage.getItem('auth_token');
                 const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -1122,6 +1216,7 @@
                 w.print();
             }
 
+            // ---------- TICKETS ----------
             let currentTicketPage = 0;
             let currentTicketFilters = {};
 
@@ -1358,6 +1453,7 @@
                 loadTickets();
             }
 
+            // ---------- CONFIGURATION ----------
             async function loadSettings() {
                 const token = localStorage.getItem('auth_token');
                 try {
@@ -1468,8 +1564,13 @@
                 }
             });
 
-            function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+            // ---------- DÉCONNEXION ----------
+            function logout() {
+                localStorage.clear();
+                window.location.href = 'index.html';
+            }
 
+            // ---------- CHARGEMENT INITIAL ----------
             window.onload = function() {
                 loadDashboard();
                 loadUsersLists();

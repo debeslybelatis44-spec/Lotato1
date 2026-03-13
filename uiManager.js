@@ -3,6 +3,14 @@
 // Variable globale pour le terme de recherche
 window.historySearchTerm = '';
 
+// Nouveau : variables pour les filtres de rapports
+window.reportFilters = {
+    period: 'today',
+    fromDate: '',
+    toDate: '',
+    drawId: 'all'
+};
+
 // Fonction utilitaire pour récupérer les tickets depuis l'API
 async function fetchTickets() {
     const token = localStorage.getItem('auth_token');
@@ -16,6 +24,62 @@ async function fetchTickets() {
     if (!response.ok) throw new Error('Erreur réseau');
     const data = await response.json();
     return data.tickets || [];
+}
+
+// Nouvelle fonction : récupérer les tickets avec filtres (pour compatibilité)
+async function fetchTicketsWithFilters(filters) {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('Non authentifié');
+
+    let url = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_TICKETS}?`;
+    
+    if (filters.period === 'today') {
+        // Récupère tous les tickets et on filtrera côté client
+    } else if (filters.period === 'yesterday') {
+        // Même chose, on filtre côté client
+    } else if (filters.period === 'week') {
+        // Même chose
+    } else if (filters.period === 'custom' && filters.fromDate && filters.toDate) {
+        // On pourrait ajouter des paramètres d'API ici si le backend les supporte
+    }
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+    if (!response.ok) throw new Error('Erreur réseau');
+    const data = await response.json();
+    return data.tickets || [];
+}
+
+// Nouvelle fonction : filtrer les tickets par date
+function filterTicketsByDate(tickets, filters) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    return tickets.filter(ticket => {
+        const ticketDate = new Date(ticket.date || ticket.created_at);
+        const ticketDay = new Date(ticketDate.getFullYear(), ticketDate.getMonth(), ticketDate.getDate());
+
+        if (filters.period === 'today') {
+            return ticketDay.getTime() === today.getTime();
+        } else if (filters.period === 'yesterday') {
+            return ticketDay.getTime() === yesterday.getTime();
+        } else if (filters.period === 'week') {
+            return ticketDate >= weekAgo;
+        } else if (filters.period === 'custom' && filters.fromDate && filters.toDate) {
+            const from = new Date(filters.fromDate);
+            const to = new Date(filters.toDate);
+            to.setHours(23, 59, 59, 999);
+            return ticketDate >= from && ticketDate <= to;
+        }
+        return true;
+    });
 }
 
 function switchTab(tabName) {
@@ -129,6 +193,119 @@ function initHistorySearchBar() {
     searchInput.addEventListener('input', function(e) {
         window.historySearchTerm = e.target.value;
         renderHistory();
+    });
+}
+
+// Nouvelle fonction : initialisation des filtres de rapport
+function initReportFilters() {
+    const reportsScreen = document.getElementById('reports-screen');
+    if (!reportsScreen) return;
+
+    if (document.getElementById('report-filters')) return;
+
+    const filtersDiv = document.createElement('div');
+    filtersDiv.id = 'report-filters';
+    filtersDiv.className = 'report-filters';
+    filtersDiv.innerHTML = `
+        <div class="filter-row">
+            <select id="report-period" class="filter-select">
+                <option value="today">Jodi a</option>
+                <option value="yesterday">Yè</option>
+                <option value="week">Semèn sa a</option>
+                <option value="custom">Dat pèsonalize</option>
+            </select>
+            
+            <div id="custom-date-range" style="display: none; margin-top: 10px;">
+                <input type="date" id="report-from-date" class="filter-input" placeholder="Dat kòmansman">
+                <input type="date" id="report-to-date" class="filter-input" placeholder="Dat fini">
+            </div>
+            
+            <button id="apply-report-filters" class="filter-btn">Aplike Filtre</button>
+        </div>
+    `;
+
+    const header = reportsScreen.querySelector('.reports-header');
+    if (header) {
+        header.after(filtersDiv);
+    } else {
+        reportsScreen.prepend(filtersDiv);
+    }
+
+    if (!document.getElementById('report-filters-styles')) {
+        const style = document.createElement('style');
+        style.id = 'report-filters-styles';
+        style.textContent = `
+            .report-filters {
+                padding: 15px;
+                background: var(--surface);
+                border-bottom: 1px solid var(--glass-border);
+                margin-bottom: 15px;
+            }
+            .filter-row {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .filter-select, .filter-input {
+                padding: 10px;
+                border: 1px solid var(--glass-border);
+                border-radius: 8px;
+                background: var(--bg-light);
+                color: var(--text);
+                font-size: 1rem;
+            }
+            .filter-btn {
+                padding: 12px;
+                background: var(--primary);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 1rem;
+                font-weight: bold;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+            .filter-btn:hover {
+                background: var(--primary-dark);
+                transform: translateY(-2px);
+            }
+            @media (min-width: 768px) {
+                .filter-row {
+                    flex-direction: row;
+                    align-items: center;
+                }
+                .custom-date-range {
+                    display: flex;
+                    gap: 10px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const periodSelect = document.getElementById('report-period');
+    const customRange = document.getElementById('custom-date-range');
+    const fromDate = document.getElementById('report-from-date');
+    const toDate = document.getElementById('report-to-date');
+    const applyBtn = document.getElementById('apply-report-filters');
+
+    // Set default dates
+    const today = new Date().toISOString().split('T')[0];
+    fromDate.value = today;
+    toDate.value = today;
+
+    periodSelect.addEventListener('change', function() {
+        customRange.style.display = this.value === 'custom' ? 'block' : 'none';
+    });
+
+    applyBtn.addEventListener('click', function() {
+        window.reportFilters = {
+            period: periodSelect.value,
+            fromDate: fromDate.value,
+            toDate: toDate.value,
+            drawId: document.getElementById('draw-report-selector').value
+        };
+        loadReports();
     });
 }
 
@@ -371,64 +548,175 @@ function editTicket(ticketId) {
     alert(`Tikè #${ticket.ticket_id || ticket.id} charge nan panye. Ou kapab modifye l.`);
 }
 
-// Nouvelle fonction pour rejouer un ticket
-function replayTicket(ticketId) {
+// NOUVELLE VERSION DE LA FONCTION REJWE (AVEC SÉLECTION DES TIRAGES ET FUSION)
+async function replayTicket(ticketId) {
     const ticket = APP_STATE.ticketsHistory.find(t => t.id === ticketId || t.ticket_id === ticketId);
     if (!ticket) {
         alert("Tikè pa jwenn!");
         return;
     }
 
-    // Récupérer les tirages sélectionnés (mode simple ou multiple)
-    const draws = APP_STATE.multiDrawMode
-        ? APP_STATE.selectedDraws
-        : [APP_STATE.selectedDraw];
-
-    if (!draws || draws.length === 0) {
-        alert("Chwazi yon tiraj anvan!");
+    // 1. Demander à l'utilisateur de choisir le(s) tirage(s) de destination
+    const selectedDraws = await showDrawSelectionModal();
+    if (!selectedDraws || selectedDraws.length === 0) {
+        alert("Ou pa chwazi okenn tiraj. Rejwe annile.");
         return;
     }
 
-    // Extraire les paris du ticket
+    // 2. Extraire les paris payants du ticket (montant > 0)
     let bets = [];
     if (Array.isArray(ticket.bets)) {
-        bets = ticket.bets;
+        bets = ticket.bets.filter(b => parseFloat(b.amount) > 0);
     } else if (typeof ticket.bets === 'string') {
         try {
-            bets = JSON.parse(ticket.bets);
+            const parsed = JSON.parse(ticket.bets);
+            if (Array.isArray(parsed)) {
+                bets = parsed.filter(b => parseFloat(b.amount) > 0);
+            } else if (typeof parsed === 'object') {
+                bets = Object.entries(parsed)
+                    .filter(([_, amt]) => parseFloat(amt) > 0)
+                    .map(([num, amt]) => ({ number: num, amount: amt }));
+            }
         } catch (e) {
             bets = [];
         }
     } else if (ticket.bets && typeof ticket.bets === 'object') {
-        // Si c'est un objet, on le convertit en tableau (ex: { "12": 50, "34": 100 })
-        bets = Object.entries(ticket.bets).map(([num, amt]) => ({ number: num, amount: amt }));
+        bets = Object.entries(ticket.bets)
+            .filter(([_, amt]) => parseFloat(amt) > 0)
+            .map(([num, amt]) => ({ number: num, amount: amt }));
     }
 
-    // Pour chaque tirage sélectionné, ajouter une copie de chaque pari
-    draws.forEach(drawId => {
+    if (bets.length === 0) {
+        alert("Pa gen paryaj valab (montant > 0) nan tikè sa a.");
+        return;
+    }
+
+    // 3. Fonction pour générer une clé unique d'un pari (type + numéro + option)
+    function getBetKey(bet) {
+        const game = bet.game || bet.specialType || 'borlette';
+        const number = bet.cleanNumber || bet.number || '';
+        const option = bet.option || '';
+        return `${game}_${number}_${option}`;
+    }
+
+    // 4. Pour chaque tirage sélectionné, fusionner ou ajouter les paris
+    selectedDraws.forEach(drawId => {
         const drawName = CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId;
+
         bets.forEach(bet => {
-            const newBet = {
-                ...bet,
-                id: Date.now() + Math.random(),
-                drawId: drawId,
-                drawName: drawName,
-                // Supprimer les éventuelles informations de gain
-                win_amount: undefined,
-                paid: undefined,
-                checked: undefined
-            };
-            APP_STATE.currentCart.push(newBet);
+            const betKey = getBetKey(bet);
+
+            // Chercher un pari existant dans le panier pour ce même tirage et avec la même clé
+            const existingIndex = APP_STATE.currentCart.findIndex(existing => 
+                existing.drawId === drawId && getBetKey(existing) === betKey
+            );
+
+            if (existingIndex >= 0) {
+                // Fusion : additionner les montants
+                const existingAmount = parseFloat(APP_STATE.currentCart[existingIndex].amount) || 0;
+                const newAmount = parseFloat(bet.amount) || 0;
+                APP_STATE.currentCart[existingIndex].amount = existingAmount + newAmount;
+            } else {
+                // Ajouter un nouveau pari
+                const newBet = {
+                    ...bet,
+                    id: Date.now() + Math.random(),
+                    drawId: drawId,
+                    drawName: drawName,
+                    win_amount: undefined,
+                    paid: undefined,
+                    checked: undefined,
+                    replayFrom: ticket.ticket_id || ticket.id
+                };
+                APP_STATE.currentCart.push(newBet);
+            }
         });
     });
 
-    // Mettre à jour l'affichage du panier
-    CartManager.renderCart();
+    // 5. Mettre à jour les mariages gratuits si nécessaire
+    if (typeof CartManager.updateFreeMarriages === 'function') {
+        CartManager.updateFreeMarriages();
+    }
 
-    // Basculer vers l'écran d'accueil pour visualiser/modifier
+    // 6. Aller à l'écran d'accueil
     switchTab('home');
+    alert(`Tikè #${ticket.ticket_id || ticket.id} rejwete nan panye. Ou kapab modifye l.`);
+}
 
-    alert(`Tikè #${ticket.ticket_id || ticket.id} rejwete nan panye.`);
+// Nouvelle fonction auxiliaire : modale de sélection des tirages
+function showDrawSelectionModal() {
+    return new Promise((resolve) => {
+        // Créer l'overlay de la modale
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        `;
+
+        // Contenu de la modale
+        modal.innerHTML = `
+            <div class="modal-content" style="
+                background: var(--bg);
+                padding: 20px;
+                border-radius: 20px;
+                max-width: 90%;
+                max-height: 80%;
+                overflow-y: auto;
+                border: 2px solid var(--primary);
+            ">
+                <h3 style="margin-top:0; text-align:center;">Chwazi tiraj(yo) pou rejwete</h3>
+                <div class="draws-list" style="margin: 15px 0;">
+                    ${CONFIG.DRAWS.map(draw => `
+                        <label style="display:block; padding:8px; border-bottom:1px solid var(--glass-border);">
+                            <input type="checkbox" value="${draw.id}" style="margin-right:10px;"> 
+                            ${draw.name}
+                        </label>
+                    `).join('')}
+                </div>
+                <div class="modal-actions" style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button id="cancel-replay" style="
+                        background: var(--text-dim);
+                        border: none;
+                        color: white;
+                        padding: 10px 20px;
+                        border-radius: 10px;
+                        cursor: pointer;
+                    ">Anile</button>
+                    <button id="confirm-replay" style="
+                        background: var(--primary);
+                        border: none;
+                        color: white;
+                        padding: 10px 20px;
+                        border-radius: 10px;
+                        cursor: pointer;
+                    ">Konfime</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Gestionnaires d'événements
+        document.getElementById('cancel-replay').onclick = () => {
+            document.body.removeChild(modal);
+            resolve([]);
+        };
+        document.getElementById('confirm-replay').onclick = () => {
+            const checkboxes = modal.querySelectorAll('input[type=checkbox]:checked');
+            const selected = Array.from(checkboxes).map(cb => cb.value);
+            document.body.removeChild(modal);
+            resolve(selected);
+        };
+    });
 }
 
 // Réimpression d'un ticket depuis l'historique
@@ -453,38 +741,41 @@ function reprintTicket(ticketId) {
 
 async function loadReports() {
     try {
-        const tickets = await fetchTickets();
-        APP_STATE.ticketsHistory = tickets;
+        // Initialiser les filtres s'ils n'existent pas
+        initReportFilters();
+
+        // Récupérer tous les tickets
+        const allTickets = await fetchTickets();
         
-        const reports = await APIService.getReports();
+        // Filtrer les tickets selon les critères
+        const filteredTickets = filterTicketsByDate(allTickets, window.reportFilters);
+        APP_STATE.ticketsHistory = filteredTickets;
         
-        let totalTickets = 0;
+        // Filtrer par tirage si nécessaire
+        const finalTickets = window.reportFilters.drawId !== 'all' 
+            ? filteredTickets.filter(t => 
+                (t.draw_id === window.reportFilters.drawId || t.drawId === window.reportFilters.drawId)
+              )
+            : filteredTickets;
+        
+        let totalTickets = finalTickets.length;
         let totalBets = 0;
         let totalWins = 0;
         let totalLoss = 0;
         
-        if (reports && reports.total_tickets !== undefined) {
-            totalTickets = reports.total_tickets || 0;
-            totalBets = reports.total_bets || 0;
-            totalWins = reports.total_wins || 0;
-            totalLoss = reports.total_loss || 0;
-        } else {
-            totalTickets = APP_STATE.ticketsHistory.length;
+        finalTickets.forEach(ticket => {
+            const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
+            totalBets += ticketAmount;
             
-            APP_STATE.ticketsHistory.forEach(ticket => {
-                const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
-                totalBets += ticketAmount;
-                
-                if (ticket.checked || ticket.verified) {
-                    const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                    if (winAmount > 0) {
-                        totalWins += winAmount;
-                    } else {
-                        totalLoss += ticketAmount;
-                    }
+            if (ticket.checked || ticket.verified) {
+                const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
+                if (winAmount > 0) {
+                    totalWins += winAmount;
+                } else {
+                    totalLoss += ticketAmount;
                 }
-            });
-        }
+            }
+        });
         
         const totalProfit = totalBets - totalWins;
         
@@ -495,6 +786,31 @@ async function loadReports() {
         document.getElementById('balance').textContent = totalProfit.toLocaleString('fr-FR') + ' Gdes';
         document.getElementById('balance').style.color = (totalProfit >= 0) ? 'var(--success)' : 'var(--danger)';
         
+        // Ajouter l'information de période dans le rapport
+        const periodInfo = document.createElement('div');
+        periodInfo.className = 'period-info';
+        periodInfo.style.cssText = 'text-align: center; margin: 10px 0; font-size: 0.9rem; color: var(--text-dim);';
+        
+        let periodText = '';
+        if (window.reportFilters.period === 'today') periodText = 'Jodi a';
+        else if (window.reportFilters.period === 'yesterday') periodText = 'Yè';
+        else if (window.reportFilters.period === 'week') periodText = 'Semèn sa a';
+        else if (window.reportFilters.period === 'custom') {
+            periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
+        }
+        
+        periodInfo.innerHTML = `Peryòd: <strong>${periodText}</strong>`;
+        
+        const existingPeriodInfo = document.querySelector('.period-info');
+        if (existingPeriodInfo) {
+            existingPeriodInfo.remove();
+        }
+        
+        const reportsSummary = document.querySelector('.reports-summary');
+        if (reportsSummary) {
+            reportsSummary.insertAdjacentElement('afterend', periodInfo);
+        }
+        
         const drawSelector = document.getElementById('draw-report-selector');
         drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
         
@@ -502,10 +818,13 @@ async function loadReports() {
             const option = document.createElement('option');
             option.value = draw.id;
             option.textContent = draw.name;
+            if (draw.id === window.reportFilters.drawId) {
+                option.selected = true;
+            }
             drawSelector.appendChild(option);
         });
         
-        await loadDrawReport('all');
+        await loadDrawReport(window.reportFilters.drawId);
         
         const printBtn = document.querySelector('.print-report-btn');
         if (printBtn) {
@@ -526,59 +845,45 @@ async function loadReports() {
 async function loadDrawReport(drawId = null) {
     try {
         const selectedDrawId = drawId || document.getElementById('draw-report-selector').value;
+        window.reportFilters.drawId = selectedDrawId;
         
-        if (selectedDrawId === 'all') {
-            const totalTickets = parseInt(document.getElementById('total-tickets').textContent) || 0;
-            const totalBetsText = document.getElementById('total-bets').textContent;
-            const totalWinsText = document.getElementById('total-wins').textContent;
-            const totalLossText = document.getElementById('total-loss').textContent;
+        // Re-filtrer les tickets avec le nouveau drawId
+        const filteredTickets = filterTicketsByDate(APP_STATE.ticketsHistory, window.reportFilters);
+        
+        const finalTickets = selectedDrawId === 'all' 
+            ? filteredTickets
+            : filteredTickets.filter(t => 
+                (t.draw_id === selectedDrawId || t.drawId === selectedDrawId)
+              );
+        
+        let drawTotalTickets = finalTickets.length;
+        let drawTotalBets = 0;
+        let drawTotalWins = 0;
+        let drawTotalLoss = 0;
+        
+        finalTickets.forEach(ticket => {
+            const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
+            drawTotalBets += ticketAmount;
             
-            const totalBets = parseFloat(totalBetsText.replace(/[^0-9.]/g, '')) || 0;
-            const totalWins = parseFloat(totalWinsText.replace(/[^0-9.]/g, '')) || 0;
-            const totalLoss = parseFloat(totalLossText.replace(/[^0-9.]/g, '')) || 0;
-            const balance = totalBets - totalWins;
-            
-            document.getElementById('draw-report-card').style.display = 'block';
-            document.getElementById('draw-total-tickets').textContent = totalTickets;
-            document.getElementById('draw-total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-total-wins').textContent = totalWins.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-balance').textContent = balance.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-balance').style.color = (balance >= 0) ? 'var(--success)' : 'var(--danger)';
-        } else {
-            const drawTickets = APP_STATE.ticketsHistory.filter(t => 
-                t.draw_id === selectedDrawId || t.drawId === selectedDrawId
-            );
-            
-            let drawTotalTickets = drawTickets.length;
-            let drawTotalBets = 0;
-            let drawTotalWins = 0;
-            let drawTotalLoss = 0;
-            
-            drawTickets.forEach(ticket => {
-                const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
-                drawTotalBets += ticketAmount;
-                
-                if (ticket.checked || ticket.verified) {
-                    const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                    if (winAmount > 0) {
-                        drawTotalWins += winAmount;
-                    } else {
-                        drawTotalLoss += ticketAmount;
-                    }
+            if (ticket.checked || ticket.verified) {
+                const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
+                if (winAmount > 0) {
+                    drawTotalWins += winAmount;
+                } else {
+                    drawTotalLoss += ticketAmount;
                 }
-            });
-            
-            const drawProfit = drawTotalBets - drawTotalWins;
-            
-            document.getElementById('draw-report-card').style.display = 'block';
-            document.getElementById('draw-total-tickets').textContent = drawTotalTickets;
-            document.getElementById('draw-total-bets').textContent = drawTotalBets.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-total-wins').textContent = drawTotalWins.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-total-loss').textContent = drawTotalLoss.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-balance').textContent = drawProfit.toLocaleString('fr-FR') + ' Gdes';
-            document.getElementById('draw-balance').style.color = (drawProfit >= 0) ? 'var(--success)' : 'var(--danger)';
-        }
+            }
+        });
+        
+        const drawProfit = drawTotalBets - drawTotalWins;
+        
+        document.getElementById('draw-report-card').style.display = 'block';
+        document.getElementById('draw-total-tickets').textContent = drawTotalTickets;
+        document.getElementById('draw-total-bets').textContent = drawTotalBets.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('draw-total-wins').textContent = drawTotalWins.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('draw-total-loss').textContent = drawTotalLoss.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('draw-balance').textContent = drawProfit.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('draw-balance').style.color = (drawProfit >= 0) ? 'var(--success)' : 'var(--danger)';
         
     } catch (error) {
         console.error('Erreur chargement rapport tirage:', error);
@@ -592,15 +897,17 @@ async function loadDrawReport(drawId = null) {
     }
 }
 
-// Impression des rapports
+// Impression des rapports (MODIFIÉE pour inclure la période)
 function printReport() {
     const drawSelector = document.getElementById('draw-report-selector');
     const selectedDraw = drawSelector.options[drawSelector.selectedIndex].text;
     const selectedDrawId = drawSelector.value;
     
+    const filteredTickets = filterTicketsByDate(APP_STATE.ticketsHistory, window.reportFilters);
+    
     const tickets = selectedDrawId === 'all' 
-        ? APP_STATE.ticketsHistory 
-        : APP_STATE.ticketsHistory.filter(t => t.draw_id === selectedDrawId || t.drawId === selectedDrawId);
+        ? filteredTickets
+        : filteredTickets.filter(t => t.draw_id === selectedDrawId || t.drawId === selectedDrawId);
     
     let totalTickets = tickets.length;
     let totalBets = 0, totalWins = 0, totalLoss = 0;
@@ -614,6 +921,15 @@ function printReport() {
         }
     });
     const balance = totalBets - totalWins;
+    
+    // Texte de période pour l'impression
+    let periodText = '';
+    if (window.reportFilters.period === 'today') periodText = 'Jodi a';
+    else if (window.reportFilters.period === 'yesterday') periodText = 'Yè';
+    else if (window.reportFilters.period === 'week') periodText = 'Semèn sa a';
+    else if (window.reportFilters.period === 'custom') {
+        periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
+    }
     
     const cfg = APP_STATE.lotteryConfig || CONFIG;
     const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTERIE';
@@ -671,6 +987,13 @@ function printReport() {
                     margin: 2px 0;
                     font-size: 24px;
                 }
+                .period-info {
+                    text-align: center;
+                    font-size: 24px;
+                    margin: 10px 0;
+                    padding: 5px;
+                    background: #f0f0f0;
+                }
                 .section {
                     margin: 15px 0;
                 }
@@ -708,6 +1031,10 @@ function printReport() {
                 ${slogan ? `<p>${slogan}</p>` : ''}
                 <h2>Rapò ${selectedDraw}</h2>
                 <p>${new Date().toLocaleDateString('fr-FR')} - Ajan: ${APP_STATE.agentName || ''}</p>
+            </div>
+
+            <div class="period-info">
+                Peryòd: ${periodText}
             </div>
 
             <div class="section">
