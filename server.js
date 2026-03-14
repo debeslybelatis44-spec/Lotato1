@@ -23,7 +23,7 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_securise';
 
-// ==================== Vérification de la base de données au démarrage ====================
+// ==================== Vérification de la base de données et migrations ====================
 console.log('🔄 Vérification de la base de données...');
 
 async function checkDatabaseConnection() {
@@ -35,10 +35,75 @@ async function checkDatabaseConnection() {
         // Test d'une requête simple
         const result = await pool.query('SELECT NOW() as current_time');
         console.log(`🕒 Heure du serveur DB : ${result.rows[0].current_time}`);
+        
+        // Migration : ajouter les colonnes manquantes dans la table users si nécessaire
+        await migrateUsersTable();
+        
         console.log('✅ Base de données prête');
     } catch (err) {
         console.error('❌ Erreur de connexion à la base de données :', err.message);
         process.exit(1); // Arrête le processus si la DB n'est pas accessible
+    }
+}
+
+async function migrateUsersTable() {
+    try {
+        // Vérifier et ajouter la colonne cin
+        const cinExists = await pool.query(
+            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='cin'`
+        );
+        if (cinExists.rowCount === 0) {
+            await pool.query(`ALTER TABLE users ADD COLUMN cin VARCHAR(50)`);
+            console.log('➕ Colonne "cin" ajoutée à la table users');
+        }
+
+        // Vérifier et ajouter la colonne zone
+        const zoneExists = await pool.query(
+            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='zone'`
+        );
+        if (zoneExists.rowCount === 0) {
+            await pool.query(`ALTER TABLE users ADD COLUMN zone VARCHAR(100)`);
+            console.log('➕ Colonne "zone" ajoutée à la table users');
+        }
+
+        // Vérifier et ajouter la colonne commission_percentage
+        const commissionExists = await pool.query(
+            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='commission_percentage'`
+        );
+        if (commissionExists.rowCount === 0) {
+            await pool.query(`ALTER TABLE users ADD COLUMN commission_percentage DECIMAL(5,2) DEFAULT 0`);
+            console.log('➕ Colonne "commission_percentage" ajoutée à la table users');
+        }
+
+        // Vérifier et ajouter la colonne created_at
+        const createdExists = await pool.query(
+            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='created_at'`
+        );
+        if (createdExists.rowCount === 0) {
+            await pool.query(`ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT NOW()`);
+            console.log('➕ Colonne "created_at" ajoutée à la table users');
+        }
+
+        // Vérifier que la table number_limits existe (créer si besoin)
+        const tableExists = await pool.query(
+            `SELECT 1 FROM information_schema.tables WHERE table_name='number_limits'`
+        );
+        if (tableExists.rowCount === 0) {
+            await pool.query(`
+                CREATE TABLE number_limits (
+                    owner_id INTEGER REFERENCES users(id),
+                    draw_id INTEGER REFERENCES draws(id),
+                    number VARCHAR(2),
+                    limit_amount DECIMAL(10,2) NOT NULL,
+                    PRIMARY KEY (owner_id, draw_id, number)
+                )
+            `);
+            console.log('➕ Table "number_limits" créée');
+        }
+
+    } catch (err) {
+        console.error('❌ Erreur lors des migrations:', err);
+        // On ne bloque pas le démarrage pour les migrations non critiques, mais on log
     }
 }
 
@@ -905,7 +970,7 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     }
 });
 
-// Tableau de bord propriétaire enrichi
+// Tableau de bord propriétaire enrichi avec progression des limites
 app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     try {
@@ -936,8 +1001,42 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
              GROUP BY u.id`,
             [ownerId, 'agent']
         );
-        // Progression des limites (simplifié, vide pour l'instant)
-        const limitsProgress = [];
+
+        // Progression des limites (montants misés aujourd'hui par rapport aux limites)
+        const limitsProgressResult = await pool.query(`
+            WITH today_bets AS (
+                SELECT 
+                    t.draw_id,
+                    jsonb_array_elements(t.bets::jsonb) AS bet
+                FROM tickets t
+                WHERE t.owner_id = $1 
+                  AND t.date >= CURRENT_DATE
+            ),
+            exploded AS (
+                SELECT 
+                    draw_id,
+                    bet->>'number' AS number,
+                    (bet->>'amount')::numeric AS amount
+                FROM today_bets
+            )
+            SELECT 
+                d.name AS draw_name,
+                nl.number,
+                nl.limit_amount,
+                COALESCE(SUM(e.amount), 0) AS current_bets,
+                CASE 
+                    WHEN nl.limit_amount > 0 
+                    THEN ROUND((COALESCE(SUM(e.amount), 0) / nl.limit_amount * 100)::numeric, 1)
+                    ELSE 0
+                END AS progress_percent
+            FROM number_limits nl
+            JOIN draws d ON nl.draw_id = d.id
+            LEFT JOIN exploded e ON nl.draw_id = e.draw_id AND nl.number = e.number
+            WHERE nl.owner_id = $1
+            GROUP BY d.name, nl.number, nl.limit_amount
+        `, [ownerId]);
+
+        const limitsProgress = limitsProgressResult.rows;
 
         // Statistiques globales (tous temps)
         const globalStats = await pool.query(
