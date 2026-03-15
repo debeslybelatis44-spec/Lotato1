@@ -1,7 +1,8 @@
-const CACHE_NAME = 'lotato-pro-v6';
+const CACHE_NAME = 'lotato-pro-v7';  // version changée pour forcer la mise à jour
 const urlsToCache = [
   '/',
   '/agent1.html',
+  '/superadmin.html',          // <-- AJOUTÉ
   '/style.css',
   '/config.js',
   '/drawManager.js',

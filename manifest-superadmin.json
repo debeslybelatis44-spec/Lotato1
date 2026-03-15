@@ -1,0 +1,20 @@
+{
+  "name": "¥ LOTATO PRO · Super Admin",
+  "short_name": "¥ Super Admin",
+  "description": "Panneau d'administration principale",
+  "start_url": "/superadmin.html",
+  "display": "standalone",
+  "background_color": "#1a0b2e",
+  "theme_color": "#ad00f1",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/72.png", "sizes": "72x72", "type": "image/png" },
+    { "src": "/96.png", "sizes": "96x96", "type": "image/png" },
+    { "src": "/128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "/144.png", "sizes": "144x144", "type": "image/png" },
+    { "src": "/152.png", "sizes": "152x152", "type": "image/png" },
+    { "src": "/192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/384.png", "sizes": "384x384", "type": "image/png" },
+    { "src": "/512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
