@@ -36,55 +36,40 @@ async function checkDatabaseConnection() {
         const result = await pool.query('SELECT NOW() as current_time');
         console.log(`🕒 Heure du serveur DB : ${result.rows[0].current_time}`);
         
-        // Migration : ajouter les colonnes manquantes dans la table users si nécessaire
-        await migrateUsersTable();
+        // Migration : ajouter les colonnes manquantes et tables
+        await migrateDatabase();
+        
+        // Créer un superadmin par défaut si aucun n'existe
+        await createDefaultSuperAdmin();
         
         console.log('✅ Base de données prête');
     } catch (err) {
         console.error('❌ Erreur de connexion à la base de données :', err.message);
-        process.exit(1); // Arrête le processus si la DB n'est pas accessible
+        process.exit(1);
     }
 }
 
-async function migrateUsersTable() {
+async function migrateDatabase() {
     try {
-        // Vérifier et ajouter la colonne cin
-        const cinExists = await pool.query(
-            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='cin'`
-        );
-        if (cinExists.rowCount === 0) {
-            await pool.query(`ALTER TABLE users ADD COLUMN cin VARCHAR(50)`);
-            console.log('➕ Colonne "cin" ajoutée à la table users');
+        // Ajouter les colonnes manquantes dans users
+        const columns = [
+            { name: 'cin', type: 'VARCHAR(50)' },
+            { name: 'zone', type: 'VARCHAR(100)' },
+            { name: 'commission_percentage', type: 'DECIMAL(5,2) DEFAULT 0' },
+            { name: 'created_at', type: 'TIMESTAMP DEFAULT NOW()' },
+            { name: 'phone', type: 'VARCHAR(20)' } // pour les propriétaires
+        ];
+        for (const col of columns) {
+            const exists = await pool.query(
+                `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='${col.name}'`
+            );
+            if (exists.rowCount === 0) {
+                await pool.query(`ALTER TABLE users ADD COLUMN ${col.name} ${col.type}`);
+                console.log(`➕ Colonne "${col.name}" ajoutée à la table users`);
+            }
         }
 
-        // Vérifier et ajouter la colonne zone
-        const zoneExists = await pool.query(
-            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='zone'`
-        );
-        if (zoneExists.rowCount === 0) {
-            await pool.query(`ALTER TABLE users ADD COLUMN zone VARCHAR(100)`);
-            console.log('➕ Colonne "zone" ajoutée à la table users');
-        }
-
-        // Vérifier et ajouter la colonne commission_percentage
-        const commissionExists = await pool.query(
-            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='commission_percentage'`
-        );
-        if (commissionExists.rowCount === 0) {
-            await pool.query(`ALTER TABLE users ADD COLUMN commission_percentage DECIMAL(5,2) DEFAULT 0`);
-            console.log('➕ Colonne "commission_percentage" ajoutée à la table users');
-        }
-
-        // Vérifier et ajouter la colonne created_at
-        const createdExists = await pool.query(
-            `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='created_at'`
-        );
-        if (createdExists.rowCount === 0) {
-            await pool.query(`ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT NOW()`);
-            console.log('➕ Colonne "created_at" ajoutée à la table users');
-        }
-
-        // Vérifier que la table number_limits existe (créer si besoin)
+        // Vérifier et créer la table number_limits
         const tableExists = await pool.query(
             `SELECT 1 FROM information_schema.tables WHERE table_name='number_limits'`
         );
@@ -101,9 +86,56 @@ async function migrateUsersTable() {
             console.log('➕ Table "number_limits" créée');
         }
 
+        // Créer la table admin_messages (messages du superadmin aux propriétaires)
+        const messagesTableExists = await pool.query(
+            `SELECT 1 FROM information_schema.tables WHERE table_name='admin_messages'`
+        );
+        if (messagesTableExists.rowCount === 0) {
+            await pool.query(`
+                CREATE TABLE admin_messages (
+                    id SERIAL PRIMARY KEY,
+                    owner_id INTEGER REFERENCES users(id),
+                    message TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    visible_until TIMESTAMP DEFAULT NOW() + INTERVAL '10 minutes'
+                )
+            `);
+            console.log('➕ Table "admin_messages" créée');
+        }
+
+        // Ajouter index pour améliorer les performances
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_owner_date ON tickets(owner_id, date)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_agent_date ON tickets(agent_id, date)`);
     } catch (err) {
         console.error('❌ Erreur lors des migrations:', err);
-        // On ne bloque pas le démarrage pour les migrations non critiques, mais on log
+    }
+}
+
+async function createDefaultSuperAdmin() {
+    try {
+        // Vérifier s'il existe déjà un superadmin
+        const result = await pool.query(`SELECT id FROM users WHERE role = 'superadmin'`);
+        if (result.rows.length > 0) {
+            console.log('👤 Superadmin existant, aucun ajout nécessaire.');
+            return;
+        }
+
+        // Créer un superadmin par défaut
+        const username = 'admin@lotato.com';
+        const password = 'admin123'; // À changer en production
+        const name = 'Super Admin';
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await pool.query(
+            `INSERT INTO users (name, username, password, role) VALUES ($1, $2, $3, $4)`,
+            [name, username, hashedPassword, 'superadmin']
+        );
+        console.log('✅ Superadmin par défaut créé :');
+        console.log(`   Identifiant : ${username}`);
+        console.log(`   Mot de passe : ${password}`);
+        console.log('   ⚠️  Pensez à modifier ce mot de passe après la première connexion !');
+    } catch (err) {
+        console.error('❌ Erreur lors de la création du superadmin par défaut :', err);
     }
 }
 
@@ -126,6 +158,14 @@ const authenticate = async (req, res, next) => {
 const requireRole = (role) => (req, res, next) => {
     if (req.user.role !== role) {
         return res.status(403).json({ error: 'Accès interdit' });
+    }
+    next();
+};
+
+// Middleware spécifique pour superadmin
+const requireSuperAdmin = (req, res, next) => {
+    if (req.user.role !== 'superadmin') {
+        return res.status(403).json({ error: 'Accès réservé au super-administrateur' });
     }
     next();
 };
@@ -176,6 +216,40 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// Login spécifique pour le superadmin (sans role dans le body)
+app.post('/api/auth/superadmin-login', async (req, res) => {
+    const { username, password } = req.body;
+    try {
+        const result = await pool.query(
+            'SELECT id, name, username, password, role FROM users WHERE username = $1 AND role = $2',
+            [username, 'superadmin']
+        );
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'Identifiants incorrects' });
+        }
+        const user = result.rows[0];
+        const valid = await bcrypt.compare(password, user.password);
+        if (!valid) {
+            return res.status(401).json({ error: 'Identifiants incorrects' });
+        }
+
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role, name: user.name },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            success: true,
+            token,
+            name: user.name
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 // Vérification du token
 app.get('/api/auth/verify', authenticate, (req, res) => {
     res.json({ valid: true, user: req.user });
@@ -186,7 +260,183 @@ app.post('/api/auth/logout', authenticate, (req, res) => {
     res.json({ success: true, message: 'Déconnexion réussie' });
 });
 
-// ==================== Configuration loterie ====================
+// ==================== Routes Superadmin ====================
+
+// Récupérer la liste de tous les propriétaires
+app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, name, username as email, phone, 
+                    CASE WHEN blocked THEN false ELSE true END as active
+             FROM users 
+             WHERE role = 'owner' 
+             ORDER BY id`
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Créer un nouveau propriétaire
+app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+    const { name, email, phone, password } = req.body;
+    if (!name || !email || !password) {
+        return res.status(400).json({ error: 'Nom, email et mot de passe requis' });
+    }
+    try {
+        const hashed = await bcrypt.hash(password, 10);
+        const result = await pool.query(
+            `INSERT INTO users (name, username, phone, password, role) 
+             VALUES ($1, $2, $3, $4, 'owner') 
+             RETURNING id`,
+            [name, email, phone || null, hashed]
+        );
+        res.json({ success: true, id: result.rows[0].id });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Email déjà utilisé' });
+        }
+        console.error(err);
+        res.status(500).json({ error: 'Erreur création propriétaire' });
+    }
+});
+
+// Bloquer / débloquer un propriétaire
+app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { block } = req.body; // true = bloquer, false = débloquer
+    try {
+        await pool.query(
+            'UPDATE users SET blocked = $1 WHERE id = $2 AND role = $3',
+            [block, id, 'owner']
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur mise à jour' });
+    }
+});
+
+// Supprimer définitivement un propriétaire
+app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Vérifier s'il a des agents/superviseurs ? Optionnel : on peut les supprimer en cascade ou refuser.
+        // Pour simplifier, on supprime en cascade si la table est configurée avec ON DELETE CASCADE, sinon on refuse.
+        // On va d'abord supprimer ses dépendances (agents, superviseurs, tickets, etc.)
+        await pool.query('DELETE FROM tickets WHERE owner_id = $1', [id]);
+        await pool.query('DELETE FROM users WHERE owner_id = $1 AND role IN ($2, $3)', [id, 'agent', 'supervisor']);
+        await pool.query('DELETE FROM draws WHERE owner_id = $1', [id]);
+        await pool.query('DELETE FROM lottery_settings WHERE owner_id = $1', [id]);
+        await pool.query('DELETE FROM number_limits WHERE owner_id = $1', [id]);
+        await pool.query('DELETE FROM blocked_numbers WHERE owner_id = $1', [id]);
+        await pool.query('DELETE FROM winning_results WHERE owner_id = $1', [id]);
+        await pool.query('DELETE FROM admin_messages WHERE owner_id = $1', [id]);
+        // Enfin supprimer le propriétaire
+        const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'owner']);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Propriétaire non trouvé' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur suppression' });
+    }
+});
+
+// Supprimer un agent
+app.delete('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Supprimer ses tickets d'abord
+        await pool.query('DELETE FROM tickets WHERE agent_id = $1', [id]);
+        const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'agent']);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Agent non trouvé' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur suppression agent' });
+    }
+});
+
+// Supprimer un superviseur
+app.delete('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Mettre à jour les agents qui dépendaient de ce superviseur (les passer à NULL)
+        await pool.query('UPDATE users SET supervisor_id = NULL WHERE supervisor_id = $1', [id]);
+        const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Superviseur non trouvé' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur suppression superviseur' });
+    }
+});
+
+// Envoyer un message à un propriétaire
+app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req, res) => {
+    const { ownerId, message } = req.body;
+    if (!ownerId || !message) {
+        return res.status(400).json({ error: 'ownerId et message requis' });
+    }
+    try {
+        // Vérifier que le propriétaire existe
+        const owner = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
+        if (owner.rows.length === 0) {
+            return res.status(404).json({ error: 'Propriétaire non trouvé' });
+        }
+        // Insérer le message (visible 10 minutes)
+        await pool.query(
+            `INSERT INTO admin_messages (owner_id, message, visible_until) 
+             VALUES ($1, $2, NOW() + INTERVAL '10 minutes')`,
+            [ownerId, message]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur envoi message' });
+    }
+});
+
+// Rapports consolidés par propriétaire (pour aujourd'hui)
+app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                u.id,
+                u.name,
+                COUNT(DISTINCT a.id) as agent_count,
+                COUNT(t.id) as ticket_count,
+                COALESCE(SUM(t.total_amount), 0) as total_bets,
+                COALESCE(SUM(t.win_amount), 0) as total_wins,
+                COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
+            FROM users u
+            LEFT JOIN users a ON u.id = a.owner_id AND a.role = 'agent'
+            LEFT JOIN tickets t ON u.id = t.owner_id AND t.date >= CURRENT_DATE
+            WHERE u.role = 'owner'
+            GROUP BY u.id
+            ORDER BY u.name
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur chargement rapports' });
+    }
+});
+
+// ==================== Routes communes ====================
+// ... (tout le reste du code existant, à partir d'ici on garde les routes déjà présentes)
+// On va inclure tout le code original depuis "Routes communes" jusqu'à la fin.
+// Pour éviter les doublons, on reprend le contenu original après cette ligne.
+
+// ==================== Routes communes (reprise de l'original) ====================
 app.get('/api/lottery-config', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -224,7 +474,6 @@ app.get('/api/lottery-config', authenticate, async (req, res) => {
     }
 });
 
-// ==================== Routes communes ====================
 app.get('/api/draws', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -672,10 +921,26 @@ app.post('/api/supervisor/tickets/:id/pay', authenticate, requireRole('superviso
 });
 
 // ==================== Routes propriétaire ====================
-// Messages pour le propriétaire (exemple statique)
-app.get('/api/owner/messages', authenticate, requireRole('owner'), (req, res) => {
-    // On peut stocker un message en base ou le générer dynamiquement
-    res.json({ message: "Bienvenue dans votre espace propriétaire. Pensez à vérifier les rapports du jour." });
+// Messages pour le propriétaire (lecture)
+app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, res) => {
+    const ownerId = req.user.id;
+    try {
+        const result = await pool.query(
+            `SELECT message, created_at FROM admin_messages 
+             WHERE owner_id = $1 AND visible_until > NOW() 
+             ORDER BY created_at DESC`,
+            [ownerId]
+        );
+        // On renvoie le plus récent ou une liste
+        if (result.rows.length > 0) {
+            res.json({ message: result.rows[0].message });
+        } else {
+            res.json({ message: null });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.get('/api/owner/supervisors', authenticate, requireRole('owner'), async (req, res) => {
