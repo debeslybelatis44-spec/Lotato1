@@ -106,6 +106,29 @@ async function migrateDatabase() {
         // Ajouter index pour améliorer les performances
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_owner_date ON tickets(owner_id, date)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_agent_date ON tickets(agent_id, date)`);
+
+        // Modifier la contrainte CHECK sur role pour inclure 'superadmin'
+        try {
+            // Vérifier si la contrainte existe
+            const constraintCheck = await pool.query(`
+                SELECT conname FROM pg_constraint 
+                WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass
+            `);
+            if (constraintCheck.rows.length > 0) {
+                // Supprimer l'ancienne contrainte
+                await pool.query(`ALTER TABLE users DROP CONSTRAINT users_role_check`);
+                console.log('🧹 Ancienne contrainte users_role_check supprimée');
+            }
+            // Créer la nouvelle contrainte avec les rôles autorisés
+            await pool.query(`
+                ALTER TABLE users ADD CONSTRAINT users_role_check 
+                CHECK (role IN ('owner', 'agent', 'supervisor', 'superadmin'))
+            `);
+            console.log('✅ Nouvelle contrainte users_role_check créée avec superadmin');
+        } catch (err) {
+            console.error('❌ Erreur lors de la modification de la contrainte role:', err);
+        }
+
     } catch (err) {
         console.error('❌ Erreur lors des migrations:', err);
     }
