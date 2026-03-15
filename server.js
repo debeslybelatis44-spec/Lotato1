@@ -15,7 +15,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// Connexion PostgreSQL (Neon)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
@@ -23,8 +22,105 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_securise';
 
-// ==================== Vérification de la base de données et migrations ====================
 console.log('🔄 Vérification de la base de données...');
+
+// ==================== Création des tables (si elles n'existent pas) ====================
+async function ensureTables() {
+    // Table draws
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS draws (
+            id SERIAL PRIMARY KEY,
+            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            time TIME NOT NULL,
+            color VARCHAR(20),
+            active BOOLEAN DEFAULT true
+        )
+    `);
+
+    // Table lottery_settings
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS lottery_settings (
+            owner_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            name VARCHAR(100),
+            slogan TEXT,
+            logo_url TEXT,
+            multipliers JSONB,
+            limits JSONB
+        )
+    `);
+
+    // Table blocked_numbers
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS blocked_numbers (
+            id SERIAL PRIMARY KEY,
+            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+            number VARCHAR(2) NOT NULL,
+            global BOOLEAN DEFAULT false,
+            UNIQUE(owner_id, draw_id, number)
+        )
+    `);
+
+    // Table number_limits
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS number_limits (
+            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+            number VARCHAR(2),
+            limit_amount DECIMAL(10,2) NOT NULL,
+            PRIMARY KEY (owner_id, draw_id, number)
+        )
+    `);
+
+    // Table winning_results
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS winning_results (
+            id SERIAL PRIMARY KEY,
+            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+            numbers VARCHAR(3) NOT NULL,
+            lotto3 VARCHAR(3),
+            date TIMESTAMP DEFAULT NOW()
+        )
+    `);
+
+    // Table tickets
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS tickets (
+            id SERIAL PRIMARY KEY,
+            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            agent_name VARCHAR(100),
+            draw_id INTEGER REFERENCES draws(id) ON DELETE SET NULL,
+            draw_name VARCHAR(100),
+            ticket_id VARCHAR(50) UNIQUE,
+            total_amount DECIMAL(10,2) DEFAULT 0,
+            win_amount DECIMAL(10,2) DEFAULT 0,
+            paid BOOLEAN DEFAULT false,
+            bets JSONB,
+            date TIMESTAMP DEFAULT NOW()
+        )
+    `);
+
+    // Table owner_messages (messages du superadmin aux propriétaires)
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS owner_messages (
+            id SERIAL PRIMARY KEY,
+            owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            message TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '10 minutes',
+            is_read BOOLEAN DEFAULT FALSE
+        )
+    `);
+
+    // Index pour améliorer les performances
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_owner_date ON tickets(owner_id, date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_agent_date ON tickets(agent_id, date)`);
+
+    console.log('✅ Tables vérifiées/créées');
+}
 
 async function checkDatabaseConnection() {
     try {
@@ -34,122 +130,11 @@ async function checkDatabaseConnection() {
 
         const result = await pool.query('SELECT NOW() as current_time');
         console.log(`🕒 Heure du serveur DB : ${result.rows[0].current_time}`);
-
-        await migrateDatabase();
-        await createDefaultSuperAdmin();
-
+        await ensureTables();
         console.log('✅ Base de données prête');
     } catch (err) {
         console.error('❌ Erreur de connexion à la base de données :', err.message);
         process.exit(1);
-    }
-}
-
-async function migrateDatabase() {
-    try {
-        // Ajouter les colonnes manquantes dans users
-        const columns = [
-            { name: 'cin', type: 'VARCHAR(50)' },
-            { name: 'zone', type: 'VARCHAR(100)' },
-            { name: 'commission_percentage', type: 'DECIMAL(5,2) DEFAULT 0' },
-            { name: 'created_at', type: 'TIMESTAMP DEFAULT NOW()' },
-            { name: 'phone', type: 'VARCHAR(20)' } // pour les propriétaires
-        ];
-        for (const col of columns) {
-            const exists = await pool.query(
-                `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='${col.name}'`
-            );
-            if (exists.rowCount === 0) {
-                await pool.query(`ALTER TABLE users ADD COLUMN ${col.name} ${col.type}`);
-                console.log(`➕ Colonne "${col.name}" ajoutée à la table users`);
-            }
-        }
-
-        // Vérifier et créer la table number_limits
-        const tableExists = await pool.query(
-            `SELECT 1 FROM information_schema.tables WHERE table_name='number_limits'`
-        );
-        if (tableExists.rowCount === 0) {
-            await pool.query(`
-                CREATE TABLE number_limits (
-                    owner_id INTEGER REFERENCES users(id),
-                    draw_id INTEGER REFERENCES draws(id),
-                    number VARCHAR(2),
-                    limit_amount DECIMAL(10,2) NOT NULL,
-                    PRIMARY KEY (owner_id, draw_id, number)
-                )
-            `);
-            console.log('➕ Table "number_limits" créée');
-        }
-
-        // Créer la table admin_messages (messages du superadmin aux propriétaires)
-        const messagesTableExists = await pool.query(
-            `SELECT 1 FROM information_schema.tables WHERE table_name='admin_messages'`
-        );
-        if (messagesTableExists.rowCount === 0) {
-            await pool.query(`
-                CREATE TABLE admin_messages (
-                    id SERIAL PRIMARY KEY,
-                    owner_id INTEGER REFERENCES users(id),
-                    message TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    visible_until TIMESTAMP DEFAULT NOW() + INTERVAL '10 minutes'
-                )
-            `);
-            console.log('➕ Table "admin_messages" créée');
-        }
-
-        // Ajouter index pour améliorer les performances
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_owner_date ON tickets(owner_id, date)`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_agent_date ON tickets(agent_id, date)`);
-
-        // Modifier la contrainte CHECK sur role pour inclure 'superadmin'
-        try {
-            const constraintCheck = await pool.query(`
-                SELECT conname FROM pg_constraint 
-                WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass
-            `);
-            if (constraintCheck.rows.length > 0) {
-                await pool.query(`ALTER TABLE users DROP CONSTRAINT users_role_check`);
-                console.log('🧹 Ancienne contrainte users_role_check supprimée');
-            }
-            await pool.query(`
-                ALTER TABLE users ADD CONSTRAINT users_role_check 
-                CHECK (role IN ('owner', 'agent', 'supervisor', 'superadmin'))
-            `);
-            console.log('✅ Nouvelle contrainte users_role_check créée avec superadmin');
-        } catch (err) {
-            console.error('❌ Erreur lors de la modification de la contrainte role:', err);
-        }
-
-    } catch (err) {
-        console.error('❌ Erreur lors des migrations:', err);
-    }
-}
-
-async function createDefaultSuperAdmin() {
-    try {
-        const result = await pool.query(`SELECT id FROM users WHERE role = 'superadmin'`);
-        if (result.rows.length > 0) {
-            console.log('👤 Superadmin existant, aucun ajout nécessaire.');
-            return;
-        }
-
-        const username = 'admin@lotato.com';
-        const password = 'admin123';
-        const name = 'Super Admin';
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        await pool.query(
-            `INSERT INTO users (name, username, password, role) VALUES ($1, $2, $3, $4)`,
-            [name, username, hashedPassword, 'superadmin']
-        );
-        console.log('✅ Superadmin par défaut créé :');
-        console.log(`   Identifiant : ${username}`);
-        console.log(`   Mot de passe : ${password}`);
-        console.log('   ⚠️  Pensez à modifier ce mot de passe après la première connexion !');
-    } catch (err) {
-        console.error('❌ Erreur lors de la création du superadmin par défaut :', err);
     }
 }
 
@@ -178,7 +163,7 @@ const requireRole = (role) => (req, res, next) => {
 
 const requireSuperAdmin = (req, res, next) => {
     if (req.user.role !== 'superadmin') {
-        return res.status(403).json({ error: 'Accès réservé au super-administrateur' });
+        return res.status(403).json({ error: 'Accès interdit' });
     }
     next();
 };
@@ -229,7 +214,6 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// Login spécifique pour le superadmin
 app.post('/api/auth/superadmin-login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -246,11 +230,13 @@ app.post('/api/auth/superadmin-login', async (req, res) => {
             return res.status(401).json({ error: 'Identifiants incorrects' });
         }
 
-        const token = jwt.sign(
-            { id: user.id, username: user.username, role: user.role, name: user.name },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        const payload = {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            name: user.name
+        };
+        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 
         res.json({
             success: true,
@@ -271,17 +257,12 @@ app.post('/api/auth/logout', authenticate, (req, res) => {
     res.json({ success: true, message: 'Déconnexion réussie' });
 });
 
-// ==================== Routes Superadmin ====================
-
-// Récupérer tous les propriétaires
+// ==================== Routes superadmin ====================
 app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT id, name, username as email, phone, 
-                    CASE WHEN blocked THEN false ELSE true END as active
-             FROM users 
-             WHERE role = 'owner' 
-             ORDER BY id`
+            'SELECT id, name, username as email, blocked as active, created_at FROM users WHERE role = $1 ORDER BY created_at DESC',
+            ['owner']
         );
         res.json(result.rows);
     } catch (err) {
@@ -290,34 +271,31 @@ app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, r
     }
 });
 
-// Créer un propriétaire
 app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
-    const { name, email, phone, password } = req.body;
+    const { name, email, password, phone } = req.body;
     if (!name || !email || !password) {
-        return res.status(400).json({ error: 'Nom, email et mot de passe requis' });
+        return res.status(400).json({ error: 'Champs requis manquants' });
     }
     try {
         const hashed = await bcrypt.hash(password, 10);
         const result = await pool.query(
-            `INSERT INTO users (name, username, phone, password, role) 
-             VALUES ($1, $2, $3, $4, 'owner') 
-             RETURNING id`,
-            [name, email, phone || null, hashed]
+            `INSERT INTO users (name, username, password, role, phone, created_at)
+             VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id`,
+            [name, email, hashed, 'owner', phone || null]
         );
         res.json({ success: true, id: result.rows[0].id });
     } catch (err) {
+        console.error(err);
         if (err.code === '23505') {
             return res.status(400).json({ error: 'Email déjà utilisé' });
         }
-        console.error(err);
-        res.status(500).json({ error: 'Erreur création propriétaire' });
+        res.status(500).json({ error: 'Erreur création' });
     }
 });
 
-// Bloquer/débloquer un propriétaire
 app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
-    const { block } = req.body;
+    const { block } = req.body; // true = bloquer, false = débloquer
     try {
         await pool.query(
             'UPDATE users SET blocked = $1 WHERE id = $2 AND role = $3',
@@ -330,22 +308,14 @@ app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, asy
     }
 });
 
-// Supprimer un propriétaire
 app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     try {
-        await pool.query('DELETE FROM tickets WHERE owner_id = $1', [id]);
-        await pool.query('DELETE FROM users WHERE owner_id = $1 AND role IN ($2, $3)', [id, 'agent', 'supervisor']);
-        await pool.query('DELETE FROM draws WHERE owner_id = $1', [id]);
-        await pool.query('DELETE FROM lottery_settings WHERE owner_id = $1', [id]);
-        await pool.query('DELETE FROM number_limits WHERE owner_id = $1', [id]);
-        await pool.query('DELETE FROM blocked_numbers WHERE owner_id = $1', [id]);
-        await pool.query('DELETE FROM winning_results WHERE owner_id = $1', [id]);
-        await pool.query('DELETE FROM admin_messages WHERE owner_id = $1', [id]);
-        const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'owner']);
-        if (result.rowCount === 0) {
+        const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'owner']);
+        if (check.rows.length === 0) {
             return res.status(404).json({ error: 'Propriétaire non trouvé' });
         }
+        await pool.query('DELETE FROM users WHERE id = $1', [id]);
         res.json({ success: true });
     } catch (err) {
         console.error(err);
@@ -353,86 +323,45 @@ app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async 
     }
 });
 
-// Récupérer tous les agents
-app.get('/api/superadmin/agents', authenticate, requireSuperAdmin, async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT u.id, u.name, u.username as email, u.owner_id, o.name as owner_name 
-             FROM users u 
-             LEFT JOIN users o ON u.owner_id = o.id 
-             WHERE u.role = 'agent' 
-             ORDER BY u.id`
-        );
-        res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur chargement agents' });
-    }
-});
-
-// Supprimer un agent
 app.delete('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     try {
-        await pool.query('DELETE FROM tickets WHERE agent_id = $1', [id]);
-        const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'agent']);
-        if (result.rowCount === 0) {
+        const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'agent']);
+        if (check.rows.length === 0) {
             return res.status(404).json({ error: 'Agent non trouvé' });
         }
+        await pool.query('DELETE FROM users WHERE id = $1', [id]);
         res.json({ success: true });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Erreur suppression agent' });
+        res.status(500).json({ error: 'Erreur suppression' });
     }
 });
 
-// Récupérer tous les superviseurs
-app.get('/api/superadmin/supervisors', authenticate, requireSuperAdmin, async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT u.id, u.name, u.username as email, u.owner_id, o.name as owner_name 
-             FROM users u 
-             LEFT JOIN users o ON u.owner_id = o.id 
-             WHERE u.role = 'supervisor' 
-             ORDER BY u.id`
-        );
-        res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur chargement superviseurs' });
-    }
-});
-
-// Supprimer un superviseur
 app.delete('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     try {
-        await pool.query('UPDATE users SET supervisor_id = NULL WHERE supervisor_id = $1', [id]);
-        const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
-        if (result.rowCount === 0) {
+        const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
+        if (check.rows.length === 0) {
             return res.status(404).json({ error: 'Superviseur non trouvé' });
         }
+        await pool.query('DELETE FROM users WHERE id = $1', [id]);
         res.json({ success: true });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Erreur suppression superviseur' });
+        res.status(500).json({ error: 'Erreur suppression' });
     }
 });
 
-// Envoyer un message à un propriétaire
 app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req, res) => {
     const { ownerId, message } = req.body;
     if (!ownerId || !message) {
         return res.status(400).json({ error: 'ownerId et message requis' });
     }
     try {
-        const owner = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
-        if (owner.rows.length === 0) {
-            return res.status(404).json({ error: 'Propriétaire non trouvé' });
-        }
         await pool.query(
-            `INSERT INTO admin_messages (owner_id, message, visible_until) 
-             VALUES ($1, $2, NOW() + INTERVAL '10 minutes')`,
+            `INSERT INTO owner_messages (owner_id, message, created_at, expires_at)
+             VALUES ($1, $2, NOW(), NOW() + INTERVAL '10 minutes')`,
             [ownerId, message]
         );
         res.json({ success: true });
@@ -442,71 +371,33 @@ app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req
     }
 });
 
-// Rapports consolidés par propriétaire (aujourd'hui)
 app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT 
                 u.id,
                 u.name,
-                COUNT(DISTINCT a.id) as agent_count,
+                u.username as email,
+                COUNT(DISTINCT ag.id) as agent_count,
                 COUNT(t.id) as ticket_count,
                 COALESCE(SUM(t.total_amount), 0) as total_bets,
                 COALESCE(SUM(t.win_amount), 0) as total_wins,
                 COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
             FROM users u
-            LEFT JOIN users a ON u.id = a.owner_id AND a.role = 'agent'
-            LEFT JOIN tickets t ON u.id = t.owner_id AND t.date >= CURRENT_DATE
+            LEFT JOIN users ag ON u.id = ag.owner_id AND ag.role = 'agent'
+            LEFT JOIN tickets t ON u.id = t.owner_id
             WHERE u.role = 'owner'
-            GROUP BY u.id
+            GROUP BY u.id, u.name, u.username
             ORDER BY u.name
         `);
         res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur chargement rapports' });
-    }
-});
-
-// ==================== Routes communes (agent, superviseur, propriétaire) ====================
-// (Ces routes sont reprises de l'ancien server.js sans modification)
-
-app.get('/api/lottery-config', authenticate, async (req, res) => {
-    const ownerId = req.user.ownerId;
-    try {
-        const result = await pool.query(
-            'SELECT name, slogan, logo_url as "logoUrl", multipliers, limits FROM lottery_settings WHERE owner_id = $1',
-            [ownerId]
-        );
-        if (result.rows.length === 0) {
-            res.json({
-                name: 'LOTATO PRO',
-                slogan: '',
-                logoUrl: '',
-                multipliers: {
-                    lot1: 60,
-                    lot2: 20,
-                    lot3: 10,
-                    lotto3: 500,
-                    lotto4: 5000,
-                    lotto5: 25000,
-                    mariage: 500
-                },
-                limits: {
-                    lotto3: 0,
-                    lotto4: 0,
-                    lotto5: 0
-                }
-            });
-        } else {
-            res.json(result.rows[0]);
-        }
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
+// ==================== Routes communes ====================
 app.get('/api/draws', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -952,9 +843,9 @@ app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, r
     const ownerId = req.user.id;
     try {
         const result = await pool.query(
-            `SELECT message, created_at FROM admin_messages 
-             WHERE owner_id = $1 AND visible_until > NOW() 
-             ORDER BY created_at DESC`,
+            `SELECT message FROM owner_messages
+             WHERE owner_id = $1 AND expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
             [ownerId]
         );
         if (result.rows.length > 0) {
@@ -1257,7 +1148,6 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     }
 });
 
-// Tableau de bord propriétaire enrichi avec progression des limites
 app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     try {
@@ -1284,42 +1174,7 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
              GROUP BY u.id`,
             [ownerId, 'agent']
         );
-
-        const limitsProgressResult = await pool.query(`
-            WITH today_bets AS (
-                SELECT 
-                    t.draw_id,
-                    jsonb_array_elements(t.bets::jsonb) AS bet
-                FROM tickets t
-                WHERE t.owner_id = $1 
-                  AND t.date >= CURRENT_DATE
-            ),
-            exploded AS (
-                SELECT 
-                    draw_id,
-                    bet->>'number' AS number,
-                    (bet->>'amount')::numeric AS amount
-                FROM today_bets
-            )
-            SELECT 
-                d.name AS draw_name,
-                nl.number,
-                nl.limit_amount,
-                COALESCE(SUM(e.amount), 0) AS current_bets,
-                CASE 
-                    WHEN nl.limit_amount > 0 
-                    THEN ROUND((COALESCE(SUM(e.amount), 0) / nl.limit_amount * 100)::numeric, 1)
-                    ELSE 0
-                END AS progress_percent
-            FROM number_limits nl
-            JOIN draws d ON nl.draw_id = d.id
-            LEFT JOIN exploded e ON nl.draw_id = e.draw_id AND nl.number = e.number
-            WHERE nl.owner_id = $1
-            GROUP BY d.name, nl.number, nl.limit_amount
-        `, [ownerId]);
-
-        const limitsProgress = limitsProgressResult.rows;
-
+        const limitsProgress = [];
         const globalStats = await pool.query(
             `SELECT 
                 COUNT(*) as total_tickets_all,
@@ -1356,7 +1211,6 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
     }
 });
 
-// Rapports propriétaire avec détails
 app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     const { supervisorId, agentId, drawId, period, fromDate, toDate, gainLoss } = req.query;
@@ -1491,7 +1345,6 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     }
 });
 
-// Tickets propriétaire avec filtres avancés
 app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     const { page = 0, limit = 20, supervisorId, agentId, drawId, period, fromDate, toDate, gain, paid } = req.query;
