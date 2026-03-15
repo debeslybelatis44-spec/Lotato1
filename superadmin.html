@@ -35,6 +35,9 @@
         .alert { padding:15px; border-radius:12px; margin-bottom:20px; display:none; }
         .alert-success { background:rgba(0,241,144,0.2); border:1px solid #00f190; color:#00f190; }
         .alert-danger { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; }
+        table { width:100%; border-collapse:collapse; }
+        th { text-align:left; padding:10px; background:rgba(255,255,255,0.05); }
+        td { padding:10px; border-bottom:1px solid rgba(255,255,255,0.05); }
     </style>
 </head>
 <body>
@@ -43,7 +46,7 @@
             <h2 style="text-align:center; margin-bottom:30px;">🔐 Super Admin</h2>
             <div class="form-group">
                 <label>Identifiant</label>
-                <input type="text" id="login-username" placeholder="superadmin@lotato.com">
+                <input type="text" id="login-username" placeholder="admin@lotato.com">
             </div>
             <div class="form-group">
                 <label>Mot de passe</label>
@@ -90,20 +93,40 @@
 
         <!-- Onglet Agents & Superviseurs -->
         <div id="tab-agents" class="tab-content">
-            <div class="section-title"><i class="fas fa-user-times"></i> Supprimer un agent ou superviseur</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Type</label>
-                    <select id="delete-type">
-                        <option value="agent">Agent</option>
-                        <option value="supervisor">Superviseur</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>ID de l'utilisateur</label>
-                    <input type="number" id="delete-id" placeholder="123">
-                </div>
-                <div><button class="btn-danger" onclick="deleteUser()">Supprimer définitivement</button></div>
+            <div class="section-title"><i class="fas fa-users"></i> Liste des agents</div>
+            <div id="agents-list-container" class="list-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nom</th>
+                            <th>Email</th>
+                            <th>Propriétaire</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="agents-table-body">
+                        <!-- chargement dynamique -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section-title" style="margin-top:30px;"><i class="fas fa-user-tie"></i> Liste des superviseurs</div>
+            <div id="supervisors-list-container" class="list-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nom</th>
+                            <th>Email</th>
+                            <th>Propriétaire</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="supervisors-table-body">
+                        <!-- chargement dynamique -->
+                    </tbody>
+                </table>
             </div>
             <div id="delete-message" class="alert"></div>
         </div>
@@ -133,11 +156,10 @@
     </div>
 
     <script>
-        const API_BASE = ''; // Laissez vide si même origine
+        const API_BASE = '';
         let token = localStorage.getItem('superadmin_token');
         let adminName = localStorage.getItem('superadmin_name') || '';
 
-        // Vérifier si déjà connecté
         if (token) {
             document.getElementById('login-section').style.display = 'none';
             document.getElementById('main-section').style.display = 'block';
@@ -147,7 +169,6 @@
             loadReports();
         }
 
-        // Connexion super-admin (sans rechargement)
         async function superAdminLogin() {
             const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
@@ -167,7 +188,6 @@
                     adminName = data.name;
                     localStorage.setItem('superadmin_token', token);
                     localStorage.setItem('superadmin_name', adminName);
-                    // Afficher la section principale sans recharger
                     document.getElementById('login-section').style.display = 'none';
                     document.getElementById('main-section').style.display = 'block';
                     document.getElementById('admin-name').innerText = adminName;
@@ -194,18 +214,20 @@
             window.location.reload();
         }
 
-        // Navigation par onglets
         function switchTab(tabId) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelector(`.tab[onclick*="${tabId}"]`).classList.add('active');
             document.getElementById(`tab-${tabId}`).classList.add('active');
             if (tabId === 'owners') loadOwners();
+            if (tabId === 'agents') {
+                loadAgents();
+                loadSupervisors();
+            }
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
         }
 
-        // Fonction utilitaire pour les requêtes avec token
         async function fetchWithToken(url, options = {}) {
             const headers = {
                 'Authorization': `Bearer ${token}`,
@@ -213,7 +235,6 @@
             };
             const res = await fetch(url, { ...options, headers });
             if (res.status === 401) {
-                // Token invalide ou expiré
                 alert('Session expirée, veuillez vous reconnecter');
                 logout();
                 return null;
@@ -273,7 +294,7 @@
         }
 
         async function toggleBlockOwner(id, currentActive) {
-            const block = currentActive; // si actif, on bloque (true)
+            const block = currentActive;
             const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${id}/block`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -290,20 +311,67 @@
             if (res && res.ok) loadOwners();
         }
 
-        // ========== SUPPRESSION AGENT / SUPERVISEUR ==========
-        async function deleteUser() {
-            const type = document.getElementById('delete-type').value;
-            const id = document.getElementById('delete-id').value;
-            if (!id) return;
-            if (!confirm(`Supprimer définitivement ${type} ID ${id} ?`)) return;
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/${type}s/${id}`, {
+        // ========== GESTION AGENTS ==========
+        async function loadAgents() {
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/agents`);
+            if (!res) return;
+            const agents = await res.json();
+            let html = '';
+            agents.forEach(a => {
+                html += `<tr>
+                    <td>${a.id}</td>
+                    <td>${a.name}</td>
+                    <td>${a.email}</td>
+                    <td>${a.owner_name || 'N/A'} (ID: ${a.owner_id || '?'})</td>
+                    <td><button class="btn-danger" style="padding:4px 10px;" onclick="deleteAgent(${a.id})"><i class="fas fa-trash"></i> Supprimer</button></td>
+                </tr>`;
+            });
+            document.getElementById('agents-table-body').innerHTML = html || '<tr><td colspan="5">Aucun agent</td></tr>';
+        }
+
+        async function deleteAgent(id) {
+            if (!confirm(`Supprimer définitivement l'agent ID ${id} ?`)) return;
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/agents/${id}`, {
                 method: 'DELETE'
             });
             if (!res) return;
             const data = await res.json();
             if (res.ok) {
-                showMessage('delete-message', '✅ Supprimé avec succès', true);
-                document.getElementById('delete-id').value = '';
+                showMessage('delete-message', '✅ Agent supprimé avec succès', true);
+                loadAgents();
+            } else {
+                showMessage('delete-message', '❌ ' + (data.error || 'Erreur'), false);
+            }
+        }
+
+        // ========== GESTION SUPERVISEURS ==========
+        async function loadSupervisors() {
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/supervisors`);
+            if (!res) return;
+            const supervisors = await res.json();
+            let html = '';
+            supervisors.forEach(s => {
+                html += `<tr>
+                    <td>${s.id}</td>
+                    <td>${s.name}</td>
+                    <td>${s.email}</td>
+                    <td>${s.owner_name || 'N/A'} (ID: ${s.owner_id || '?'})</td>
+                    <td><button class="btn-danger" style="padding:4px 10px;" onclick="deleteSupervisor(${s.id})"><i class="fas fa-trash"></i> Supprimer</button></td>
+                </tr>`;
+            });
+            document.getElementById('supervisors-table-body').innerHTML = html || '<tr><td colspan="5">Aucun superviseur</td></tr>';
+        }
+
+        async function deleteSupervisor(id) {
+            if (!confirm(`Supprimer définitivement le superviseur ID ${id} ?`)) return;
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/supervisors/${id}`, {
+                method: 'DELETE'
+            });
+            if (!res) return;
+            const data = await res.json();
+            if (res.ok) {
+                showMessage('delete-message', '✅ Superviseur supprimé avec succès', true);
+                loadSupervisors();
             } else {
                 showMessage('delete-message', '❌ ' + (data.error || 'Erreur'), false);
             }
@@ -377,7 +445,8 @@
         window.createOwner = createOwner;
         window.toggleBlockOwner = toggleBlockOwner;
         window.deleteOwner = deleteOwner;
-        window.deleteUser = deleteUser;
+        window.deleteAgent = deleteAgent;
+        window.deleteSupervisor = deleteSupervisor;
         window.sendMessage = sendMessage;
         window.loadReports = loadReports;
     </script>

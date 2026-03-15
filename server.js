@@ -13,7 +13,7 @@ const port = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname))); // sert index.html, agent1.html, etc.
+app.use(express.static(path.join(__dirname)));
 
 // Connexion PostgreSQL (Neon)
 const pool = new Pool({
@@ -32,16 +32,12 @@ async function checkDatabaseConnection() {
         console.log('✅ Connecté à PostgreSQL');
         client.release();
 
-        // Test d'une requête simple
         const result = await pool.query('SELECT NOW() as current_time');
         console.log(`🕒 Heure du serveur DB : ${result.rows[0].current_time}`);
-        
-        // Migration : ajouter les colonnes manquantes et tables
+
         await migrateDatabase();
-        
-        // Créer un superadmin par défaut si aucun n'existe
         await createDefaultSuperAdmin();
-        
+
         console.log('✅ Base de données prête');
     } catch (err) {
         console.error('❌ Erreur de connexion à la base de données :', err.message);
@@ -109,17 +105,14 @@ async function migrateDatabase() {
 
         // Modifier la contrainte CHECK sur role pour inclure 'superadmin'
         try {
-            // Vérifier si la contrainte existe
             const constraintCheck = await pool.query(`
                 SELECT conname FROM pg_constraint 
                 WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass
             `);
             if (constraintCheck.rows.length > 0) {
-                // Supprimer l'ancienne contrainte
                 await pool.query(`ALTER TABLE users DROP CONSTRAINT users_role_check`);
                 console.log('🧹 Ancienne contrainte users_role_check supprimée');
             }
-            // Créer la nouvelle contrainte avec les rôles autorisés
             await pool.query(`
                 ALTER TABLE users ADD CONSTRAINT users_role_check 
                 CHECK (role IN ('owner', 'agent', 'supervisor', 'superadmin'))
@@ -136,16 +129,14 @@ async function migrateDatabase() {
 
 async function createDefaultSuperAdmin() {
     try {
-        // Vérifier s'il existe déjà un superadmin
         const result = await pool.query(`SELECT id FROM users WHERE role = 'superadmin'`);
         if (result.rows.length > 0) {
             console.log('👤 Superadmin existant, aucun ajout nécessaire.');
             return;
         }
 
-        // Créer un superadmin par défaut
         const username = 'admin@lotato.com';
-        const password = 'admin123'; // À changer en production
+        const password = 'admin123';
         const name = 'Super Admin';
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -185,7 +176,6 @@ const requireRole = (role) => (req, res, next) => {
     next();
 };
 
-// Middleware spécifique pour superadmin
 const requireSuperAdmin = (req, res, next) => {
     if (req.user.role !== 'superadmin') {
         return res.status(403).json({ error: 'Accès réservé au super-administrateur' });
@@ -239,7 +229,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// Login spécifique pour le superadmin (sans role dans le body)
+// Login spécifique pour le superadmin
 app.post('/api/auth/superadmin-login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -273,19 +263,17 @@ app.post('/api/auth/superadmin-login', async (req, res) => {
     }
 });
 
-// Vérification du token
 app.get('/api/auth/verify', authenticate, (req, res) => {
     res.json({ valid: true, user: req.user });
 });
 
-// Déconnexion (simulée)
 app.post('/api/auth/logout', authenticate, (req, res) => {
     res.json({ success: true, message: 'Déconnexion réussie' });
 });
 
 // ==================== Routes Superadmin ====================
 
-// Récupérer la liste de tous les propriétaires
+// Récupérer tous les propriétaires
 app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const result = await pool.query(
@@ -302,7 +290,7 @@ app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, r
     }
 });
 
-// Créer un nouveau propriétaire
+// Créer un propriétaire
 app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
     const { name, email, phone, password } = req.body;
     if (!name || !email || !password) {
@@ -326,10 +314,10 @@ app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, 
     }
 });
 
-// Bloquer / débloquer un propriétaire
+// Bloquer/débloquer un propriétaire
 app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
-    const { block } = req.body; // true = bloquer, false = débloquer
+    const { block } = req.body;
     try {
         await pool.query(
             'UPDATE users SET blocked = $1 WHERE id = $2 AND role = $3',
@@ -342,13 +330,10 @@ app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, asy
     }
 });
 
-// Supprimer définitivement un propriétaire
+// Supprimer un propriétaire
 app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     try {
-        // Vérifier s'il a des agents/superviseurs ? Optionnel : on peut les supprimer en cascade ou refuser.
-        // Pour simplifier, on supprime en cascade si la table est configurée avec ON DELETE CASCADE, sinon on refuse.
-        // On va d'abord supprimer ses dépendances (agents, superviseurs, tickets, etc.)
         await pool.query('DELETE FROM tickets WHERE owner_id = $1', [id]);
         await pool.query('DELETE FROM users WHERE owner_id = $1 AND role IN ($2, $3)', [id, 'agent', 'supervisor']);
         await pool.query('DELETE FROM draws WHERE owner_id = $1', [id]);
@@ -357,7 +342,6 @@ app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async 
         await pool.query('DELETE FROM blocked_numbers WHERE owner_id = $1', [id]);
         await pool.query('DELETE FROM winning_results WHERE owner_id = $1', [id]);
         await pool.query('DELETE FROM admin_messages WHERE owner_id = $1', [id]);
-        // Enfin supprimer le propriétaire
         const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'owner']);
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Propriétaire non trouvé' });
@@ -369,11 +353,27 @@ app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async 
     }
 });
 
+// Récupérer tous les agents
+app.get('/api/superadmin/agents', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT u.id, u.name, u.username as email, u.owner_id, o.name as owner_name 
+             FROM users u 
+             LEFT JOIN users o ON u.owner_id = o.id 
+             WHERE u.role = 'agent' 
+             ORDER BY u.id`
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur chargement agents' });
+    }
+});
+
 // Supprimer un agent
 app.delete('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     try {
-        // Supprimer ses tickets d'abord
         await pool.query('DELETE FROM tickets WHERE agent_id = $1', [id]);
         const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'agent']);
         if (result.rowCount === 0) {
@@ -386,11 +386,27 @@ app.delete('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async 
     }
 });
 
+// Récupérer tous les superviseurs
+app.get('/api/superadmin/supervisors', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT u.id, u.name, u.username as email, u.owner_id, o.name as owner_name 
+             FROM users u 
+             LEFT JOIN users o ON u.owner_id = o.id 
+             WHERE u.role = 'supervisor' 
+             ORDER BY u.id`
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur chargement superviseurs' });
+    }
+});
+
 // Supprimer un superviseur
 app.delete('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     try {
-        // Mettre à jour les agents qui dépendaient de ce superviseur (les passer à NULL)
         await pool.query('UPDATE users SET supervisor_id = NULL WHERE supervisor_id = $1', [id]);
         const result = await pool.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
         if (result.rowCount === 0) {
@@ -410,12 +426,10 @@ app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req
         return res.status(400).json({ error: 'ownerId et message requis' });
     }
     try {
-        // Vérifier que le propriétaire existe
         const owner = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
         if (owner.rows.length === 0) {
             return res.status(404).json({ error: 'Propriétaire non trouvé' });
         }
-        // Insérer le message (visible 10 minutes)
         await pool.query(
             `INSERT INTO admin_messages (owner_id, message, visible_until) 
              VALUES ($1, $2, NOW() + INTERVAL '10 minutes')`,
@@ -428,7 +442,7 @@ app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req
     }
 });
 
-// Rapports consolidés par propriétaire (pour aujourd'hui)
+// Rapports consolidés par propriétaire (aujourd'hui)
 app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -454,12 +468,9 @@ app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async
     }
 });
 
-// ==================== Routes communes ====================
-// ... (tout le reste du code existant, à partir d'ici on garde les routes déjà présentes)
-// On va inclure tout le code original depuis "Routes communes" jusqu'à la fin.
-// Pour éviter les doublons, on reprend le contenu original après cette ligne.
+// ==================== Routes communes (agent, superviseur, propriétaire) ====================
+// (Ces routes sont reprises de l'ancien server.js sans modification)
 
-// ==================== Routes communes (reprise de l'original) ====================
 app.get('/api/lottery-config', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
@@ -468,7 +479,6 @@ app.get('/api/lottery-config', authenticate, async (req, res) => {
             [ownerId]
         );
         if (result.rows.length === 0) {
-            // Valeurs par défaut
             res.json({
                 name: 'LOTATO PRO',
                 slogan: '',
@@ -604,7 +614,6 @@ app.delete('/api/tickets/:id', authenticate, async (req, res) => {
         }
         const t = ticket.rows[0];
 
-        // Vérification des droits
         if (user.role === 'owner') {
             if (t.owner_id !== user.id) {
                 return res.status(403).json({ error: 'Accès interdit' });
@@ -625,7 +634,6 @@ app.delete('/api/tickets/:id', authenticate, async (req, res) => {
             return res.status(403).json({ error: 'Accès interdit' });
         }
 
-        // Délai de suppression (3 minutes) pour les agents et superviseurs
         const date = new Date(t.date);
         const now = new Date();
         const diffMinutes = (now - date) / (1000 * 60);
@@ -745,7 +753,6 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
 });
 
 app.post('/api/tickets/check-winners', authenticate, async (req, res) => {
-    // Placeholder – déclencherait normalement un calcul des gains
     res.json({ success: true, message: 'Vérification des gagnants déclenchée' });
 });
 
@@ -844,7 +851,6 @@ app.get('/api/supervisor/tickets', authenticate, requireRole('supervisor'), asyn
         query += ` AND t.paid = false`;
     }
 
-    // Filtre date
     if (period === 'today') {
         query += ` AND t.date >= CURRENT_DATE`;
     } else if (period === 'yesterday') {
@@ -859,12 +865,10 @@ app.get('/api/supervisor/tickets', authenticate, requireRole('supervisor'), asyn
         paramIndex += 2;
     }
 
-    // Comptage total
     const countQuery = query.replace('SELECT t.*', 'SELECT COUNT(*)');
     const countResult = await pool.query(countQuery, params);
     const total = parseInt(countResult.rows[0].count);
 
-    // Pagination
     query += ` ORDER BY t.date DESC LIMIT $${paramIndex} OFFSET $${paramIndex+1}`;
     params.push(limit, page * limit);
 
@@ -944,7 +948,6 @@ app.post('/api/supervisor/tickets/:id/pay', authenticate, requireRole('superviso
 });
 
 // ==================== Routes propriétaire ====================
-// Messages pour le propriétaire (lecture)
 app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     try {
@@ -954,7 +957,6 @@ app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, r
              ORDER BY created_at DESC`,
             [ownerId]
         );
-        // On renvoie le plus récent ou une liste
         if (result.rows.length > 0) {
             res.json({ message: result.rows[0].message });
         } else {
@@ -973,7 +975,6 @@ app.get('/api/owner/supervisors', authenticate, requireRole('owner'), async (req
             'SELECT id, name, username, blocked FROM users WHERE owner_id = $1 AND role = $2',
             [ownerId, 'supervisor']
         );
-        // Ajouter un champ email = username pour compatibilité frontend
         const supervisors = result.rows.map(s => ({ ...s, email: s.username }));
         res.json(supervisors);
     } catch (err) {
@@ -992,7 +993,6 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
              WHERE u.owner_id = $1 AND u.role = $2`,
             [ownerId, 'agent']
         );
-        // Ajouter un champ email = username pour compatibilité frontend
         const agents = result.rows.map(a => ({ ...a, email: a.username }));
         res.json(agents);
     } catch (err) {
@@ -1014,7 +1014,6 @@ app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (re
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
             [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
         );
-        // Ajouter email = username
         const user = { ...result.rows[0], email: result.rows[0].username };
         res.json({ success: true, user });
     } catch (err) {
@@ -1262,22 +1261,18 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
 app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
     try {
-        // Superviseurs
         const supervisors = await pool.query(
             'SELECT id, name, username FROM users WHERE owner_id = $1 AND role = $2',
             [ownerId, 'supervisor']
         );
-        // Agents
         const agents = await pool.query(
             'SELECT id, name, username FROM users WHERE owner_id = $1 AND role = $2',
             [ownerId, 'agent']
         );
-        // Ventes du jour
         const sales = await pool.query(
             'SELECT COALESCE(SUM(total_amount), 0) as total FROM tickets WHERE owner_id = $1 AND date >= CURRENT_DATE',
             [ownerId]
         );
-        // Gains/pertes des agents aujourd'hui
         const agentsGainLoss = await pool.query(
             `SELECT u.id, u.name,
                 COALESCE(SUM(t.total_amount), 0) as total_bets,
@@ -1290,7 +1285,6 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
             [ownerId, 'agent']
         );
 
-        // Progression des limites (montants misés aujourd'hui par rapport aux limites)
         const limitsProgressResult = await pool.query(`
             WITH today_bets AS (
                 SELECT 
@@ -1326,7 +1320,6 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
 
         const limitsProgress = limitsProgressResult.rows;
 
-        // Statistiques globales (tous temps)
         const globalStats = await pool.query(
             `SELECT 
                 COUNT(*) as total_tickets_all,
@@ -1339,7 +1332,6 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
             [ownerId]
         );
 
-        // Ajouter email = username pour compatibilité frontend
         const connected = {
             supervisors_count: supervisors.rows.length,
             supervisors: supervisors.rows.map(s => ({ ...s, email: s.username })),
@@ -1369,7 +1361,6 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     const ownerId = req.user.id;
     const { supervisorId, agentId, drawId, period, fromDate, toDate, gainLoss } = req.query;
 
-    // Construction de la requête de base
     let baseQuery = `
         SELECT 
             COUNT(id) as tickets,
@@ -1395,7 +1386,6 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
         params.push(drawId);
     }
 
-    // Filtre date
     if (period === 'today') {
         baseQuery += ` AND date >= CURRENT_DATE`;
     } else if (period === 'yesterday') {
@@ -1420,7 +1410,6 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
         const summaryResult = await pool.query(baseQuery, params);
         const summary = summaryResult.rows[0];
 
-        // Détail par tirage
         let detailQuery = `
             SELECT d.id as draw_id, d.name as draw_name, 
                    COUNT(t.id) as tickets, 
@@ -1471,7 +1460,6 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
 
         const detailResult = await pool.query(detailQuery, detailParams);
 
-        // Calcul gain_count et loss_count (agents en gain/perte aujourd'hui)
         const gainLossCount = await pool.query(
             `SELECT 
                 COUNT(CASE WHEN net_result > 0 THEN 1 END) as gain_count,
@@ -1529,7 +1517,6 @@ app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, re
         params.push(drawId);
     }
 
-    // Filtre date
     if (period === 'today') {
         query += ` AND t.date >= CURRENT_DATE`;
     } else if (period === 'yesterday') {
@@ -1556,12 +1543,10 @@ app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, re
         query += ` AND t.paid = false`;
     }
 
-    // Compter total
     const countQuery = query.replace('SELECT t.*', 'SELECT COUNT(*)');
     const countResult = await pool.query(countQuery, params);
     const total = parseInt(countResult.rows[0].count);
 
-    // Pagination
     query += ` ORDER BY t.date DESC LIMIT $${paramIndex} OFFSET $${paramIndex+1}`;
     params.push(parseInt(limit), parseInt(page) * parseInt(limit));
 
