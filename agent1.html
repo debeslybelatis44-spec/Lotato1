@@ -311,5 +311,78 @@
     <script src="apiService.js"></script>
     <script src="uiManager.js"></script>
     <script src="main.js"></script>
+
+    <!-- Bannière d'installation PWA et Service Worker -->
+    <div id="install-banner" style="display: none; position: fixed; bottom: 20px; left: 20px; right: 20px; background: linear-gradient(135deg, #1e1b4b, #312e81); color: white; padding: 16px 20px; border-radius: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 1000; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <i class="fas fa-download" style="font-size: 24px; color: #fbbf24;"></i>
+            <div>
+                <strong style="font-size: 16px; display: block;">Installe LOTATO PRO</strong>
+                <span style="font-size: 14px; opacity: 0.9;">Ajoute sur l'écran d'accueil pour un accès rapide</span>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button id="install-btn" style="background: #fbbf24; border: none; color: #1e1b4b; padding: 10px 20px; border-radius: 40px; font-weight: bold; cursor: pointer; font-size: 14px; box-shadow: 0 4px 10px rgba(251,191,36,0.3);">
+                <i class="fas fa-arrow-down"></i> Installer
+            </button>
+            <button id="close-banner" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 10px 16px; border-radius: 40px; cursor: pointer; font-size: 14px;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // Enregistrement du Service Worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(reg => console.log('✅ Service Worker enregistré', reg))
+                    .catch(err => console.error('❌ Erreur SW :', err));
+            }
+
+            // Variables pour l'installation
+            let deferredPrompt;
+            const installBanner = document.getElementById('install-banner');
+            const installBtn = document.getElementById('install-btn');
+            const closeBanner = document.getElementById('close-banner');
+
+            // Vérifier si l'app est déjà installée (mode standalone)
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                                 window.navigator.standalone === true; // pour iOS
+
+            if (!isStandalone) {
+                // Écouter l'événement beforeinstallprompt
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault(); // Empêche l'affichage automatique
+                    deferredPrompt = e;
+                    installBanner.style.display = 'flex'; // Affiche la bannière
+                });
+
+                // Action sur le bouton Installer
+                installBtn.addEventListener('click', async () => {
+                    if (!deferredPrompt) {
+                        alert("L'installation automatique n'est pas disponible. Vous pouvez ajouter cette page à l'écran d'accueil via le menu du navigateur (Partager > Ajouter à l'écran d'accueil).");
+                        return;
+                    }
+                    deferredPrompt.prompt(); // Affiche la boîte native
+                    const choiceResult = await deferredPrompt.userChoice;
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('✅ Installation acceptée');
+                        installBanner.style.display = 'none';
+                    } else {
+                        console.log('❌ Installation refusée');
+                    }
+                    deferredPrompt = null; // On ne peut l'utiliser qu'une fois
+                });
+
+                // Fermer la bannière sans installer
+                closeBanner.addEventListener('click', () => {
+                    installBanner.style.display = 'none';
+                });
+            } else {
+                console.log('📱 Application déjà installée');
+            }
+        })();
+    </script>
 </body>
 </html>
