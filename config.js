@@ -41,7 +41,7 @@ const CONFIG = {
         { id: 'ga_matin', name: 'Georgia Matin', time: '12:30', color: 'var(--georgia)' },
         { id: 'ga_soir', name: 'Georgia Soir', time: '19:00', color: 'var(--georgia)' },
         { id: 'tx_matin', name: 'Texas Matin', time: '11:30', color: 'var(--texas)' },
-        { id: 'tx_soir', name: 'Texas Soir', time: '18:30', color: 'var(--texas)' }
+        { id: 'tx_soir', name: 'Texas Soir', time: '23:30', color: 'var(--texas)' }
     ],
     LOTTERY_NAME: 'LOTATO PRO',
     LOTTERY_LOGO: '',
