@@ -755,6 +755,29 @@ app.delete('/api/tickets/:id', authenticate, async (req, res) => {
         res.status(500).json({ error: 'Erreur suppression' });
     }
 });
+// Ajouter après les routes existantes des agents (par exemple après /api/tickets/save)
+
+// Marquer un ticket comme payé (pour un agent)
+app.post('/api/winners/pay/:ticketId', authenticate, requireRole('agent'), async (req, res) => {
+    const ticketId = req.params.ticketId;
+    const agentId = req.user.id;
+    const ownerId = req.user.ownerId;
+    try {
+        // Vérifier que le ticket appartient bien à l'agent
+        const ticket = await pool.query(
+            'SELECT id FROM tickets WHERE id = $1 AND agent_id = $2 AND owner_id = $3',
+            [ticketId, agentId, ownerId]
+        );
+        if (ticket.rows.length === 0) {
+            return res.status(404).json({ error: 'Ticket non trouvé ou non autorisé' });
+        }
+        await pool.query('UPDATE tickets SET paid = true, paid_at = NOW() WHERE id = $1', [ticketId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('❌ Erreur paiement ticket:', err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
 
 // ==================== Rapports et gagnants pour les agents ====================
 app.get('/api/reports', authenticate, async (req, res) => {
