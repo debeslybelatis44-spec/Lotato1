@@ -13,7 +13,7 @@ const API_CONFIG = {
         GET_AGENTS: '/agents',
         DELETE_TICKET: '/tickets',
         GET_DRAW_REPORT: '/reports/draw',
-        GET_LOTTERY_CONFIG: '/lottery-config',
+        GET_LOTTERY_CONFIG: '/lottery-settings',
         CHECK_WINNING_TICKETS: '/tickets/check-winners',
         GET_LIMITS: '/number-limits' // nouvelle route
     }
