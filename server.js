@@ -256,6 +256,37 @@ app.get('/api/auth/verify', authenticate, (req, res) => {
 app.post('/api/auth/logout', authenticate, (req, res) => {
     res.json({ success: true, message: 'Déconnexion réussie' });
 });
+// ==================== Route pour les paramètres de la loterie (accessible à tous les utilisateurs authentifiés) ====================
+app.get('/api/lottery-settings', authenticate, async (req, res) => {
+    const ownerId = req.user.ownerId; // Pour les agents et superviseurs, ownerId est défini. Pour un propriétaire, ownerId = user.id
+    try {
+        const result = await pool.query(
+            'SELECT name, slogan, logo_url, multipliers, limits FROM lottery_settings WHERE owner_id = $1',
+            [ownerId]
+        );
+        if (result.rows.length === 0) {
+            // Valeurs par défaut si aucun réglage n'existe
+            return res.json({ 
+                name: 'LOTATO PRO', 
+                slogan: '', 
+                logoUrl: '', 
+                multipliers: {}, 
+                limits: {} 
+            });
+        }
+        const row = result.rows[0];
+        res.json({
+            name: row.name,
+            slogan: row.slogan,
+            logoUrl: row.logo_url,
+            multipliers: row.multipliers,
+            limits: row.limits
+        });
+    } catch (err) {
+        console.error('Erreur lors de la récupération des paramètres de loterie :', err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
 
 // ==================== Routes superadmin ====================
 app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
