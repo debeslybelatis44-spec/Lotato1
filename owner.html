@@ -58,6 +58,16 @@
             font-weight: bold;
             display: none;
         }
+        #daily-profit-message {
+            grid-column: span 2;
+            margin-bottom: 20px;
+            padding: 20px;
+            border-radius: 16px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -77,7 +87,6 @@
             <i class="fas fa-bell"></i> <span id="owner-message-text"></span>
         </div>
 
-        <!-- Onglets -->
         <div class="tabs">
             <div class="tab active" onclick="switchTab('dashboard')">📊 Tableau de bord</div>
             <div class="tab" onclick="switchTab('users')">👥 Utilisateurs</div>
@@ -105,22 +114,24 @@
                 </div>
             </div>
 
+            <div id="daily-profit-message"></div>
+
             <div class="stats-grid">
                 <div class="stat-card">
                     <div style="font-size:2rem;" id="sales-today">0 G</div>
                     <div>Ventes totales (aujourd'hui)</div>
                 </div>
                 <div class="stat-card">
-                    <div style="font-size:2rem;" id="total-tickets-all">0</div>
-                    <div>Tickets vendus (total)</div>
+                    <div style="font-size:2rem;" id="total-tickets-today">0</div>
+                    <div>Tickets vendus (aujourd'hui)</div>
                 </div>
                 <div class="stat-card">
-                    <div style="font-size:2rem;" id="total-winning-tickets-all">0</div>
-                    <div>Tickets gagnants (total)</div>
+                    <div style="font-size:2rem;" id="total-wins-today">0 G</div>
+                    <div>Gains totaux (aujourd'hui)</div>
                 </div>
                 <div class="stat-card">
-                    <div style="font-size:2rem;" id="balance-all">0 G</div>
-                    <div>Balance globale (misé - gagné)</div>
+                    <div style="font-size:2rem;" id="balance-today">0 G</div>
+                    <div>Résultat net du jour (misé - gagné)</div>
                 </div>
             </div>
 
@@ -498,6 +509,11 @@
                     <input type="number" id="limit-lotto5" value="0" min="0" step="1">
                     <small>0 = illimité</small>
                 </div>
+                <div class="form-group">
+                    <label>Limite Mariage (montant max par ticket)</label>
+                    <input type="number" id="limit-mariage" value="0" min="0" step="1">
+                    <small>0 = illimité</small>
+                </div>
             </div>
 
             <div style="display:flex; gap:10px; margin-top:20px;">
@@ -511,7 +527,7 @@
             const API_URL = ''; // Laissez vide si même origine
             let chartInstance = null;
 
-            // Vérification du token et récupération du nom
+            // ---------- AUTH : vérification du token et récupération du nom ----------
             (async function() {
                 const token = localStorage.getItem('auth_token');
                 const role = localStorage.getItem('user_role');
@@ -539,7 +555,7 @@
                 }
             })();
 
-            // Récupération des messages propriétaire
+            // ---------- MESSAGES ----------
             async function fetchOwnerMessages() {
                 const token = localStorage.getItem('auth_token');
                 if (!token) return;
@@ -554,7 +570,7 @@
                             document.getElementById('owner-message-container').style.display = 'block';
                             setTimeout(() => {
                                 document.getElementById('owner-message-container').style.display = 'none';
-                            }, 600000); // 10 minutes
+                            }, 600000);
                         }
                     }
                 } catch (e) {
@@ -601,10 +617,11 @@
                 }
             }
 
-            // ---------- TABLEAU DE BORD (complet) ----------
+            // ---------- TABLEAU DE BORD MODIFIÉ ----------
             async function loadDashboard() {
                 const token = localStorage.getItem('auth_token');
                 try {
+                    // Charger les données du dashboard
                     const res = await fetch(`${API_URL}/api/owner/dashboard`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
@@ -615,6 +632,7 @@
                     const data = await res.json();
                     console.log('Dashboard data:', data);
 
+                    // Mise à jour des connectés
                     document.getElementById('connected-sup-count').innerText = data.connected.supervisors_count;
                     document.getElementById('connected-agent-count').innerText = data.connected.agents_count;
                     
@@ -626,23 +644,53 @@
                     data.connected.agents.forEach(a => agentList += `<div>👤 ${a.name} (${a.username || a.email})</div>`);
                     document.getElementById('connected-agent-list').innerHTML = agentList || '<span style="opacity:0.7;">Aucun agent connecté</span>';
 
+                    // Ventes du jour (fournies par dashboard)
                     document.getElementById('sales-today').innerHTML = `${data.sales_today.toLocaleString()} G`;
 
-                    // Nouvelles stats globales
-                    if (data.global_stats) {
-                        document.getElementById('total-tickets-all').innerHTML = data.global_stats.total_tickets_all.toLocaleString();
-                        document.getElementById('total-winning-tickets-all').innerHTML = data.global_stats.total_winning_tickets_all.toLocaleString();
-                        const balanceAll = data.global_stats.balance_all;
-                        const balanceEl = document.getElementById('balance-all');
-                        balanceEl.innerHTML = `${balanceAll.toLocaleString()} G`;
-                        balanceEl.style.color = balanceAll >= 0 ? '#00f190' : '#ff4d4d';
+                    // Récupérer les statistiques détaillées du jour via reports
+                    const reportRes = await fetch(`${API_URL}/api/owner/reports?period=today`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (reportRes.ok) {
+                        const reportData = await reportRes.json();
+                        const stats = reportData.summary || {};
+                        
+                        document.getElementById('total-tickets-today').innerHTML = (stats.total_tickets || 0).toLocaleString();
+                        document.getElementById('total-wins-today').innerHTML = `${(stats.total_wins || 0).toLocaleString()} G`;
+                        
+                        const netResult = stats.net_result || 0;
+                        const balanceEl = document.getElementById('balance-today');
+                        balanceEl.innerHTML = `${Math.abs(netResult).toLocaleString()} G`;
+                        
+                        // Message gain/perte du jour
+                        const messageDiv = document.getElementById('daily-profit-message');
+                        if (netResult > 0) {
+                            balanceEl.style.color = '#00f190';
+                            messageDiv.style.backgroundColor = 'rgba(0, 241, 144, 0.2)';
+                            messageDiv.style.border = '1px solid #00f190';
+                            messageDiv.style.color = '#00f190';
+                            messageDiv.innerHTML = '✅ Nouveau résultat détecté ! Bénéfice aujourd\'hui.';
+                            messageDiv.style.display = 'block';
+                        } else if (netResult < 0) {
+                            balanceEl.style.color = '#ff4d4d';
+                            messageDiv.style.backgroundColor = 'rgba(255, 77, 77, 0.2)';
+                            messageDiv.style.border = '1px solid #ff4d4d';
+                            messageDiv.style.color = '#ff4d4d';
+                            messageDiv.innerHTML = '⚠️ Nouveau résultat détecté ! Perte aujourd\'hui.';
+                            messageDiv.style.display = 'block';
+                        } else {
+                            balanceEl.style.color = '#ffffff';
+                            messageDiv.style.display = 'none';
+                        }
                     } else {
-                        console.warn('global_stats manquant dans la réponse');
-                        document.getElementById('total-tickets-all').innerHTML = '0';
-                        document.getElementById('total-winning-tickets-all').innerHTML = '0';
-                        document.getElementById('balance-all').innerHTML = '0 G';
+                        console.warn('Impossible de récupérer les statistiques du jour');
+                        document.getElementById('total-tickets-today').innerHTML = '0';
+                        document.getElementById('total-wins-today').innerHTML = '0 G';
+                        document.getElementById('balance-today').innerHTML = '0 G';
                     }
 
+                    // Progression des limites
                     let limitsHtml = '';
                     if (data.limits_progress.length === 0) {
                         limitsHtml = '<p>Aucune limite définie</p>';
@@ -666,18 +714,24 @@
                     }
                     document.getElementById('limits-progress-container').innerHTML = limitsHtml;
 
+                    // Agents avec gains/pertes
                     let agentsHtml = '';
                     if (data.agents_gain_loss.length === 0) {
                         agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
                     } else {
-                        agentsHtml = '<table><thead><tr><th>Agent</th><th>Mises</th><th>Gains</th><th>Résultat net</th></tr></thead><tbody>';
+                        agentsHtml = '<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
                         data.agents_gain_loss.forEach(a => {
-                            const netClass = a.net_result >= 0 ? 'profit' : 'loss';
+                            const netResult = parseFloat(a.total_bets) - parseFloat(a.total_wins);
+                            const netClass = netResult >= 0 ? 'profit' : 'loss';
+                            const statusIcon = netResult >= 0 ? '✅' : '❌';
+                            const statusText = netResult >= 0 ? 'Gagnant' : 'Perdant';
+                            
                             agentsHtml += `<tr>
                                 <td>${a.name}</td>
                                 <td>${parseFloat(a.total_bets).toLocaleString()} G</td>
                                 <td>${parseFloat(a.total_wins).toLocaleString()} G</td>
-                                <td class="${netClass}">${parseFloat(a.net_result).toLocaleString()} G</td>
+                                <td class="${netClass}">${netResult.toLocaleString()} G</td>
+                                <td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td>
                             </tr>`;
                         });
                         agentsHtml += '</tbody></table>';
@@ -841,6 +895,7 @@
                 } catch (e) { console.error(e); }
             }
 
+            // ---------- PUBLICATION RÉSULTATS AVEC RECHARGE DU DASHBOARD ----------
             async function publishManual() {
                 const token = localStorage.getItem('auth_token');
                 const drawId = document.getElementById('draw-select').value;
@@ -860,7 +915,15 @@
                         body: JSON.stringify({ drawId, numbers, lotto3 })
                     });
                     const result = await res.json();
-                    showMessage('publish-message', result.success ? '✅ Résultats publiés' : '❌ Erreur', result.success);
+                    if (result.success) {
+                        showMessage('publish-message', '✅ Résultats publiés - Nouveau bilan disponible', true);
+                        // Recharger le tableau de bord si on est sur l'onglet dashboard
+                        if (document.getElementById('tab-dashboard').classList.contains('active')) {
+                            loadDashboard();
+                        }
+                    } else {
+                        showMessage('publish-message', '❌ Erreur', false);
+                    }
                 } catch (e) { showMessage('publish-message', '❌ Erreur', false); }
             }
 
@@ -1487,6 +1550,7 @@
                             document.getElementById('limit-lotto3').value = data.limits.lotto3 || 0;
                             document.getElementById('limit-lotto4').value = data.limits.lotto4 || 0;
                             document.getElementById('limit-lotto5').value = data.limits.lotto5 || 0;
+                            document.getElementById('limit-mariage').value = data.limits.mariage || 0;
                         }
                     }
                 } catch (e) {
@@ -1514,7 +1578,8 @@
                 const limits = {
                     lotto3: parseInt(document.getElementById('limit-lotto3').value) || 0,
                     lotto4: parseInt(document.getElementById('limit-lotto4').value) || 0,
-                    lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0
+                    lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0,
+                    mariage: parseInt(document.getElementById('limit-mariage').value) || 0
                 };
 
                 let body;
