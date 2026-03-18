@@ -8,11 +8,13 @@ const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const moment = require('moment-timezone');
 const multer = require('multer');
+const compression = require('compression'); // 👈 Ajout pour Gzip
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
+app.use(compression()); // 👈 Active la compression Gzip
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -26,6 +28,14 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
+
+// === AJOUT : Parser pour les timestamps PostgreSQL (type 1114) ===
+const pg = require('pg');
+pg.types.setTypeParser(1114, (stringValue) => {
+    // Convertit les TIMESTAMP sans fuseau en objet Date dans le fuseau d'Haïti
+    return moment.tz(stringValue, 'YYYY-MM-DD HH:mm:ss', 'America/Port-au-Prince').toDate();
+});
+// === FIN DE L'AJOUT ===
 
 // Configurer le fuseau horaire sur chaque connexion
 pool.on('connect', (client) => {
