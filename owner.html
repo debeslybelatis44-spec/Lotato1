@@ -68,6 +68,13 @@
             text-align: center;
             display: none;
         }
+        #quota-badge {
+            margin-left:15px;
+            padding:5px 10px;
+            border-radius:20px;
+            font-size:0.9rem;
+            background:rgba(0,241,144,0.2);
+        }
     </style>
 </head>
 <body>
@@ -79,6 +86,9 @@
             </div>
             <div class="user-info">
                 <span id="owner-name"></span>
+                <span id="quota-badge">
+                    <i class="fas fa-users"></i> <span id="quota-used">0</span>/<span id="quota-total">0</span>
+                </span>
                 <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Déconnexion</button>
             </div>
         </header>
@@ -544,6 +554,7 @@
                     if (!data.valid) throw new Error('Token invalide');
                     
                     document.getElementById('owner-name').innerHTML = `<i class="fas fa-crown"></i> ${localStorage.getItem('user_name') || 'Propriétaire'}`;
+                    loadQuota(); // Charger le quota
                     fetchOwnerMessages();
                 } catch (error) {
                     console.error('Erreur de vérification token:', error);
@@ -554,6 +565,35 @@
                     window.location.href = 'index.html';
                 }
             })();
+
+            // ---------- CHARGEMENT DU QUOTA ----------
+            async function loadQuota() {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch(`${API_URL}/api/owner/quota`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        document.getElementById('quota-used').innerText = data.used;
+                        document.getElementById('quota-total').innerText = data.quota;
+
+                        // Changer la couleur du badge selon l'utilisation
+                        const badge = document.getElementById('quota-badge');
+                        const used = data.used;
+                        const total = data.quota;
+                        if (used >= total) {
+                            badge.style.backgroundColor = 'rgba(255,77,77,0.2)'; // rouge
+                        } else if (used >= total * 0.8) {
+                            badge.style.backgroundColor = 'rgba(255,193,7,0.2)'; // orange
+                        } else {
+                            badge.style.backgroundColor = 'rgba(0,241,144,0.2)'; // vert
+                        }
+                    }
+                } catch (e) {
+                    console.error('Erreur chargement quota', e);
+                }
+            }
 
             // ---------- MESSAGES ----------
             async function fetchOwnerMessages() {
@@ -826,6 +866,7 @@
                     const result = await res.json();
                     if (result.success) {
                         showMessage('user-create-message', '✅ Utilisateur créé avec succès', true);
+                        loadQuota(); // Mettre à jour le quota après création
                         
                         if (result.user) {
                             const user = result.user;

@@ -1877,6 +1877,123 @@ app.post('/api/owner/settings', authenticate, requireRole('owner'), upload.singl
         res.status(500).json({ error: 'Erreur' });
     }
 });
+// ==================== QUOTAS POUR PROPRIÉTAIRES ====================
+
+// --- MODIFICATION : GET /api/superadmin/owners (retourne quota et utilisation) ---
+app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                u.id, 
+                u.name, 
+                u.username as email, 
+                u.blocked as active, 
+                u.quota,
+                u.created_at,
+                (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
+            FROM users u
+            WHERE u.role = $1
+            ORDER BY u.created_at DESC
+        `, ['owner']);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// --- MODIFICATION : POST /api/superadmin/owners (accepte le champ quota) ---
+app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+    const { name, email, password, phone, quota } = req.body;
+    if (!name || !email || !password) {
+        return res.status(400).json({ error: 'Champs requis manquants' });
+    }
+    try {
+        const hashed = await bcrypt.hash(password, 10);
+        const result = await pool.query(
+            `INSERT INTO users (name, username, password, role, phone, quota, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
+            [name, email, hashed, 'owner', phone || null, quota || 0]
+        );
+        res.json({ success: true, id: result.rows[0].id });
+    } catch (err) {
+        console.error(err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Email déjà utilisé' });
+        }
+        res.status(500).json({ error: 'Erreur création' });
+    }
+});
+
+// --- NOUVELLE ROUTE : GET /api/owner/quota (pour le propriétaire) ---
+app.get('/api/owner/quota', authenticate, requireRole('owner'), async (req, res) => {
+    const ownerId = req.user.id;
+    try {
+        const quotaRes = await pool.query('SELECT quota FROM users WHERE id = $1', [ownerId]);
+        const quota = quotaRes.rows[0]?.quota || 0;
+
+        const usedRes = await pool.query(
+            'SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)',
+            [ownerId, 'agent', 'supervisor']
+        );
+        const used = parseInt(usedRes.rows[0].count);
+
+        res.json({ quota, used });
+    } catch (err) {
+        console.error('Erreur route quota:', err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// --- MODIFICATION : POST /api/owner/create-user (vérification du quota) ---
+// Remplacez l'ancienne route par celle-ci
+app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (req, res) => {
+    const ownerId = req.user.id;
+    const { name, cin, username, password, role, supervisorId, zone, commissionPercentage } = req.body;
+    if (!name || !username || !password || !role) {
+        return res.status(400).json({ error: 'Champs obligatoires manquants' });
+    }
+
+    try {
+        // Récupérer le quota du propriétaire
+        const quotaRes = await pool.query('SELECT quota FROM users WHERE id = $1', [ownerId]);
+        const quota = quotaRes.rows[0]?.quota || 0;
+
+        // Compter les utilisateurs déjà créés (agents + superviseurs)
+        const countRes = await pool.query(
+            'SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)',
+            [ownerId, 'agent', 'supervisor']
+        );
+        const currentCount = parseInt(countRes.rows[0].count);
+
+        if (currentCount >= quota) {
+            return res.status(403).json({ error: 'Quota d’utilisateurs atteint. Vous ne pouvez plus créer d’agents ou de superviseurs.' });
+        }
+
+        // Sinon, procéder à la création
+        const hashed = await bcrypt.hash(password, 10);
+        const result = await pool.query(
+            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, commission_percentage, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
+            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
+        );
+        const user = { ...result.rows[0], email: result.rows[0].username };
+
+        // Journalisation
+        await pool.query(
+            'INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)',
+            [ownerId, 'owner', 'create_user', `Création ${role}: ${username}`, req.ip]
+        );
+
+        res.json({ success: true, user });
+    } catch (err) {
+        console.error(err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: "Nom d'utilisateur déjà existant" });
+        }
+        res.status(500).json({ error: 'Erreur création utilisateur' });
+    }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
