@@ -417,11 +417,11 @@ function renderHistory() {
             statusClass = 'badge-wait';
         }
         
-        const ticketDate = new Date(date);
-        const now = new Date();
-        const minutesDiff = (now - ticketDate) / (1000 * 60);
-        const canDelete = minutesDiff <= 3 && numericId != null;
-        const canEdit = minutesDiff <= 3;
+const ticketTime = new Date(date).getTime();
+const nowTime = Date.now();
+const minutesDiff = isNaN(ticketTime) ? 999 : (nowTime - ticketTime) / (1000 * 60);
+const canDelete = minutesDiff <= 3 && ticket.id != null;  // Utiliser ticket.id directement
+const canEdit = minutesDiff <= 3;
         
         let formattedDate = 'Date inkonu';
         let formattedTime = '';
