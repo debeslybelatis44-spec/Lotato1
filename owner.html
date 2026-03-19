@@ -983,14 +983,21 @@
 
             // ---------- BOULES & LIMITES ----------
             async function loadDrawsForSelects() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const draws = await res.json();
-                let opts = '<option value="">Sélectionnez un tirage</option>';
-                draws.forEach(d => { opts += `<option value="${d.id}">${d.name}</option>`; });
-                document.getElementById('limit-draw').innerHTML = opts;
-                document.getElementById('block-draw-select').innerHTML = opts;
-            }
+    const token = localStorage.getItem('auth_token');
+    const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const draws = await res.json();
+
+    // Sélecteur pour les limites (avec option globale)
+    let limitOpts = '<option value="">Sélectionnez un tirage</option>';
+    limitOpts += '<option value="0">🌍 Tous les tirages (limite globale)</option>';
+    draws.forEach(d => { limitOpts += `<option value="${d.id}">${d.name}</option>`; });
+    document.getElementById('limit-draw').innerHTML = limitOpts;
+
+    // Sélecteur pour le blocage par tirage (sans option globale)
+    let blockOpts = '<option value="">Sélectionnez un tirage</option>';
+    draws.forEach(d => { blockOpts += `<option value="${d.id}">${d.name}</option>`; });
+    document.getElementById('block-draw-select').innerHTML = blockOpts;
+}
 
             async function loadBlockedNumbers() {
                 const token = localStorage.getItem('auth_token');

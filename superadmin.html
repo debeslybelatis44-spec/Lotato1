@@ -23,23 +23,24 @@
         .form-group label { display:block; color:#a0a0b8; margin-bottom:6px; }
         .form-group input, .form-group select, .form-group textarea { width:100%; padding:12px 16px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:white; }
         .btn-primary { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; border-radius:30px; padding:12px 30px; color:white; font-weight:600; cursor:pointer; }
+        .btn-secondary { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:30px; padding:12px 30px; color:white; cursor:pointer; }
         .btn-danger { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; border-radius:30px; padding:10px 20px; cursor:pointer; }
         .list-container { background:rgba(255,255,255,0.02); border-radius:20px; padding:20px; max-height:400px; overflow-y:auto; }
         .item-row { display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:10px; }
         .badge-success { background:#00f190; color:black; padding:4px 12px; border-radius:20px; }
         .badge-danger { background:#ff4d4d; color:white; padding:4px 12px; border-radius:20px; }
         .badge-warning { background:#ffaa00; color:black; padding:4px 12px; border-radius:20px; }
-        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:20px; margin-bottom:30px; }
-        .stat-card { background:rgba(255,255,255,0.05); border-radius:16px; padding:20px; }
-        .profit { color:#00f190; }
-        .loss { color:#ff4d4d; }
         .alert { padding:15px; border-radius:12px; margin-bottom:20px; display:none; }
         .alert-success { background:rgba(0,241,144,0.2); border:1px solid #00f190; color:#00f190; }
         .alert-danger { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; }
         table { width:100%; border-collapse:collapse; }
         th { text-align:left; padding:10px; background:rgba(255,255,255,0.05); }
         td { padding:10px; border-bottom:1px solid rgba(255,255,255,0.05); }
-        .quota-badge { font-weight:bold; padding:2px 8px; border-radius:12px; background:rgba(0,241,144,0.2); }
+        .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center; }
+        .modal-content { background:#1e1f36; border-radius:20px; padding:25px; max-width:500px; width:90%; max-height:80%; overflow-y:auto; }
+        .checkbox-group { display:flex; flex-wrap:wrap; gap:10px; max-height:200px; overflow-y:auto; border:1px solid #333; padding:10px; border-radius:8px; }
+        .checkbox-item { display:flex; align-items:center; gap:5px; width:200px; }
+        .checkbox-item input[type="checkbox"] { width:auto; margin-right:5px; }
     </style>
 </head>
 <body>
@@ -73,7 +74,7 @@
         <div class="tabs">
             <div class="tab active" onclick="switchTab('owners')">👥 Propriétaires</div>
             <div class="tab" onclick="switchTab('agents')">👤 Agents & Superviseurs</div>
-            <div class="tab" onclick="switchTab('messages')">📢 Messages aux propriétaires</div>
+            <div class="tab" onclick="switchTab('messages')">📢 Messages</div>
             <div class="tab" onclick="switchTab('reports')">📊 Rapports consolidés</div>
         </div>
 
@@ -104,6 +105,7 @@
                             <th>ID</th>
                             <th>Nom</th>
                             <th>Email</th>
+                            <th>Téléphone</th>
                             <th>Propriétaire</th>
                             <th>Action</th>
                         </tr>
@@ -122,6 +124,7 @@
                             <th>ID</th>
                             <th>Nom</th>
                             <th>Email</th>
+                            <th>Téléphone</th>
                             <th>Propriétaire</th>
                             <th>Action</th>
                         </tr>
@@ -136,17 +139,23 @@
 
         <!-- Onglet Messages -->
         <div id="tab-messages" class="tab-content">
-            <div class="section-title"><i class="fas fa-bell"></i> Envoyer une alerte à un propriétaire</div>
+            <div class="section-title"><i class="fas fa-bell"></i> Envoyer un message</div>
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Propriétaire</label>
-                    <select id="message-owner"></select>
+                    <label>Destinataires</label>
+                    <div style="display:flex; gap:10px; margin-bottom:10px;">
+                        <button class="btn-secondary" onclick="selectAllOwners()">Sélectionner tous</button>
+                        <button class="btn-secondary" onclick="deselectAllOwners()">Désélectionner tous</button>
+                    </div>
+                    <div id="owners-checkbox-list" class="checkbox-group">
+                        <!-- Les propriétaires avec cases à cocher seront chargés ici -->
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Message (visible 10 min après connexion)</label>
-                    <textarea id="message-text" rows="3" placeholder="Ex: Maintenance prévue ce soir..."></textarea>
+                    <textarea id="message-text" rows="4" placeholder="Ex: Maintenance prévue ce soir..."></textarea>
                 </div>
-                <div><button class="btn-primary" onclick="sendMessage()">Envoyer</button></div>
+                <div><button class="btn-primary" onclick="sendMessageToSelected()">Envoyer aux sélectionnés</button></div>
             </div>
             <div id="message-result" class="alert"></div>
         </div>
@@ -155,6 +164,99 @@
         <div id="tab-reports" class="tab-content">
             <div class="section-title"><i class="fas fa-chart-pie"></i> Rapports du jour par propriétaire</div>
             <div id="owners-reports" class="list-container"></div>
+        </div>
+    </div>
+
+    <!-- Modals d'édition -->
+    <!-- Modal pour modifier un propriétaire -->
+    <div id="edit-owner-modal" class="modal" onclick="if(event.target===this) closeEditOwnerModal()">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">Modifier le propriétaire</h3>
+            <input type="hidden" id="edit-owner-id">
+            <div class="form-group">
+                <label>Nom</label>
+                <input type="text" id="edit-owner-name" placeholder="Nom">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="edit-owner-email" placeholder="Email">
+            </div>
+            <div class="form-group">
+                <label>Téléphone</label>
+                <input type="text" id="edit-owner-phone" placeholder="Téléphone">
+            </div>
+            <div class="form-group">
+                <label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                <input type="password" id="edit-owner-password" placeholder="********">
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn-primary" onclick="saveOwnerEdit()">Enregistrer</button>
+                <button class="btn-danger" onclick="closeEditOwnerModal()">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pour modifier un agent -->
+    <div id="edit-agent-modal" class="modal" onclick="if(event.target===this) closeEditAgentModal()">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">Modifier l'agent</h3>
+            <input type="hidden" id="edit-agent-id">
+            <div class="form-group">
+                <label>Nom</label>
+                <input type="text" id="edit-agent-name" placeholder="Nom">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="edit-agent-email" placeholder="Email">
+            </div>
+            <div class="form-group">
+                <label>Téléphone</label>
+                <input type="text" id="edit-agent-phone" placeholder="Téléphone">
+            </div>
+            <div class="form-group">
+                <label>Propriétaire</label>
+                <select id="edit-agent-owner"></select>
+            </div>
+            <div class="form-group">
+                <label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                <input type="password" id="edit-agent-password" placeholder="********">
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn-primary" onclick="saveAgentEdit()">Enregistrer</button>
+                <button class="btn-danger" onclick="closeEditAgentModal()">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pour modifier un superviseur (optionnel, similaire à agent) -->
+    <div id="edit-supervisor-modal" class="modal" onclick="if(event.target===this) closeEditSupervisorModal()">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">Modifier le superviseur</h3>
+            <input type="hidden" id="edit-supervisor-id">
+            <div class="form-group">
+                <label>Nom</label>
+                <input type="text" id="edit-supervisor-name" placeholder="Nom">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="edit-supervisor-email" placeholder="Email">
+            </div>
+            <div class="form-group">
+                <label>Téléphone</label>
+                <input type="text" id="edit-supervisor-phone" placeholder="Téléphone">
+            </div>
+            <div class="form-group">
+                <label>Propriétaire</label>
+                <select id="edit-supervisor-owner"></select>
+            </div>
+            <div class="form-group">
+                <label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                <input type="password" id="edit-supervisor-password" placeholder="********">
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn-primary" onclick="saveSupervisorEdit()">Enregistrer</button>
+                <button class="btn-danger" onclick="closeEditSupervisorModal()">Annuler</button>
+            </div>
         </div>
     </div>
 
@@ -168,7 +270,9 @@
             document.getElementById('main-section').style.display = 'block';
             document.getElementById('admin-name').innerText = adminName;
             loadOwners();
-            loadOwnerSelect();
+            loadOwnerSelect(); // pour la liste des propriétaires dans l'onglet messages
+            loadAgents();
+            loadSupervisors();
             loadReports();
         }
 
@@ -196,6 +300,8 @@
                     document.getElementById('admin-name').innerText = adminName;
                     loadOwners();
                     loadOwnerSelect();
+                    loadAgents();
+                    loadSupervisors();
                     loadReports();
                 } else {
                     showLoginError(data.error || 'Identifiants incorrects');
@@ -245,6 +351,19 @@
             return res;
         }
 
+        // ========== UTILITAIRES ==========
+        function escapeJS(str) {
+            return str ? str.replace(/'/g, "\\'") : '';
+        }
+
+        function showMessage(elId, text, isSuccess) {
+            const el = document.getElementById(elId);
+            el.style.display = 'block';
+            el.className = isSuccess ? 'alert alert-success' : 'alert alert-danger';
+            el.innerText = text;
+            setTimeout(() => el.style.display = 'none', 4000);
+        }
+
         // ========== GESTION PROPRIÉTAIRES ==========
         async function loadOwners() {
             const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
@@ -262,8 +381,11 @@
                     <span><strong>${o.name}</strong> (${o.email})</span>
                     <span class="${o.active ? 'badge-success' : 'badge-danger'}">${o.active ? 'Actif' : 'Bloqué'}</span>
                     <span class="${quotaClass}">${used}/${quota} utilisé${remaining > 0 ? ` (reste ${remaining})` : ''}</span>
-                    <div>
-                        <button class="btn-primary" style="padding:4px 10px; margin-right:5px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">
+                    <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                        <input type="number" id="quota-input-${o.id}" value="${quota}" min="${used}" style="width:80px; padding:4px; border-radius:6px; border:1px solid #444; background:#222; color:white;">
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="updateQuota(${o.id})">Modifier quota</button>
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="openEditOwnerModal(${o.id}, '${escapeJS(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">
                             ${o.active ? 'Bloquer' : 'Débloquer'}
                         </button>
                         <button class="btn-danger" style="padding:4px 10px;" onclick="deleteOwner(${o.id})">
@@ -295,6 +417,7 @@
             if (data.success) {
                 showMessage('owner-create-message', '✅ Propriétaire créé', true);
                 loadOwners();
+                loadOwnerSelect(); // rafraîchir la liste des propriétaires pour les messages
                 document.getElementById('owner-name').value = '';
                 document.getElementById('owner-email').value = '';
                 document.getElementById('owner-phone').value = '';
@@ -320,7 +443,70 @@
             const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${id}`, {
                 method: 'DELETE'
             });
-            if (res && res.ok) loadOwners();
+            if (res && res.ok) {
+                loadOwners();
+                loadOwnerSelect();
+            }
+        }
+
+        async function updateQuota(ownerId) {
+            const newQuota = parseInt(document.getElementById(`quota-input-${ownerId}`).value);
+            if (isNaN(newQuota) || newQuota < 0) {
+                alert('Veuillez saisir un nombre valide');
+                return;
+            }
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${ownerId}/quota`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quota: newQuota })
+            });
+            if (res && res.ok) {
+                alert('Quota mis à jour avec succès');
+                loadOwners();
+            } else {
+                const error = await res.json();
+                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
+            }
+        }
+
+        // --- Édition propriétaire ---
+        function openEditOwnerModal(id, name, email, phone) {
+            document.getElementById('edit-owner-id').value = id;
+            document.getElementById('edit-owner-name').value = name;
+            document.getElementById('edit-owner-email').value = email;
+            document.getElementById('edit-owner-phone').value = phone || '';
+            document.getElementById('edit-owner-password').value = '';
+            document.getElementById('edit-owner-modal').style.display = 'flex';
+        }
+
+        function closeEditOwnerModal() {
+            document.getElementById('edit-owner-modal').style.display = 'none';
+        }
+
+        async function saveOwnerEdit() {
+            const id = document.getElementById('edit-owner-id').value;
+            const name = document.getElementById('edit-owner-name').value;
+            const email = document.getElementById('edit-owner-email').value;
+            const phone = document.getElementById('edit-owner-phone').value;
+            const password = document.getElementById('edit-owner-password').value;
+            if (!name || !email) {
+                alert('Nom et email requis');
+                return;
+            }
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, phone, password })
+            });
+            if (res && res.ok) {
+                alert('Propriétaire modifié avec succès');
+                closeEditOwnerModal();
+                loadOwners();
+                loadOwnerSelect();
+            } else {
+                const error = await res.json();
+                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
+            }
         }
 
         // ========== GESTION AGENTS ==========
@@ -334,11 +520,15 @@
                     <td>${a.id}</td>
                     <td>${a.name}</td>
                     <td>${a.email}</td>
+                    <td>${a.phone || '-'}</td>
                     <td>${a.owner_name || 'N/A'} (ID: ${a.owner_id || '?'})</td>
-                    <td><button class="btn-danger" style="padding:4px 10px;" onclick="deleteAgent(${a.id})"><i class="fas fa-trash"></i> Supprimer</button></td>
+                    <td>
+                        <button class="btn-primary" style="padding:4px 10px; margin-right:5px;" onclick="openEditAgentModal(${a.id}, '${escapeJS(a.name)}', '${a.email}', '${a.phone || ''}', ${a.owner_id})">Modifier</button>
+                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteAgent(${a.id})"><i class="fas fa-trash"></i> Supprimer</button>
+                    </td>
                 </tr>`;
             });
-            document.getElementById('agents-table-body').innerHTML = html || '<tr><td colspan="5">Aucun agent</td></tr>';
+            document.getElementById('agents-table-body').innerHTML = html || '<tr><td colspan="6">Aucun agent</td></tr>';
         }
 
         async function deleteAgent(id) {
@@ -356,6 +546,58 @@
             }
         }
 
+        // --- Édition agent ---
+        function openEditAgentModal(id, name, email, phone, ownerId) {
+            document.getElementById('edit-agent-id').value = id;
+            document.getElementById('edit-agent-name').value = name;
+            document.getElementById('edit-agent-email').value = email;
+            document.getElementById('edit-agent-phone').value = phone || '';
+            document.getElementById('edit-agent-password').value = '';
+            loadOwnersSelectForAgent(ownerId);
+            document.getElementById('edit-agent-modal').style.display = 'flex';
+        }
+
+        async function loadOwnersSelectForAgent(selectedOwnerId) {
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
+            if (!res) return;
+            const owners = await res.json();
+            let opts = '<option value="">Sélectionner un propriétaire</option>';
+            owners.forEach(o => {
+                opts += `<option value="${o.id}" ${o.id == selectedOwnerId ? 'selected' : ''}>${o.name}</option>`;
+            });
+            document.getElementById('edit-agent-owner').innerHTML = opts;
+        }
+
+        function closeEditAgentModal() {
+            document.getElementById('edit-agent-modal').style.display = 'none';
+        }
+
+        async function saveAgentEdit() {
+            const id = document.getElementById('edit-agent-id').value;
+            const name = document.getElementById('edit-agent-name').value;
+            const email = document.getElementById('edit-agent-email').value;
+            const phone = document.getElementById('edit-agent-phone').value;
+            const password = document.getElementById('edit-agent-password').value;
+            const ownerId = document.getElementById('edit-agent-owner').value;
+            if (!name || !email) {
+                alert('Nom et email requis');
+                return;
+            }
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/agents/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, phone, password, ownerId: ownerId || null })
+            });
+            if (res && res.ok) {
+                alert('Agent modifié avec succès');
+                closeEditAgentModal();
+                loadAgents();
+            } else {
+                const error = await res.json();
+                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
+            }
+        }
+
         // ========== GESTION SUPERVISEURS ==========
         async function loadSupervisors() {
             const res = await fetchWithToken(`${API_BASE}/api/superadmin/supervisors`);
@@ -367,11 +609,15 @@
                     <td>${s.id}</td>
                     <td>${s.name}</td>
                     <td>${s.email}</td>
+                    <td>${s.phone || '-'}</td>
                     <td>${s.owner_name || 'N/A'} (ID: ${s.owner_id || '?'})</td>
-                    <td><button class="btn-danger" style="padding:4px 10px;" onclick="deleteSupervisor(${s.id})"><i class="fas fa-trash"></i> Supprimer</button></td>
+                    <td>
+                        <button class="btn-primary" style="padding:4px 10px; margin-right:5px;" onclick="openEditSupervisorModal(${s.id}, '${escapeJS(s.name)}', '${s.email}', '${s.phone || ''}', ${s.owner_id})">Modifier</button>
+                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteSupervisor(${s.id})"><i class="fas fa-trash"></i> Supprimer</button>
+                    </td>
                 </tr>`;
             });
-            document.getElementById('supervisors-table-body').innerHTML = html || '<tr><td colspan="5">Aucun superviseur</td></tr>';
+            document.getElementById('supervisors-table-body').innerHTML = html || '<tr><td colspan="6">Aucun superviseur</td></tr>';
         }
 
         async function deleteSupervisor(id) {
@@ -389,34 +635,113 @@
             }
         }
 
+        // --- Édition superviseur ---
+        function openEditSupervisorModal(id, name, email, phone, ownerId) {
+            document.getElementById('edit-supervisor-id').value = id;
+            document.getElementById('edit-supervisor-name').value = name;
+            document.getElementById('edit-supervisor-email').value = email;
+            document.getElementById('edit-supervisor-phone').value = phone || '';
+            document.getElementById('edit-supervisor-password').value = '';
+            loadOwnersSelectForSupervisor(ownerId);
+            document.getElementById('edit-supervisor-modal').style.display = 'flex';
+        }
+
+        async function loadOwnersSelectForSupervisor(selectedOwnerId) {
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
+            if (!res) return;
+            const owners = await res.json();
+            let opts = '<option value="">Sélectionner un propriétaire</option>';
+            owners.forEach(o => {
+                opts += `<option value="${o.id}" ${o.id == selectedOwnerId ? 'selected' : ''}>${o.name}</option>`;
+            });
+            document.getElementById('edit-supervisor-owner').innerHTML = opts;
+        }
+
+        function closeEditSupervisorModal() {
+            document.getElementById('edit-supervisor-modal').style.display = 'none';
+        }
+
+        async function saveSupervisorEdit() {
+            const id = document.getElementById('edit-supervisor-id').value;
+            const name = document.getElementById('edit-supervisor-name').value;
+            const email = document.getElementById('edit-supervisor-email').value;
+            const phone = document.getElementById('edit-supervisor-phone').value;
+            const password = document.getElementById('edit-supervisor-password').value;
+            const ownerId = document.getElementById('edit-supervisor-owner').value;
+            if (!name || !email) {
+                alert('Nom et email requis');
+                return;
+            }
+            const res = await fetchWithToken(`${API_BASE}/api/superadmin/supervisors/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, phone, password, ownerId: ownerId || null })
+            });
+            if (res && res.ok) {
+                alert('Superviseur modifié avec succès');
+                closeEditSupervisorModal();
+                loadSupervisors();
+            } else {
+                const error = await res.json();
+                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
+            }
+        }
+
         // ========== MESSAGES ==========
         async function loadOwnerSelect() {
             const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
             if (!res) return;
             const owners = await res.json();
-            let opts = '<option value="">Choisir un propriétaire</option>';
-            owners.forEach(o => opts += `<option value="${o.id}">${o.name}</option>`);
-            document.getElementById('message-owner').innerHTML = opts;
+            let html = '';
+            owners.forEach(o => {
+                html += `<div class="checkbox-item">
+                    <input type="checkbox" id="owner-${o.id}" value="${o.id}">
+                    <label for="owner-${o.id}">${o.name}</label>
+                </div>`;
+            });
+            document.getElementById('owners-checkbox-list').innerHTML = html || '<p>Aucun propriétaire</p>';
         }
 
-        async function sendMessage() {
-            const ownerId = document.getElementById('message-owner').value;
+        function selectAllOwners() {
+            document.querySelectorAll('#owners-checkbox-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+        }
+
+        function deselectAllOwners() {
+            document.querySelectorAll('#owners-checkbox-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+        }
+
+        async function sendMessageToSelected() {
+            const selected = [];
+            document.querySelectorAll('#owners-checkbox-list input[type="checkbox"]:checked').forEach(cb => {
+                selected.push(cb.value);
+            });
             const message = document.getElementById('message-text').value;
-            if (!ownerId || !message) {
-                showMessage('message-result', 'Veuillez sélectionner un propriétaire et saisir un message', false);
+            if (selected.length === 0) {
+                showMessage('message-result', 'Veuillez sélectionner au moins un propriétaire', false);
                 return;
             }
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/messages`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ownerId, message })
-            });
-            if (!res) return;
-            if (res.ok) {
-                showMessage('message-result', '✅ Message envoyé (visible 10 min)', true);
+            if (!message) {
+                showMessage('message-result', 'Veuillez saisir un message', false);
+                return;
+            }
+
+            // Envoyer un message à chaque propriétaire sélectionné
+            let successCount = 0;
+            for (const ownerId of selected) {
+                const res = await fetchWithToken(`${API_BASE}/api/superadmin/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ownerId, message })
+                });
+                if (res && res.ok) successCount++;
+            }
+
+            if (successCount === selected.length) {
+                showMessage('message-result', `✅ Message envoyé à ${successCount} propriétaire(s)`, true);
                 document.getElementById('message-text').value = '';
+                deselectAllOwners();
             } else {
-                showMessage('message-result', '❌ Erreur envoi', false);
+                showMessage('message-result', `❌ Échec pour certains destinataires (${successCount}/${selected.length} réussis)`, false);
             }
         }
 
@@ -441,15 +766,6 @@
             document.getElementById('owners-reports').innerHTML = html || '<p>Aucune donnée</p>';
         }
 
-        // Utilitaire d'affichage de message
-        function showMessage(elId, text, isSuccess) {
-            const el = document.getElementById(elId);
-            el.style.display = 'block';
-            el.className = isSuccess ? 'alert alert-success' : 'alert alert-danger';
-            el.innerText = text;
-            setTimeout(() => el.style.display = 'none', 4000);
-        }
-
         // Exposer les fonctions globalement
         window.switchTab = switchTab;
         window.superAdminLogin = superAdminLogin;
@@ -457,10 +773,21 @@
         window.createOwner = createOwner;
         window.toggleBlockOwner = toggleBlockOwner;
         window.deleteOwner = deleteOwner;
+        window.updateQuota = updateQuota;
+        window.openEditOwnerModal = openEditOwnerModal;
+        window.closeEditOwnerModal = closeEditOwnerModal;
+        window.saveOwnerEdit = saveOwnerEdit;
         window.deleteAgent = deleteAgent;
+        window.openEditAgentModal = openEditAgentModal;
+        window.closeEditAgentModal = closeEditAgentModal;
+        window.saveAgentEdit = saveAgentEdit;
         window.deleteSupervisor = deleteSupervisor;
-        window.sendMessage = sendMessage;
-        window.loadReports = loadReports;
+        window.openEditSupervisorModal = openEditSupervisorModal;
+        window.closeEditSupervisorModal = closeEditSupervisorModal;
+        window.saveSupervisorEdit = saveSupervisorEdit;
+        window.selectAllOwners = selectAllOwners;
+        window.deselectAllOwners = deselectAllOwners;
+        window.sendMessageToSelected = sendMessageToSelected;
     </script>
 </body>
 </html>

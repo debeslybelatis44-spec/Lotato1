@@ -8,13 +8,11 @@ const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const moment = require('moment-timezone');
 const multer = require('multer');
-const compression = require('compression'); // 👈 Ajout pour Gzip
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(compression()); // 👈 Active la compression Gzip
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -28,14 +26,6 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
-
-// === AJOUT : Parser pour les timestamps PostgreSQL (type 1114) ===
-const pg = require('pg');
-pg.types.setTypeParser(1114, (stringValue) => {
-    // Convertit les TIMESTAMP sans fuseau en objet Date dans le fuseau d'Haïti
-    return moment.tz(stringValue, 'YYYY-MM-DD HH:mm:ss', 'America/Port-au-Prince').toDate();
-});
-// === FIN DE L'AJOUT ===
 
 // Configurer le fuseau horaire sur chaque connexion
 pool.on('connect', (client) => {
@@ -1956,6 +1946,357 @@ app.get('/api/owner/quota', authenticate, requireRole('owner'), async (req, res)
 });
 
 // --- MODIFICATION : POST /api/owner/create-user (vérification du quota) ---
+// Remplacez l'ancienne route par celle-ci
+app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (req, res) => {
+    const ownerId = req.user.id;
+    const { name, cin, username, password, role, supervisorId, zone, commissionPercentage } = req.body;
+    if (!name || !username || !password || !role) {
+        return res.status(400).json({ error: 'Champs obligatoires manquants' });
+    }
+
+    try {
+        // Récupérer le quota du propriétaire
+        const quotaRes = await pool.query('SELECT quota FROM users WHERE id = $1', [ownerId]);
+        const quota = quotaRes.rows[0]?.quota || 0;
+
+        // Compter les utilisateurs déjà créés (agents + superviseurs)
+        const countRes = await pool.query(
+            'SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)',
+            [ownerId, 'agent', 'supervisor']
+        );
+        const currentCount = parseInt(countRes.rows[0].count);
+
+        if (currentCount >= quota) {
+            return res.status(403).json({ error: 'Quota d’utilisateurs atteint. Vous ne pouvez plus créer d’agents ou de superviseurs.' });
+        }
+
+        // Sinon, procéder à la création
+        const hashed = await bcrypt.hash(password, 10);
+        const result = await pool.query(
+            `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, commission_percentage, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
+            [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
+        );
+        const user = { ...result.rows[0], email: result.rows[0].username };
+
+        // Journalisation
+        await pool.query(
+            'INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)',
+            [ownerId, 'owner', 'create_user', `Création ${role}: ${username}`, req.ip]
+        );
+
+        res.json({ success: true, user });
+    } catch (err) {
+        console.error(err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: "Nom d'utilisateur déjà existant" });
+        }
+        res.status(500).json({ error: 'Erreur création utilisateur' });
+    }
+});
+// ==================== AJOUTS POUR SUPERADMIN (QUOTAS, MODIFICATION, MESSAGES MULTIPLES) ====================
+
+// Ajout des colonnes manquantes (à exécuter une seule fois, mais on les met ici pour garantir)
+(async () => {
+    try {
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS quota INTEGER DEFAULT 0`);
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20)`);
+        console.log('✅ Colonnes quota et phone ajoutées/vérifiées');
+    } catch (err) {
+        console.error('❌ Erreur lors de l\'ajout des colonnes:', err);
+    }
+})();
+
+// Récupérer tous les agents (superadmin)
+app.get('/api/superadmin/agents', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT u.id, u.name, u.username as email, u.phone, u.owner_id, o.name as owner_name
+            FROM users u
+            LEFT JOIN users o ON u.owner_id = o.id
+            WHERE u.role = 'agent'
+            ORDER BY u.created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Récupérer tous les superviseurs (superadmin)
+app.get('/api/superadmin/supervisors', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT u.id, u.name, u.username as email, u.phone, u.owner_id, o.name as owner_name
+            FROM users u
+            LEFT JOIN users o ON u.owner_id = o.id
+            WHERE u.role = 'supervisor'
+            ORDER BY u.created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Mettre à jour un propriétaire (nom, email, téléphone, mot de passe)
+app.put('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    const ownerId = req.params.id;
+    const { name, email, phone, password } = req.body;
+    try {
+        const owner = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
+        if (owner.rows.length === 0) {
+            return res.status(404).json({ error: 'Propriétaire non trouvé' });
+        }
+
+        let query = 'UPDATE users SET name = $1, username = $2, phone = $3';
+        const params = [name, email, phone];
+        if (password && password.trim() !== '') {
+            const hashed = await bcrypt.hash(password, 10);
+            query += ', password = $4';
+            params.push(hashed);
+        }
+        query += ' WHERE id = $' + (params.length + 1) + ' AND role = $' + (params.length + 2);
+        params.push(ownerId, 'owner');
+        await pool.query(query, params);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Email déjà utilisé' });
+        }
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Mettre à jour un agent (nom, email, téléphone, mot de passe, propriétaire)
+app.put('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    const agentId = req.params.id;
+    const { name, email, phone, password, ownerId } = req.body;
+    try {
+        const agent = await pool.query('SELECT id, owner_id FROM users WHERE id = $1 AND role = $2', [agentId, 'agent']);
+        if (agent.rows.length === 0) {
+            return res.status(404).json({ error: 'Agent non trouvé' });
+        }
+
+        // Si changement de propriétaire
+        if (ownerId && ownerId !== agent.rows[0].owner_id) {
+            const newOwner = await pool.query('SELECT id, quota FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
+            if (newOwner.rows.length === 0) {
+                return res.status(400).json({ error: 'Nouveau propriétaire invalide' });
+            }
+            const usedRes = await pool.query(
+                'SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)',
+                [ownerId, 'agent', 'supervisor']
+            );
+            const used = parseInt(usedRes.rows[0].count);
+            const quota = newOwner.rows[0].quota || 0;
+            if (used >= quota) {
+                return res.status(400).json({ error: 'Le nouveau propriétaire a atteint son quota' });
+            }
+        }
+
+        let query = 'UPDATE users SET name = $1, username = $2, phone = $3';
+        const params = [name, email, phone];
+        if (password && password.trim() !== '') {
+            const hashed = await bcrypt.hash(password, 10);
+            query += ', password = $4';
+            params.push(hashed);
+        }
+        if (ownerId) {
+            query += ', owner_id = $' + (params.length + 1);
+            params.push(ownerId);
+        }
+        query += ' WHERE id = $' + (params.length + 1) + ' AND role = $' + (params.length + 2);
+        params.push(agentId, 'agent');
+        await pool.query(query, params);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Email déjà utilisé' });
+        }
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Mettre à jour un superviseur (similaire à agent)
+app.put('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    const supervisorId = req.params.id;
+    const { name, email, phone, password, ownerId } = req.body;
+    try {
+        const supervisor = await pool.query('SELECT id, owner_id FROM users WHERE id = $1 AND role = $2', [supervisorId, 'supervisor']);
+        if (supervisor.rows.length === 0) {
+            return res.status(404).json({ error: 'Superviseur non trouvé' });
+        }
+
+        // Si changement de propriétaire
+        if (ownerId && ownerId !== supervisor.rows[0].owner_id) {
+            const newOwner = await pool.query('SELECT id, quota FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
+            if (newOwner.rows.length === 0) {
+                return res.status(400).json({ error: 'Nouveau propriétaire invalide' });
+            }
+            const usedRes = await pool.query(
+                'SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)',
+                [ownerId, 'agent', 'supervisor']
+            );
+            const used = parseInt(usedRes.rows[0].count);
+            const quota = newOwner.rows[0].quota || 0;
+            if (used >= quota) {
+                return res.status(400).json({ error: 'Le nouveau propriétaire a atteint son quota' });
+            }
+        }
+
+        let query = 'UPDATE users SET name = $1, username = $2, phone = $3';
+        const params = [name, email, phone];
+        if (password && password.trim() !== '') {
+            const hashed = await bcrypt.hash(password, 10);
+            query += ', password = $4';
+            params.push(hashed);
+        }
+        if (ownerId) {
+            query += ', owner_id = $' + (params.length + 1);
+            params.push(ownerId);
+        }
+        query += ' WHERE id = $' + (params.length + 1) + ' AND role = $' + (params.length + 2);
+        params.push(supervisorId, 'supervisor');
+        await pool.query(query, params);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Email déjà utilisé' });
+        }
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Modifier le quota d'un propriétaire
+app.put('/api/superadmin/owners/:id/quota', authenticate, requireSuperAdmin, async (req, res) => {
+    const ownerId = req.params.id;
+    const { quota } = req.body;
+    if (quota === undefined || quota < 0) {
+        return res.status(400).json({ error: 'Quota invalide' });
+    }
+    try {
+        const owner = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
+        if (owner.rows.length === 0) {
+            return res.status(404).json({ error: 'Propriétaire non trouvé' });
+        }
+
+        const usedRes = await pool.query(
+            'SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)',
+            [ownerId, 'agent', 'supervisor']
+        );
+        const used = parseInt(usedRes.rows[0].count);
+        if (quota < used) {
+            return res.status(400).json({ error: `Le quota ne peut pas être inférieur au nombre d'utilisateurs existants (${used})` });
+        }
+
+        await pool.query('UPDATE users SET quota = $1 WHERE id = $2', [quota, ownerId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Récupérer les propriétaires avec quota et utilisation (remplace l'ancienne route)
+// Note: si vous voulez conserver l'ancienne route, vous pouvez la remplacer par celle-ci
+app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                u.id, 
+                u.name, 
+                u.username as email, 
+                u.blocked as active, 
+                u.quota,
+                u.phone,
+                u.created_at,
+                (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
+            FROM users u
+            WHERE u.role = $1
+            ORDER BY u.created_at DESC
+        `, ['owner']);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Créer un propriétaire avec quota (remplace l'ancienne route)
+app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+    const { name, email, password, phone, quota } = req.body;
+    if (!name || !email || !password) {
+        return res.status(400).json({ error: 'Champs requis manquants' });
+    }
+    try {
+        const hashed = await bcrypt.hash(password, 10);
+        const result = await pool.query(
+            `INSERT INTO users (name, username, password, role, phone, quota, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
+            [name, email, hashed, 'owner', phone || null, quota || 0]
+        );
+        res.json({ success: true, id: result.rows[0].id });
+    } catch (err) {
+        console.error(err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Email déjà utilisé' });
+        }
+        res.status(500).json({ error: 'Erreur création' });
+    }
+});
+
+// Envoyer un message à plusieurs propriétaires (au lieu d'un seul)
+app.post('/api/superadmin/messages/bulk', authenticate, requireSuperAdmin, async (req, res) => {
+    const { ownerIds, message } = req.body;
+    if (!ownerIds || !Array.isArray(ownerIds) || ownerIds.length === 0 || !message) {
+        return res.status(400).json({ error: 'Liste de propriétaires et message requis' });
+    }
+    try {
+        const values = ownerIds.map((id, index) => `($${index * 3 + 1}, $${index * 3 + 2}, NOW(), NOW() + INTERVAL '10 minutes')`).join(',');
+        const flatParams = [];
+        ownerIds.forEach(id => {
+            flatParams.push(id, message);
+        });
+        await pool.query(
+            `INSERT INTO owner_messages (owner_id, message, created_at, expires_at) VALUES ${values}`,
+            flatParams
+        );
+        res.json({ success: true, count: ownerIds.length });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur envoi messages' });
+    }
+});
+
+// ==================== ROUTES POUR LE PROPRIÉTAIRE (QUOTA) ====================
+
+// Récupérer le quota du propriétaire
+app.get('/api/owner/quota', authenticate, requireRole('owner'), async (req, res) => {
+    const ownerId = req.user.id;
+    try {
+        const quotaRes = await pool.query('SELECT quota FROM users WHERE id = $1', [ownerId]);
+        const quota = quotaRes.rows[0]?.quota || 0;
+
+        const usedRes = await pool.query(
+            'SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)',
+            [ownerId, 'agent', 'supervisor']
+        );
+        const used = parseInt(usedRes.rows[0].count);
+
+        res.json({ quota, used });
+    } catch (err) {
+        console.error('Erreur route quota:', err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Modification de la route create-user pour inclure la vérification de quota
 // Remplacez l'ancienne route par celle-ci
 app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (req, res) => {
     const ownerId = req.user.id;
