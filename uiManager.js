@@ -201,6 +201,7 @@ function initReportFilters() {
     const reportsScreen = document.getElementById('reports-screen');
     if (!reportsScreen) return;
 
+    // Éviter de créer plusieurs fois les filtres
     if (document.getElementById('report-filters')) return;
 
     const filtersDiv = document.createElement('div');
@@ -220,7 +221,10 @@ function initReportFilters() {
                 <input type="date" id="report-to-date" class="filter-input" placeholder="Dat fini">
             </div>
             
-            <button id="apply-report-filters" class="filter-btn">Aplike Filtre</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="apply-report-filters" class="filter-btn">Aplike Filtre</button>
+                <button id="print-report-btn" class="filter-btn"><i class="fas fa-print"></i> Enprime</button>
+            </div>
         </div>
     `;
 
@@ -231,6 +235,7 @@ function initReportFilters() {
         reportsScreen.prepend(filtersDiv);
     }
 
+    // Ajout des styles si nécessaire
     if (!document.getElementById('report-filters-styles')) {
         const style = document.createElement('style');
         style.id = 'report-filters-styles';
@@ -288,8 +293,9 @@ function initReportFilters() {
     const fromDate = document.getElementById('report-from-date');
     const toDate = document.getElementById('report-to-date');
     const applyBtn = document.getElementById('apply-report-filters');
+    const printBtn = document.getElementById('print-report-btn');
 
-    // Set default dates
+    // Valeurs par défaut
     const today = new Date().toISOString().split('T')[0];
     fromDate.value = today;
     toDate.value = today;
@@ -303,10 +309,13 @@ function initReportFilters() {
             period: periodSelect.value,
             fromDate: fromDate.value,
             toDate: toDate.value,
-            drawId: document.getElementById('draw-report-selector').value
+            drawId: document.getElementById('draw-report-selector')?.value || 'all'
         };
         loadReports();
     });
+
+    // Attacher l'événement d'impression
+    printBtn.addEventListener('click', printReport);
 }
 
 // Fonction de filtrage des tickets
