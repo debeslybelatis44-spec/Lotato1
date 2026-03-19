@@ -3,7 +3,7 @@
 // Variable globale pour le terme de recherche
 window.historySearchTerm = '';
 
-// Nouveau : variables pour les filtres de rapports
+// Variables pour les filtres de rapports
 window.reportFilters = {
     period: 'today',
     fromDate: '',
@@ -26,7 +26,7 @@ async function fetchTickets() {
     return data.tickets || [];
 }
 
-// Nouvelle fonction : récupérer les tickets avec filtres (pour compatibilité)
+// Récupérer les tickets avec filtres (pour compatibilité)
 async function fetchTicketsWithFilters(filters) {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('Non authentifié');
@@ -36,7 +36,7 @@ async function fetchTicketsWithFilters(filters) {
     if (filters.period === 'today') {
         // Récupère tous les tickets et on filtrera côté client
     } else if (filters.period === 'yesterday') {
-        // Même chose, on filtre côté client
+        // Même chose
     } else if (filters.period === 'week') {
         // Même chose
     } else if (filters.period === 'custom' && filters.fromDate && filters.toDate) {
@@ -53,7 +53,7 @@ async function fetchTicketsWithFilters(filters) {
     return data.tickets || [];
 }
 
-// Nouvelle fonction : filtrer les tickets par date
+// Filtrer les tickets par date
 function filterTicketsByDate(tickets, filters) {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -122,7 +122,7 @@ function switchTab(tabName) {
     }
 }
 
-// Fonction pour ajuster l'affichage des tirages sur l'écran d'accueil
+// Ajuster l'affichage des tirages sur l'écran d'accueil
 function fixHomeScreenDisplay() {
     setTimeout(() => {
         const drawNames = document.querySelectorAll('.draw-card .draw-name, .draw-item .draw-title, .draw-selection .draw-name');
@@ -309,7 +309,7 @@ function initReportFilters() {
     printBtn.addEventListener('click', printReport);
 }
 
-// Fonction de filtrage des tickets
+// Fonction de filtrage des tickets pour la recherche
 function filterTickets(tickets, term) {
     if (!term) return tickets;
     term = term.toLowerCase();
@@ -718,34 +718,51 @@ function reprintTicket(ticketId) {
     printThermalTicket(ticket, printWindow);
 }
 
-// Chargement des rapports (version corrigée)
+// Chargement des rapports (version corrigée avec filtres)
 async function loadReports() {
     try {
         initReportFilters();
 
-        const token = localStorage.getItem('auth_token');
-        const res = await fetch(`/api/reports`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Erreur réseau');
-        const data = await res.json();
-
-        document.getElementById('total-tickets').textContent = data.totalTickets;
-        document.getElementById('total-bets').textContent = data.totalBets.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('total-wins').textContent = data.totalWins.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('total-loss').textContent = data.totalLoss.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').textContent = data.balance.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').style.color = data.balance >= 0 ? 'var(--success)' : 'var(--danger)';
-
-        // Pour le rapport par tirage, on recharge tous les tickets
         const allTickets = await fetchTickets();
         APP_STATE.ticketsHistory = allTickets;
 
-        // Ajouter l'information de période
-        const periodInfo = document.createElement('div');
-        periodInfo.className = 'period-info';
-        periodInfo.style.cssText = 'text-align: center; margin: 10px 0; font-size: 0.9rem; color: var(--text-dim);';
-        
+        // Filtrer selon la période
+        const filteredTickets = filterTicketsByDate(allTickets, window.reportFilters);
+
+        // Filtrer par tirage si nécessaire
+        const finalTickets = window.reportFilters.drawId !== 'all'
+            ? filteredTickets.filter(t => (t.draw_id === window.reportFilters.drawId || t.drawId === window.reportFilters.drawId))
+            : filteredTickets;
+
+        let totalTickets = finalTickets.length;
+        let totalBets = 0;
+        let totalWins = 0;
+        let totalLoss = 0;
+
+        finalTickets.forEach(ticket => {
+            const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
+            totalBets += ticketAmount;
+
+            if (ticket.checked || ticket.verified) {
+                const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
+                if (winAmount > 0) {
+                    totalWins += winAmount;
+                } else {
+                    totalLoss += ticketAmount;
+                }
+            }
+        });
+
+        const totalProfit = totalBets - totalWins;
+
+        document.getElementById('total-tickets').textContent = totalTickets;
+        document.getElementById('total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('total-wins').textContent = totalWins.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('balance').textContent = totalProfit.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('balance').style.color = (totalProfit >= 0) ? 'var(--success)' : 'var(--danger)';
+
+        // Ajouter l'info de période
         let periodText = '';
         if (window.reportFilters.period === 'today') periodText = 'Jodi a';
         else if (window.reportFilters.period === 'yesterday') periodText = 'Yè';
@@ -753,6 +770,10 @@ async function loadReports() {
         else if (window.reportFilters.period === 'custom') {
             periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
         }
+
+        const periodInfo = document.createElement('div');
+        periodInfo.className = 'period-info';
+        periodInfo.style.cssText = 'text-align: center; margin: 10px 0; font-size: 0.9rem; color: var(--text-dim);';
         periodInfo.innerHTML = `Peryòd: <strong>${periodText}</strong>`;
 
         const existingPeriodInfo = document.querySelector('.period-info');
@@ -766,16 +787,17 @@ async function loadReports() {
         // Mettre à jour le sélecteur de tirage
         const drawSelector = document.getElementById('draw-report-selector');
         drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
-        
-        CONFIG.DRAWS.forEach(draw => {
-            const option = document.createElement('option');
-            option.value = draw.id;
-            option.textContent = draw.name;
-            if (draw.id === window.reportFilters.drawId) {
-                option.selected = true;
-            }
-            drawSelector.appendChild(option);
-        });
+        if (CONFIG && CONFIG.DRAWS) {
+            CONFIG.DRAWS.forEach(draw => {
+                const option = document.createElement('option');
+                option.value = draw.id;
+                option.textContent = draw.name;
+                if (draw.id === window.reportFilters.drawId) {
+                    option.selected = true;
+                }
+                drawSelector.appendChild(option);
+            });
+        }
 
         await loadDrawReport(window.reportFilters.drawId);
 
