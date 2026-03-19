@@ -53,23 +53,27 @@ async function fetchTicketsWithFilters(filters) {
     return data.tickets || [];
 }
 
-// Filtrer les tickets par date
+// Filtrer les tickets par date (version corrigée avec comparaison en YYYY-MM-DD)
 function filterTicketsByDate(tickets, filters) {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
+    const todayStr = now.toISOString().split('T')[0];
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    const weekAgo = new Date(now);
+    weekAgo.setDate(now.getDate() - 7);
 
     return tickets.filter(ticket => {
         const ticketDate = new Date(ticket.date || ticket.created_at);
-        const ticketDay = new Date(ticketDate.getFullYear(), ticketDate.getMonth(), ticketDate.getDate());
+        if (isNaN(ticketDate)) return false;
+        const ticketDateStr = ticketDate.toISOString().split('T')[0];
 
         if (filters.period === 'today') {
-            return ticketDay.getTime() === today.getTime();
+            return ticketDateStr === todayStr;
         } else if (filters.period === 'yesterday') {
-            return ticketDay.getTime() === yesterday.getTime();
+            return ticketDateStr === yesterdayStr;
         } else if (filters.period === 'week') {
             return ticketDate >= weekAgo;
         } else if (filters.period === 'custom' && filters.fromDate && filters.toDate) {
@@ -344,6 +348,7 @@ async function loadHistory() {
         
         const tickets = await fetchTickets();
         APP_STATE.ticketsHistory = tickets;
+        console.log('Tickets reçus:', tickets); // Pour déboguer
 
         initHistorySearchBar();
         renderHistory();
@@ -372,7 +377,16 @@ function renderHistory() {
     container.innerHTML = filteredTickets.map((ticket, index) => {
         const numericId = ticket.id;
         const displayId = ticket.ticket_id || ticket.id;
-        const drawName = ticket.draw_name || ticket.drawName || ticket.draw_name_fr || 'Tiraj Inkonu';
+        
+        // Récupération du nom du tirage
+        let drawName = ticket.draw_name || ticket.drawName || ticket.draw_name_fr;
+        if (!drawName && CONFIG && CONFIG.DRAWS) {
+            const draw = CONFIG.DRAWS.find(d => d.id == (ticket.draw_id || ticket.drawId));
+            drawName = draw ? draw.name : 'Tiraj Inkonu';
+        } else if (!drawName) {
+            drawName = 'Tiraj Inkonu';
+        }
+        
         const totalAmount = ticket.total_amount || ticket.totalAmount || ticket.amount || 0;
         const date = ticket.date || ticket.created_at || ticket.created_date || new Date().toISOString();
         const bets = ticket.bets || ticket.numbers || [];
@@ -411,19 +425,16 @@ function renderHistory() {
         
         const ticketDate = new Date(date);
         const now = new Date();
-        const minutesDiff = (now - ticketDate) / (1000 * 60);
+        const minutesDiff = (now.getTime() - ticketDate.getTime()) / (1000 * 60);
         const canDelete = minutesDiff <= 3 && numericId != null;
         const canEdit = minutesDiff <= 3;
         
         let formattedDate = 'Date inkonu';
         let formattedTime = '';
         
-        try {
-            formattedDate = ticketDate.toLocaleDateString('fr-FR');
-            formattedTime = ticketDate.toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
-        } catch (e) {
-            formattedDate = 'N/A';
-            formattedTime = '';
+        if (!isNaN(ticketDate)) {
+            formattedDate = ticketDate.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' });
+            formattedTime = ticketDate.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
         }
         
         return `
@@ -505,7 +516,7 @@ function editTicket(ticketId) {
 
     const ticketDate = new Date(ticket.date || ticket.created_at);
     const now = new Date();
-    const minutesDiff = (now - ticketDate) / (1000 * 60);
+    const minutesDiff = (now.getTime() - ticketDate.getTime()) / (1000 * 60);
     if (minutesDiff > 3) {
         alert("Tikè sa a gen plis pase 3 minit, ou pa ka modifye li.");
         return;
@@ -718,7 +729,7 @@ function reprintTicket(ticketId) {
     printThermalTicket(ticket, printWindow);
 }
 
-// Chargement des rapports (version corrigée avec filtres)
+// Chargement des rapports
 async function loadReports() {
     try {
         initReportFilters();
@@ -786,17 +797,19 @@ async function loadReports() {
 
         // Mettre à jour le sélecteur de tirage
         const drawSelector = document.getElementById('draw-report-selector');
-        drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
-        if (CONFIG && CONFIG.DRAWS) {
-            CONFIG.DRAWS.forEach(draw => {
-                const option = document.createElement('option');
-                option.value = draw.id;
-                option.textContent = draw.name;
-                if (draw.id === window.reportFilters.drawId) {
-                    option.selected = true;
-                }
-                drawSelector.appendChild(option);
-            });
+        if (drawSelector) {
+            drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
+            if (CONFIG && CONFIG.DRAWS) {
+                CONFIG.DRAWS.forEach(draw => {
+                    const option = document.createElement('option');
+                    option.value = draw.id;
+                    option.textContent = draw.name;
+                    if (draw.id === window.reportFilters.drawId) {
+                        option.selected = true;
+                    }
+                    drawSelector.appendChild(option);
+                });
+            }
         }
 
         await loadDrawReport(window.reportFilters.drawId);
@@ -1155,7 +1168,7 @@ function viewTicketDetails(ticketId) {
     let details = `
         <h3>Detay Tikè #${ticket.ticket_id || ticket.id || 'N/A'}</h3>
         <p><strong>Tiraj:</strong> ${drawName}</p>
-        <p><strong>Dat:</strong> ${new Date(date).toLocaleString('fr-FR')}</p>
+        <p><strong>Dat:</strong> ${new Date(date).toLocaleString('fr-FR', { timeZone: 'America/Port-au-Prince' })}</p>
         <p><strong>Total Mis:</strong> ${totalAmount} Gdes</p>
         <p><strong>Statis:</strong> ${checked ? (winAmount > 0 ? 'GANYEN' : 'PÈDI') : 'AP TANN'}</p>
         ${winAmount > 0 ? `
@@ -1261,7 +1274,7 @@ function viewTicketDetails(ticketId) {
 
 function updateClock() {
     const now = new Date();
-    document.getElementById('live-clock').innerText = now.toLocaleTimeString('fr-FR');
+    document.getElementById('live-clock').innerText = now.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince' });
 
     if (APP_STATE.currentTab === 'home' || APP_STATE.currentTab === 'betting') {
         checkSelectedDrawStatus();

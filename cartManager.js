@@ -520,8 +520,17 @@ function generateTicketHTML(ticket) {
     const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
 
     const dateObj = new Date(ticket.date);
-    const formattedDate = dateObj.toLocaleDateString('fr-FR') + ' ' + 
-                          dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + 
+                          dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+
+    // Récupération du nom du tirage si manquant
+    let drawName = ticket.draw_name || ticket.drawName;
+    if (!drawName && CONFIG && CONFIG.DRAWS && ticket.draw_id) {
+        const draw = CONFIG.DRAWS.find(d => d.id == ticket.draw_id);
+        drawName = draw ? draw.name : 'Tiraj Inkonu';
+    } else if (!drawName) {
+        drawName = 'Tiraj Inkonu';
+    }
 
     const betsHTML = (ticket.bets || []).map(b => {
         const gameAbbr = getGameAbbreviation(b.game || '', b);
@@ -546,7 +555,7 @@ function generateTicketHTML(ticket) {
 
         <div class="info">
             <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
-            <p>Tiraj: ${ticket.draw_name || ticket.drawName || ''}</p>
+            <p>Tiraj: ${drawName}</p>
             <p>Date: ${formattedDate}</p>
             <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
         </div>
