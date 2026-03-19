@@ -1,5 +1,23 @@
 // uiManager.js
 
+// ==========================
+// Fonctions utilitaires
+// ==========================
+
+// Parse une date de façon robuste (gère les formats sans T)
+function safeParseDate(dateValue) {
+    if (!dateValue) return null;
+    if (dateValue instanceof Date && !isNaN(dateValue)) return dateValue;
+    
+    let str = String(dateValue).trim();
+    // Normalise le format "YYYY-MM-DD HH:MM:SS" (sans T) en ajoutant T et Z
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(str)) {
+        str = str.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(str);
+    return isNaN(d) ? null : d;
+}
+
 // Variable globale pour le terme de recherche
 window.historySearchTerm = '';
 
@@ -11,7 +29,20 @@ window.reportFilters = {
     drawId: 'all'
 };
 
-// Fonction utilitaire pour récupérer les tickets depuis l'API
+// Mapping des IDs de tirages vers noms (si l'API ne fournit pas draw_name)
+// À compléter selon les IDs renvoyés par le serveur
+const DRAW_NAME_MAP = {
+    // Exemple : si l'API renvoie des nombres
+    // 1: 'Tunisia Matin',
+    // 2: 'Tunisia Soir',
+    // etc.
+    // Si l'API renvoie déjà draw_name, ce mapping n'est pas utilisé.
+};
+
+// ==========================
+// Fonctions API (rappel)
+// ==========================
+
 async function fetchTickets() {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('Non authentifié');
@@ -66,8 +97,8 @@ function filterTicketsByDate(tickets, filters) {
     weekAgo.setDate(now.getDate() - 7);
 
     return tickets.filter(ticket => {
-        const ticketDate = new Date(ticket.date || ticket.created_at);
-        if (isNaN(ticketDate)) return false;
+        const ticketDate = safeParseDate(ticket.date || ticket.created_at);
+        if (!ticketDate) return false;
         const ticketDateStr = ticketDate.toISOString().split('T')[0];
 
         if (filters.period === 'today') {
@@ -85,6 +116,10 @@ function filterTicketsByDate(tickets, filters) {
         return true;
     });
 }
+
+// ==========================
+// Navigation et onglets
+// ==========================
 
 function switchTab(tabName) {
     APP_STATE.currentTab = tabName;
@@ -149,6 +184,10 @@ function fixHomeScreenDisplay() {
     }, 100);
 }
 
+// ==========================
+// Historique
+// ==========================
+
 // Initialisation de la barre de recherche dans l'historique
 function initHistorySearchBar() {
     const historyScreen = document.getElementById('history-screen');
@@ -195,152 +234,6 @@ function initHistorySearchBar() {
     });
 }
 
-// Initialisation des filtres de rapport
-function initReportFilters() {
-    const reportsScreen = document.getElementById('reports-screen');
-    if (!reportsScreen) return;
-
-    if (document.getElementById('report-filters')) return;
-
-    const filtersDiv = document.createElement('div');
-    filtersDiv.id = 'report-filters';
-    filtersDiv.className = 'report-filters';
-    filtersDiv.innerHTML = `
-        <div class="filter-row">
-            <select id="report-period" class="filter-select">
-                <option value="today">Jodi a</option>
-                <option value="yesterday">Yè</option>
-                <option value="week">Semèn sa a</option>
-                <option value="custom">Dat pèsonalize</option>
-            </select>
-            
-            <div id="custom-date-range" style="display: none; margin-top: 10px;">
-                <input type="date" id="report-from-date" class="filter-input" placeholder="Dat kòmansman">
-                <input type="date" id="report-to-date" class="filter-input" placeholder="Dat fini">
-            </div>
-            
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button id="apply-report-filters" class="filter-btn">Aplike Filtre</button>
-                <button id="print-report-btn" class="filter-btn"><i class="fas fa-print"></i> Enprime</button>
-            </div>
-        </div>
-    `;
-
-    const header = reportsScreen.querySelector('.reports-header');
-    if (header) {
-        header.after(filtersDiv);
-    } else {
-        reportsScreen.prepend(filtersDiv);
-    }
-
-    if (!document.getElementById('report-filters-styles')) {
-        const style = document.createElement('style');
-        style.id = 'report-filters-styles';
-        style.textContent = `
-            .report-filters {
-                padding: 15px;
-                background: var(--surface);
-                border-bottom: 1px solid var(--glass-border);
-                margin-bottom: 15px;
-            }
-            .filter-row {
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-            .filter-select, .filter-input {
-                padding: 10px;
-                border: 1px solid var(--glass-border);
-                border-radius: 8px;
-                background: var(--bg-light);
-                color: var(--text);
-                font-size: 1rem;
-            }
-            .filter-btn {
-                padding: 12px;
-                background: var(--primary);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 1rem;
-                font-weight: bold;
-                cursor: pointer;
-                transition: all 0.3s;
-            }
-            .filter-btn:hover {
-                background: var(--primary-dark);
-                transform: translateY(-2px);
-            }
-            @media (min-width: 768px) {
-                .filter-row {
-                    flex-direction: row;
-                    align-items: center;
-                }
-                .custom-date-range {
-                    display: flex;
-                    gap: 10px;
-                }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    const periodSelect = document.getElementById('report-period');
-    const customRange = document.getElementById('custom-date-range');
-    const fromDate = document.getElementById('report-from-date');
-    const toDate = document.getElementById('report-to-date');
-    const applyBtn = document.getElementById('apply-report-filters');
-    const printBtn = document.getElementById('print-report-btn');
-
-    const today = new Date().toISOString().split('T')[0];
-    fromDate.value = today;
-    toDate.value = today;
-
-    periodSelect.addEventListener('change', function() {
-        customRange.style.display = this.value === 'custom' ? 'block' : 'none';
-    });
-
-    applyBtn.addEventListener('click', function() {
-        window.reportFilters = {
-            period: periodSelect.value,
-            fromDate: fromDate.value,
-            toDate: toDate.value,
-            drawId: document.getElementById('draw-report-selector')?.value || 'all'
-        };
-        loadReports();
-    });
-
-    printBtn.addEventListener('click', printReport);
-}
-
-// Fonction de filtrage des tickets pour la recherche
-function filterTickets(tickets, term) {
-    if (!term) return tickets;
-    term = term.toLowerCase();
-    return tickets.filter(ticket => {
-        const ticketId = (ticket.ticket_id || ticket.id || '').toString().toLowerCase();
-        if (ticketId.includes(term)) return true;
-
-        const drawName = (ticket.draw_name || ticket.drawName || '').toLowerCase();
-        if (drawName.includes(term)) return true;
-
-        const date = new Date(ticket.date || ticket.created_at);
-        const dateStr = date.toLocaleDateString('fr-FR').toLowerCase();
-        if (dateStr.includes(term)) return true;
-
-        const bets = ticket.bets || [];
-        let numbers = '';
-        if (Array.isArray(bets)) {
-            numbers = bets.map(b => b.number || '').join(' ').toLowerCase();
-        } else if (typeof bets === 'string') {
-            numbers = bets.toLowerCase();
-        }
-        if (numbers.includes(term)) return true;
-
-        return false;
-    });
-}
-
 async function loadHistory() {
     try {
         const container = document.getElementById('history-container');
@@ -359,6 +252,36 @@ async function loadHistory() {
     }
 }
 
+// Fonction de filtrage des tickets pour la recherche
+function filterTickets(tickets, term) {
+    if (!term) return tickets;
+    term = term.toLowerCase();
+    return tickets.filter(ticket => {
+        const ticketId = (ticket.ticket_id || ticket.id || '').toString().toLowerCase();
+        if (ticketId.includes(term)) return true;
+
+        const drawName = (ticket.draw_name || ticket.drawName || '').toLowerCase();
+        if (drawName.includes(term)) return true;
+
+        const date = safeParseDate(ticket.date || ticket.created_at);
+        if (date) {
+            const dateStr = date.toLocaleDateString('fr-FR').toLowerCase();
+            if (dateStr.includes(term)) return true;
+        }
+
+        const bets = ticket.bets || [];
+        let numbers = '';
+        if (Array.isArray(bets)) {
+            numbers = bets.map(b => b.number || '').join(' ').toLowerCase();
+        } else if (typeof bets === 'string') {
+            numbers = bets.toLowerCase();
+        }
+        if (numbers.includes(term)) return true;
+
+        return false;
+    });
+}
+
 function renderHistory() {
     const container = document.getElementById('history-container');
     
@@ -375,24 +298,44 @@ function renderHistory() {
     }
     
     container.innerHTML = filteredTickets.map((ticket, index) => {
-        const numericId = ticket.id;
+        const numericId = ticket.id; // ID numérique de la base
         const displayId = ticket.ticket_id || ticket.id;
         
-        // Récupération du nom du tirage
-        let drawName = ticket.draw_name || ticket.drawName || ticket.draw_name_fr;
-        if (!drawName && CONFIG && CONFIG.DRAWS) {
-            const draw = CONFIG.DRAWS.find(d => d.id == (ticket.draw_id || ticket.drawId));
-            drawName = draw ? draw.name : 'Tiraj Inkonu';
-        } else if (!drawName) {
-            drawName = 'Tiraj Inkonu';
+        // --- Récupération du nom du tirage ---
+        let drawName = ticket.draw_name || ticket.drawName || '';
+        if (!drawName) {
+            const drawId = ticket.draw_id || ticket.drawId;
+            if (drawId) {
+                // Si CONFIG.DRAWS est défini, on cherche dedans
+                if (CONFIG && CONFIG.DRAWS) {
+                    const draw = CONFIG.DRAWS.find(d => d.id == drawId);
+                    drawName = draw ? draw.name : (DRAW_NAME_MAP[drawId] || `Tiraj ${drawId}`);
+                } else {
+                    drawName = DRAW_NAME_MAP[drawId] || `Tiraj ${drawId}`;
+                }
+            } else {
+                drawName = 'Tiraj Inkonu';
+            }
         }
         
         const totalAmount = ticket.total_amount || ticket.totalAmount || ticket.amount || 0;
-        const date = ticket.date || ticket.created_at || ticket.created_date || new Date().toISOString();
-        const bets = ticket.bets || ticket.numbers || [];
-        const checked = ticket.checked || ticket.verified || false;
-        const winAmount = ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0;
+        const date = ticket.date || ticket.created_at || ticket.created_date;
         
+        // --- Traitement de la date ---
+        const ticketDate = safeParseDate(date);
+        let formattedDate = 'Date inkonu', formattedTime = '';
+        if (ticketDate) {
+            formattedDate = ticketDate.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' });
+            formattedTime = ticketDate.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+        }
+        
+        // --- Calcul du délai pour modification/suppression ---
+        const now = new Date();
+        const minutesDiff = ticketDate ? (now - ticketDate) / (1000 * 60) : Infinity;
+        const canDelete = minutesDiff <= 3 && numericId != null;
+        const canEdit = minutesDiff <= 3;
+        
+        const bets = ticket.bets || [];
         let numberOfBets = 0;
         if (Array.isArray(bets)) {
             numberOfBets = bets.length;
@@ -407,9 +350,10 @@ function renderHistory() {
             }
         }
         
-        let status = '';
-        let statusClass = '';
+        const checked = ticket.checked || ticket.verified || false;
+        const winAmount = ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0;
         
+        let status = '', statusClass = '';
         if (checked) {
             if (winAmount > 0) {
                 status = 'GeNYEN';
@@ -421,20 +365,6 @@ function renderHistory() {
         } else {
             status = 'AP TANN';
             statusClass = 'badge-wait';
-        }
-        
-        const ticketDate = new Date(date);
-        const now = new Date();
-        const minutesDiff = (now.getTime() - ticketDate.getTime()) / (1000 * 60);
-        const canDelete = minutesDiff <= 3 && numericId != null;
-        const canEdit = minutesDiff <= 3;
-        
-        let formattedDate = 'Date inkonu';
-        let formattedTime = '';
-        
-        if (!isNaN(ticketDate)) {
-            formattedDate = ticketDate.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' });
-            formattedTime = ticketDate.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
         }
         
         return `
@@ -514,9 +444,9 @@ function editTicket(ticketId) {
         return;
     }
 
-    const ticketDate = new Date(ticket.date || ticket.created_at);
+    const ticketDate = safeParseDate(ticket.date || ticket.created_at);
     const now = new Date();
-    const minutesDiff = (now.getTime() - ticketDate.getTime()) / (1000 * 60);
+    const minutesDiff = ticketDate ? (now - ticketDate) / (1000 * 60) : Infinity;
     if (minutesDiff > 3) {
         alert("Tikè sa a gen plis pase 3 minit, ou pa ka modifye li.");
         return;
@@ -729,7 +659,128 @@ function reprintTicket(ticketId) {
     printThermalTicket(ticket, printWindow);
 }
 
-// Chargement des rapports
+// ==========================
+// Rapports
+// ==========================
+
+// Initialisation des filtres de rapport
+function initReportFilters() {
+    const reportsScreen = document.getElementById('reports-screen');
+    if (!reportsScreen) return;
+
+    if (document.getElementById('report-filters')) return;
+
+    const filtersDiv = document.createElement('div');
+    filtersDiv.id = 'report-filters';
+    filtersDiv.className = 'report-filters';
+    filtersDiv.innerHTML = `
+        <div class="filter-row">
+            <select id="report-period" class="filter-select">
+                <option value="today">Jodi a</option>
+                <option value="yesterday">Yè</option>
+                <option value="week">Semèn sa a</option>
+                <option value="custom">Dat pèsonalize</option>
+            </select>
+            
+            <div id="custom-date-range" style="display: none; margin-top: 10px;">
+                <input type="date" id="report-from-date" class="filter-input" placeholder="Dat kòmansman">
+                <input type="date" id="report-to-date" class="filter-input" placeholder="Dat fini">
+            </div>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="apply-report-filters" class="filter-btn">Aplike Filtre</button>
+                <button id="print-report-btn" class="filter-btn"><i class="fas fa-print"></i> Enprime</button>
+            </div>
+        </div>
+    `;
+
+    const header = reportsScreen.querySelector('.reports-header');
+    if (header) {
+        header.after(filtersDiv);
+    } else {
+        reportsScreen.prepend(filtersDiv);
+    }
+
+    if (!document.getElementById('report-filters-styles')) {
+        const style = document.createElement('style');
+        style.id = 'report-filters-styles';
+        style.textContent = `
+            .report-filters {
+                padding: 15px;
+                background: var(--surface);
+                border-bottom: 1px solid var(--glass-border);
+                margin-bottom: 15px;
+            }
+            .filter-row {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .filter-select, .filter-input {
+                padding: 10px;
+                border: 1px solid var(--glass-border);
+                border-radius: 8px;
+                background: var(--bg-light);
+                color: var(--text);
+                font-size: 1rem;
+            }
+            .filter-btn {
+                padding: 12px;
+                background: var(--primary);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 1rem;
+                font-weight: bold;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+            .filter-btn:hover {
+                background: var(--primary-dark);
+                transform: translateY(-2px);
+            }
+            @media (min-width: 768px) {
+                .filter-row {
+                    flex-direction: row;
+                    align-items: center;
+                }
+                .custom-date-range {
+                    display: flex;
+                    gap: 10px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const periodSelect = document.getElementById('report-period');
+    const customRange = document.getElementById('custom-date-range');
+    const fromDate = document.getElementById('report-from-date');
+    const toDate = document.getElementById('report-to-date');
+    const applyBtn = document.getElementById('apply-report-filters');
+    const printBtn = document.getElementById('print-report-btn');
+
+    const today = new Date().toISOString().split('T')[0];
+    fromDate.value = today;
+    toDate.value = today;
+
+    periodSelect.addEventListener('change', function() {
+        customRange.style.display = this.value === 'custom' ? 'block' : 'none';
+    });
+
+    applyBtn.addEventListener('click', function() {
+        window.reportFilters = {
+            period: periodSelect.value,
+            fromDate: fromDate.value,
+            toDate: toDate.value,
+            drawId: document.getElementById('draw-report-selector')?.value || 'all'
+        };
+        loadReports();
+    });
+
+    printBtn.addEventListener('click', printReport);
+}
+
 async function loadReports() {
     try {
         initReportFilters();
@@ -1042,6 +1093,10 @@ function printReport() {
     };
 }
 
+// ==========================
+// Gagnants
+// ==========================
+
 async function loadWinners() {
     try {
         await APIService.getWinningTickets();
@@ -1272,6 +1327,10 @@ function viewTicketDetails(ticketId) {
     document.body.appendChild(modal);
 }
 
+// ==========================
+// Horloge et synchronisation
+// ==========================
+
 function updateClock() {
     const now = new Date();
     document.getElementById('live-clock').innerText = now.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince' });
@@ -1321,6 +1380,10 @@ async function loadLotteryConfig() {
     }
 }
 
+// ==========================
+// Déconnexion
+// ==========================
+
 function logout() {
     if (!confirm('Èske ou sèten ou vle dekonekte?')) return;
 
@@ -1343,7 +1406,10 @@ function logout() {
     });
 }
 
+// ==========================
 // Exposer les fonctions globales
+// ==========================
+window.switchTab = switchTab;
 window.editTicket = editTicket;
 window.deleteTicket = deleteTicket;
 window.deleteTicketFromCard = deleteTicketFromCard;
