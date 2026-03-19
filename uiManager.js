@@ -753,47 +753,49 @@ async function loadReports() {
         // Initialiser les filtres s'ils n'existent pas
         initReportFilters();
 
-        // Récupérer tous les tickets
+        const token = localStorage.getItem('auth_token');
+        const res = await fetch(`/api/reports`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Erreur réseau');
+        const data = await res.json();
+        
+        document.getElementById('total-tickets').textContent = data.totalTickets;
+        document.getElementById('total-bets').textContent = data.totalBets.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('total-wins').textContent = data.totalWins.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('total-loss').textContent = data.totalLoss.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('balance').textContent = data.balance.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('balance').style.color = data.balance >= 0 ? 'var(--success)' : 'var(--danger)';
+        
+        // Pour le rapport par tirage, on recharge tous les tickets
         const allTickets = await fetchTickets();
+        APP_STATE.ticketsHistory = allTickets;
         
-        // Filtrer les tickets selon les critères
-        const filteredTickets = filterTicketsByDate(allTickets, window.reportFilters);
-        APP_STATE.ticketsHistory = filteredTickets;
-        
-        // Filtrer par tirage si nécessaire
-        const finalTickets = window.reportFilters.drawId !== 'all' 
-            ? filteredTickets.filter(t => 
-                (t.draw_id === window.reportFilters.drawId || t.drawId === window.reportFilters.drawId)
-              )
-            : filteredTickets;
-        
-        let totalTickets = finalTickets.length;
-        let totalBets = 0;
-        let totalWins = 0;
-        let totalLoss = 0;
-        
-        finalTickets.forEach(ticket => {
-            const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
-            totalBets += ticketAmount;
-            
-            if (ticket.checked || ticket.verified) {
-                const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                if (winAmount > 0) {
-                    totalWins += winAmount;
-                } else {
-                    totalLoss += ticketAmount;
-                }
+        // Mettre à jour le sélecteur de tirage
+        const drawSelector = document.getElementById('draw-report-selector');
+        drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
+        CONFIG.DRAWS.forEach(draw => {
+            const option = document.createElement('option');
+            option.value = draw.id;
+            option.textContent = draw.name;
+            if (draw.id === window.reportFilters.drawId) {
+                option.selected = true;
             }
+            drawSelector.appendChild(option);
         });
         
-        const totalProfit = totalBets - totalWins;
+        await loadDrawReport(window.reportFilters.drawId);
         
-        document.getElementById('total-tickets').textContent = totalTickets;
-        document.getElementById('total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('total-wins').textContent = totalWins.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').textContent = totalProfit.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').style.color = (totalProfit >= 0) ? 'var(--success)' : 'var(--danger)';
+    } catch (error) {
+        console.error('Erreur chargement rapports:', error);
+        document.getElementById('total-tickets').textContent = '0';
+        document.getElementById('total-bets').textContent = '0 Gdes';
+        document.getElementById('total-wins').textContent = '0 Gdes';
+        document.getElementById('total-loss').textContent = '0 Gdes';
+        document.getElementById('balance').textContent = '0 Gdes';
+        document.getElementById('balance').style.color = 'var(--success)';
+    }
+}
         
         // Ajouter l'information de période dans le rapport
         const periodInfo = document.createElement('div');
