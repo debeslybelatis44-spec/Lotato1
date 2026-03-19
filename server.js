@@ -870,20 +870,31 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
     const ownerId = req.user.ownerId;
     try {
         const result = await pool.query(
-            `SELECT * FROM winning_results
-             WHERE owner_id = $1 AND date >= CURRENT_DATE
-             ORDER BY draw_id, date DESC`,
+            `SELECT wr.*, d.name as draw_name, wr.date as published_at
+             FROM winning_results wr
+             JOIN draws d ON wr.draw_id = d.id
+             WHERE wr.owner_id = $1 AND wr.date >= CURRENT_DATE
+             ORDER BY wr.draw_id, wr.date DESC`,
             [ownerId]
         );
-        res.json({ results: result.rows });
+        // Transformer numbers en tableau (car stocké en JSON ou texte)
+        const rows = result.rows.map(row => {
+            let numbers = row.numbers;
+            if (typeof numbers === 'string') {
+                try { numbers = JSON.parse(numbers); } catch { numbers = []; }
+            }
+            return {
+                ...row,
+                numbers: numbers,
+                published_at: row.published_at, // pour le frontend
+                name: row.draw_name              // pour le frontend
+            };
+        });
+        res.json({ results: rows });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Erreur serveur' });
     }
-});
-
-app.post('/api/tickets/check-winners', authenticate, async (req, res) => {
-    res.json({ success: true, message: 'Vérification des gagnants déclenchée' });
 });
 
 // ==================== Routes superviseur ====================
