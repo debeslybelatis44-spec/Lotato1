@@ -1,6 +1,18 @@
 // ==========================
-// cartManager.js (corrigé - gestion dynamique des gratuits + vérification limites améliorée)
+// cartManager.js (corrigé - gestion dynamique des gratuits + vérification limites améliorée + normalisation date)
 // ==========================
+
+// ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
+function normalizeDateString(dateStr) {
+    if (!dateStr) return null;
+    // Si la chaîne contient un espace (ex: "2025-03-20 10:30:00"), remplacer par 'T'
+    let normalized = dateStr.replace(' ', 'T');
+    // Si elle ne se termine pas par Z, on suppose qu'il manque l'indication UTC, on ajoute Z
+    if (!normalized.endsWith('Z')) {
+        normalized += 'Z';
+    }
+    return normalized;
+}
 
 // ---------- Utils ----------
 function isNumberBlocked(number, drawId) {
@@ -565,7 +577,8 @@ function generateTicketHTML(ticket) {
     // Normalisation de la date
     let formattedDate = 'Date invalide';
     if (ticket.date) {
-        const dateObj = new Date(ticket.date);
+        const normalized = normalizeDateString(ticket.date);
+        const dateObj = new Date(normalized);
         if (!isNaN(dateObj)) {
             formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + 
                             dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
