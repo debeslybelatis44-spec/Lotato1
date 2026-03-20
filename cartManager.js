@@ -1,5 +1,5 @@
 // ==========================
-// cartManager.js (corrigé - gestion dynamique des gratuits + vérification limites)
+// cartManager.js (corrigé - gestion dynamique des gratuits + vérification limites améliorée)
 // ==========================
 
 // ---------- Utils ----------
@@ -10,22 +10,25 @@ function isNumberBlocked(number, drawId) {
 }
 
 // Vérifie si le montant dépasse la limite pour ce numéro et ce tirage
+// Retourne un objet { success: boolean, message: string } (message seulement si échec)
 function checkNumberLimit(number, drawId, amountToAdd) {
     const key = `${drawId}_${number}`;
     const limit = APP_STATE.numberLimits[key];
-    if (!limit) return true; // pas de limite
+    if (!limit) return { success: true }; // pas de limite
 
     // Calculer le total déjà misé pour ce numéro dans le panier actuel (même tirage)
     const currentTotal = APP_STATE.currentCart
         .filter(bet => bet.drawId === drawId && bet.cleanNumber === number)
-        .reduce((sum, bet) => sum + bet.amount, 0);
+        .reduce((sum, bet) => sum + (bet.amount || 0), 0);
 
     const newTotal = currentTotal + amountToAdd;
     if (newTotal > limit) {
-        alert(`Limite atteinte pour le numéro ${number} (${drawId}). Maximum: ${limit} G, déjà misé: ${currentTotal} G, tentative: ${amountToAdd} G.`);
-        return false;
+        return {
+            success: false,
+            message: `❌ Limite atteinte : ${number} (${drawId}) – max ${limit} G, déjà misé ${currentTotal} G, tentative ${amountToAdd} G.`
+        };
     }
-    return true;
+    return { success: true };
 }
 
 // ---------- Génération aléatoire d'un mariage ----------
@@ -132,18 +135,36 @@ var CartManager = {
                 ? APP_STATE.selectedDraws
                 : [APP_STATE.selectedDraw];
 
-            // Vérification des limites pour chaque pari auto-généré
+            // Collecter toutes les erreurs de limites
+            const errors = [];
             for (const drawId of draws) {
                 for (const bet of autoBets) {
                     const number = bet.cleanNumber || bet.number;
-                    if (!checkNumberLimit(number, drawId, amt)) {
+                    const check = checkNumberLimit(number, drawId, amt);
+                    if (!check.success) {
+                        errors.push(check.message);
+                    }
+                }
+            }
+            if (errors.length > 0) {
+                alert("❌ Limites dépassées :\n" + errors.join("\n"));
+                return;
+            }
+
+            // Vérification des blocages (simplifiée, on peut aussi collecter)
+            for (const drawId of draws) {
+                for (const bet of autoBets) {
+                    const number = bet.cleanNumber || bet.number;
+                    if (isNumberBlocked(number, drawId)) {
+                        alert(`❌ Nimewo ${number} bloke pou tiraj ${drawId}`);
                         return;
                     }
                 }
             }
 
             draws.forEach(drawId => {
-                const drawName = CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId;
+                // Récupérer le vrai nom du tirage depuis APP_STATE.draws
+                const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
                 autoBets.forEach(bet => {
                     APP_STATE.currentCart.push({
                         ...bet,
@@ -172,21 +193,33 @@ var CartManager = {
                 ? APP_STATE.selectedDraws
                 : [APP_STATE.selectedDraw];
 
-            // Vérification blocage et limites pour chaque numéro
+            // Collecter les erreurs de limites
+            const errors = [];
+            for (const drawId of draws) {
+                for (const num of numbers) {
+                    const check = checkNumberLimit(num, drawId, amt);
+                    if (!check.success) {
+                        errors.push(check.message);
+                    }
+                }
+            }
+            if (errors.length > 0) {
+                alert("❌ Limites dépassées :\n" + errors.join("\n"));
+                return;
+            }
+
+            // Vérification des blocages
             for (const drawId of draws) {
                 for (const num of numbers) {
                     if (isNumberBlocked(num, drawId)) {
-                        alert(`Nimewo ${num} bloke pou tiraj sa a`);
-                        return;
-                    }
-                    if (!checkNumberLimit(num, drawId, amt)) {
+                        alert(`❌ Nimewo ${num} bloke pou tiraj ${drawId}`);
                         return;
                     }
                 }
             }
 
             draws.forEach(drawId => {
-                const drawName = CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId;
+                const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
                 numbers.forEach(num => {
                     APP_STATE.currentCart.push({
                         id: Date.now() + Math.random(),
@@ -222,13 +255,23 @@ var CartManager = {
             ? APP_STATE.selectedDraws
             : [APP_STATE.selectedDraw];
 
-        // Vérification blocage et limites pour chaque tirage
+        // Collecter les erreurs de limites
+        const errors = [];
+        for (const drawId of draws) {
+            const check = checkNumberLimit(num, drawId, amt);
+            if (!check.success) {
+                errors.push(check.message);
+            }
+        }
+        if (errors.length > 0) {
+            alert("❌ Limites dépassées :\n" + errors.join("\n"));
+            return;
+        }
+
+        // Vérification des blocages
         for (const drawId of draws) {
             if (isNumberBlocked(num, drawId)) {
-                alert(`Nimewo ${num} bloke`);
-                return;
-            }
-            if (!checkNumberLimit(num, drawId, amt)) {
+                alert(`❌ Nimewo ${num} bloke pou tiraj ${drawId}`);
                 return;
             }
         }
@@ -240,7 +283,7 @@ var CartManager = {
                     APP_STATE.currentCart.push({
                         ...bet,
                         drawId: drawId,
-                        drawName: CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId
+                        drawName: APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId
                     });
                 });
             } else {
@@ -251,7 +294,7 @@ var CartManager = {
                     cleanNumber: num,
                     amount: amt,
                     drawId: drawId,
-                    drawName: CONFIG.DRAWS.find(d => d.id === drawId)?.name || drawId,
+                    drawName: APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId,
                     timestamp: new Date().toISOString()
                 });
             }
@@ -373,7 +416,7 @@ async function processFinalTicket() {
                 agentId: APP_STATE.agentId,
                 agentName: APP_STATE.agentName,
                 drawId,
-                drawName: bets[0].drawName,
+                drawName: bets[0].drawName, // déjà le vrai nom
                 bets,
                 total
             };
@@ -519,14 +562,20 @@ function generateTicketHTML(ticket) {
     const slogan = cfg.slogan || '';
     const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
 
-    const dateObj = new Date(ticket.date);
-    const formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + 
-                          dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+    // Normalisation de la date
+    let formattedDate = 'Date invalide';
+    if (ticket.date) {
+        const dateObj = new Date(ticket.date);
+        if (!isNaN(dateObj)) {
+            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + 
+                            dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+        }
+    }
 
-    // Récupération du nom du tirage si manquant
+    // Récupération du nom du tirage
     let drawName = ticket.draw_name || ticket.drawName;
-    if (!drawName && CONFIG && CONFIG.DRAWS && ticket.draw_id) {
-        const draw = CONFIG.DRAWS.find(d => d.id == ticket.draw_id);
+    if (!drawName && APP_STATE.draws && ticket.draw_id) {
+        const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
         drawName = draw ? draw.name : 'Tiraj Inkonu';
     } else if (!drawName) {
         drawName = 'Tiraj Inkonu';
