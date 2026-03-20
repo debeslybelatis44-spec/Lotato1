@@ -378,13 +378,14 @@ function renderHistory() {
         const numericId = ticket.id;
         const displayId = ticket.ticket_id || ticket.id;
         
-        // Récupération du nom du tirage
-        let drawName = ticket.draw_name || ticket.drawName || ticket.draw_name_fr;
-        if (!drawName && APP_STATE.draws) {
+        // Récupération du nom du tirage : priorité à la correspondance via draw_id
+        let drawName = null;
+        if (APP_STATE.draws) {
             const draw = APP_STATE.draws.find(d => d.id == (ticket.draw_id || ticket.drawId));
-            drawName = draw ? draw.name : 'Tiraj Inkonu';
-        } else if (!drawName) {
-            drawName = 'Tiraj Inkonu';
+            if (draw) drawName = draw.name;
+        }
+        if (!drawName) {
+            drawName = ticket.draw_name || ticket.drawName || ticket.draw_name_fr || 'Tiraj Inkonu';
         }
         
         const totalAmount = ticket.total_amount || ticket.totalAmount || ticket.amount || 0;
@@ -607,7 +608,12 @@ async function replayTicket(ticketId) {
 
     selectedDraws.forEach(drawId => {
         // Récupérer le nom du tirage depuis APP_STATE.draws
-        const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
+        let drawName = null;
+        if (APP_STATE.draws) {
+            const draw = APP_STATE.draws.find(d => d.id == drawId);
+            if (draw) drawName = draw.name;
+        }
+        if (!drawName) drawName = drawId; // fallback
 
         bets.forEach(bet => {
             const betKey = getBetKey(bet);
@@ -1115,12 +1121,13 @@ function updateWinnersDisplay() {
         const netProfit = winAmount - betAmount;
 
         // Récupération du nom du tirage
-        let drawName = ticket.draw_name || ticket.drawName;
-        if (!drawName && APP_STATE.draws) {
+        let drawName = null;
+        if (APP_STATE.draws) {
             const draw = APP_STATE.draws.find(d => d.id == (ticket.draw_id || ticket.drawId));
-            drawName = draw ? draw.name : 'Tiraj Inkonu';
-        } else if (!drawName) {
-            drawName = 'Tiraj Inkonu';
+            if (draw) drawName = draw.name;
+        }
+        if (!drawName) {
+            drawName = ticket.draw_name || ticket.drawName || 'Tiraj Inkonu';
         }
 
         return `
@@ -1191,12 +1198,13 @@ function viewTicketDetails(ticketId) {
     }
 
     // Récupération du nom du tirage
-    let drawName = ticket.draw_name || ticket.drawName || ticket.draw_name_fr;
-    if (!drawName && APP_STATE.draws) {
+    let drawName = null;
+    if (APP_STATE.draws) {
         const draw = APP_STATE.draws.find(d => d.id == (ticket.draw_id || ticket.drawId));
-        drawName = draw ? draw.name : 'Tiraj Inkonu';
-    } else if (!drawName) {
-        drawName = 'Tiraj Inkonu';
+        if (draw) drawName = draw.name;
+    }
+    if (!drawName) {
+        drawName = ticket.draw_name || ticket.drawName || ticket.draw_name_fr || 'Tiraj Inkonu';
     }
 
     const totalAmount = ticket.total_amount || ticket.totalAmount || ticket.amount || 0;
