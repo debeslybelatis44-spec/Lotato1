@@ -1,16 +1,13 @@
 // ==========================
-// cartManager.js (corrigé - gestion dynamique des gratuits + vérification limites améliorée + normalisation date)
+// cartManager.js (corrigé - date normalisée sans forçage UTC)
 // ==========================
 
 // ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
-    // Si la chaîne contient un espace (ex: "2025-03-20 10:30:00"), remplacer par 'T'
+    // Remplacer l'espace par 'T' pour un format ISO partiel
     let normalized = dateStr.replace(' ', 'T');
-    // Si elle ne se termine pas par Z, on suppose qu'il manque l'indication UTC, on ajoute Z
-    if (!normalized.endsWith('Z')) {
-        normalized += 'Z';
-    }
+    // Ne pas ajouter 'Z' pour éviter de forcer UTC
     return normalized;
 }
 
@@ -22,13 +19,11 @@ function isNumberBlocked(number, drawId) {
 }
 
 // Vérifie si le montant dépasse la limite pour ce numéro et ce tirage
-// Retourne un objet { success: boolean, message: string } (message seulement si échec)
 function checkNumberLimit(number, drawId, amountToAdd) {
     const key = `${drawId}_${number}`;
     const limit = APP_STATE.numberLimits[key];
-    if (!limit) return { success: true }; // pas de limite
+    if (!limit) return { success: true };
 
-    // Calculer le total déjà misé pour ce numéro dans le panier actuel (même tirage)
     const currentTotal = APP_STATE.currentCart
         .filter(bet => bet.drawId === drawId && bet.cleanNumber === number)
         .reduce((sum, bet) => sum + (bet.amount || 0), 0);
@@ -58,12 +53,9 @@ function generateRandomMarriageBet(amount) {
 // ---------- Cart Manager ----------
 var CartManager = {
 
-    // Met à jour les mariages gratuits
     updateFreeMarriages() {
-        // 1. Supprimer tous les gratuits existants
         APP_STATE.currentCart = APP_STATE.currentCart.filter(b => !(b.free && b.freeType === 'special_marriage'));
 
-        // 2. Regrouper les paris payants par tirage
         const payantsByDraw = {};
         APP_STATE.currentCart.forEach(bet => {
             if (bet.amount > 0) {
@@ -72,7 +64,6 @@ var CartManager = {
             }
         });
 
-        // 3. Pour chaque tirage, calculer le nombre de gratuits requis
         Object.keys(payantsByDraw).forEach(drawId => {
             const payants = payantsByDraw[drawId];
             const totalPayant = payants.reduce((sum, b) => sum + b.amount, 0);
@@ -82,7 +73,6 @@ var CartManager = {
             else if (totalPayant >= 51 && totalPayant <= 150) requiredFree = 2;
             else if (totalPayant >= 151) requiredFree = 3;
 
-            // 4. Ajouter les gratuits
             for (let i = 0; i < requiredFree; i++) {
                 const freeBet = generateRandomMarriageBet(0);
                 const newFree = {
@@ -143,19 +133,14 @@ var CartManager = {
                 return;
             }
 
-            const draws = APP_STATE.multiDrawMode
-                ? APP_STATE.selectedDraws
-                : [APP_STATE.selectedDraw];
+            const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
 
-            // Collecter toutes les erreurs de limites
             const errors = [];
             for (const drawId of draws) {
                 for (const bet of autoBets) {
                     const number = bet.cleanNumber || bet.number;
                     const check = checkNumberLimit(number, drawId, amt);
-                    if (!check.success) {
-                        errors.push(check.message);
-                    }
+                    if (!check.success) errors.push(check.message);
                 }
             }
             if (errors.length > 0) {
@@ -163,7 +148,6 @@ var CartManager = {
                 return;
             }
 
-            // Vérification des blocages (simplifiée, on peut aussi collecter)
             for (const drawId of draws) {
                 for (const bet of autoBets) {
                     const number = bet.cleanNumber || bet.number;
@@ -175,7 +159,6 @@ var CartManager = {
             }
 
             draws.forEach(drawId => {
-                // Récupérer le vrai nom du tirage depuis APP_STATE.draws
                 const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
                 autoBets.forEach(bet => {
                     APP_STATE.currentCart.push({
@@ -201,18 +184,13 @@ var CartManager = {
                 numbers.push(tens.toString() + lastDigit.toString());
             }
 
-            const draws = APP_STATE.multiDrawMode
-                ? APP_STATE.selectedDraws
-                : [APP_STATE.selectedDraw];
+            const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
 
-            // Collecter les erreurs de limites
             const errors = [];
             for (const drawId of draws) {
                 for (const num of numbers) {
                     const check = checkNumberLimit(num, drawId, amt);
-                    if (!check.success) {
-                        errors.push(check.message);
-                    }
+                    if (!check.success) errors.push(check.message);
                 }
             }
             if (errors.length > 0) {
@@ -220,7 +198,6 @@ var CartManager = {
                 return;
             }
 
-            // Vérification des blocages
             for (const drawId of draws) {
                 for (const num of numbers) {
                     if (isNumberBlocked(num, drawId)) {
@@ -263,24 +240,18 @@ var CartManager = {
 
         num = GameEngine.getCleanNumber(num);
 
-        const draws = APP_STATE.multiDrawMode
-            ? APP_STATE.selectedDraws
-            : [APP_STATE.selectedDraw];
+        const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
 
-        // Collecter les erreurs de limites
         const errors = [];
         for (const drawId of draws) {
             const check = checkNumberLimit(num, drawId, amt);
-            if (!check.success) {
-                errors.push(check.message);
-            }
+            if (!check.success) errors.push(check.message);
         }
         if (errors.length > 0) {
             alert("❌ Limites dépassées :\n" + errors.join("\n"));
             return;
         }
 
-        // Vérification des blocages
         for (const drawId of draws) {
             if (isNumberBlocked(num, drawId)) {
                 alert(`❌ Nimewo ${num} bloke pou tiraj ${drawId}`);
@@ -428,7 +399,7 @@ async function processFinalTicket() {
                 agentId: APP_STATE.agentId,
                 agentName: APP_STATE.agentName,
                 drawId,
-                drawName: bets[0].drawName, // déjà le vrai nom
+                drawName: bets[0].drawName,
                 bets,
                 total
             };
@@ -445,6 +416,8 @@ async function processFinalTicket() {
             if (!res.ok) throw new Error("Erreur serveur");
 
             const data = await res.json();
+            // Ajout de la date actuelle pour l'impression immédiate
+            data.ticket.date = new Date().toISOString();
             printThermalTicket(data.ticket, printWindow);
             APP_STATE.ticketsHistory.unshift(data.ticket);
         }
