@@ -1699,5 +1699,181 @@
             };
         </script>
     </div>
+    <script>
+// === AJOUT DU BLOCAGE LOTTO3 DANS owner.html ===
+(function() {
+  // 1. Créer la section HTML dans l'onglet "Boules & Limites"
+  const numbersTab = document.getElementById('tab-numbers');
+  if (numbersTab && !document.getElementById('blocked-lotto3-list')) {
+    const lotto3BlockSection = document.createElement('div');
+    lotto3BlockSection.innerHTML = `
+      <div class="section-title"><i class="fas fa-ban"></i> Bloquer un numéro Lotto3 (3 chiffres)</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Numéro Lotto3 (000-999)</label>
+          <input type="text" id="block-lotto3-number" maxlength="3" placeholder="123">
+        </div>
+        <button class="btn-danger" onclick="window.blockLotto3Number()">Bloquer lotto3</button>
+        <button class="btn-primary" onclick="window.unblockLotto3Number()">Débloquer lotto3</button>
+      </div>
+      <div id="blocked-lotto3-list" class="list-container" style="max-height:150px;"></div>
+    `;
+    numbersTab.appendChild(lotto3BlockSection);
+  }
+
+  // 2. Fonctions de chargement, blocage et déblocage
+  window.loadBlockedLotto3 = async function() {
+    const token = localStorage.getItem('auth_token');
+    try {
+      const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Erreur chargement');
+      const data = await res.json();
+      let html = '<strong>Numéros Lotto3 bloqués globalement:</strong> ';
+      html += (data.blockedNumbers || []).join(', ') || 'aucun';
+      const container = document.getElementById('blocked-lotto3-list');
+      if (container) container.innerHTML = html;
+    } catch (e) {
+      console.error(e);
+      const container = document.getElementById('blocked-lotto3-list');
+      if (container) container.innerHTML = '<p class="loss">Erreur de chargement</p>';
+    }
+  };
+
+  window.blockLotto3Number = async function() {
+    const token = localStorage.getItem('auth_token');
+    const num = document.getElementById('block-lotto3-number')?.value.trim();
+    if (!num || num.length !== 3 || !/^\d+$/.test(num)) {
+      alert('Veuillez entrer un numéro à 3 chiffres');
+      return;
+    }
+    try {
+      const res = await fetch(`${window.API_URL || ''}/api/owner/block-lotto3`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: num })
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert('Numéro Lotto3 bloqué');
+        window.loadBlockedLotto3();
+        if (window.loadAllRestrictions) window.loadAllRestrictions();
+      } else {
+        alert('Erreur: ' + (result.error || ''));
+      }
+    } catch (e) {
+      alert('Erreur réseau');
+    }
+  };
+
+  window.unblockLotto3Number = async function() {
+    const token = localStorage.getItem('auth_token');
+    const num = document.getElementById('block-lotto3-number')?.value.trim();
+    if (!num) return;
+    try {
+      const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: num })
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert('Numéro Lotto3 débloqué');
+        window.loadBlockedLotto3();
+        if (window.loadAllRestrictions) window.loadAllRestrictions();
+      } else {
+        alert('Erreur: ' + (result.error || ''));
+      }
+    } catch (e) {
+      alert('Erreur réseau');
+    }
+  };
+
+  // 3. Patcher switchTab pour charger les Lotto3 bloqués quand l'onglet numbers est affiché
+  const originalSwitchTab = window.switchTab;
+  if (originalSwitchTab) {
+    window.switchTab = function(tabId) {
+      originalSwitchTab(tabId);
+      if (tabId === 'numbers') {
+        window.loadBlockedLotto3();
+      }
+    };
+  }
+
+  // 4. Patcher loadAllRestrictions pour afficher les Lotto3 bloqués dans la liste des restrictions
+  const originalLoadAllRestrictions = window.loadAllRestrictions;
+  if (originalLoadAllRestrictions) {
+    window.loadAllRestrictions = async function() {
+      await originalLoadAllRestrictions();
+      try {
+        const token = localStorage.getItem('auth_token');
+        const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const blockedLotto3 = data.blockedNumbers || [];
+        if (blockedLotto3.length === 0) return;
+
+        const container = document.getElementById('restrictions-list');
+        if (!container) return;
+        let tableHtml = container.innerHTML;
+        if (!tableHtml.includes('<tbody>')) {
+          tableHtml = '<table><thead> <th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th> </thead><tbody>' + tableHtml + '</tbody> </table>';
+        }
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(tableHtml, 'text/html');
+        let tbody = doc.querySelector('tbody');
+        if (!tbody) {
+          tbody = doc.createElement('tbody');
+          doc.body.appendChild(tbody);
+        }
+        blockedLotto3.forEach(num => {
+          const row = doc.createElement('tr');
+          row.style.background = 'rgba(255,170,0,0.1)';
+          row.innerHTML = `
+            <tr>🎲 Lotto3 bloqué globalement</td>
+            <td>Tous</td>
+            <td><strong>${num}</strong></td>
+            <td>—</td>
+            <td><button class="btn-primary" style="padding:4px 8px;" onclick="window.unblockLotto3NumberWithValue('${num}')">Débloquer</button></td>
+          `;
+          tbody.appendChild(row);
+        });
+        container.innerHTML = doc.body.innerHTML;
+      } catch (e) {
+        console.error('Erreur intégration Lotto3 dans restrictions', e);
+      }
+    };
+
+    // Fonction utilitaire pour débloquer un Lotto3 spécifique depuis la liste des restrictions
+    window.unblockLotto3NumberWithValue = async function(number) {
+      const token = localStorage.getItem('auth_token');
+      try {
+        const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number })
+        });
+        const result = await res.json();
+        if (result.success) {
+          window.loadAllRestrictions();
+          window.loadBlockedLotto3();
+        } else {
+          alert('Erreur: ' + (result.error || ''));
+        }
+      } catch (e) {
+        alert('Erreur réseau');
+      }
+    };
+  }
+
+  // 5. Charger immédiatement si l'onglet numbers est déjà actif
+  if (document.getElementById('tab-numbers')?.classList.contains('active')) {
+    window.loadBlockedLotto3();
+  }
+})();
+</script>
 </body>
 </html>
