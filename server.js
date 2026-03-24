@@ -1,4 +1,4 @@
-// server.js
+// server.js (version modifiée)
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -35,7 +35,7 @@ pool.on('connect', (client) => {
   });
 });
 
-// Parser de type pour les timestamps (identique à server2.js)
+// Parser de type pour les timestamps
 const pg = require('pg');
 pg.types.setTypeParser(1114, (stringValue) => {
   return moment.tz(stringValue, 'YYYY-MM-DD HH:mm:ss', 'America/Port-au-Prince').toDate();
@@ -598,7 +598,7 @@ app.get('/api/number-limits', authenticate, async (req, res) => {
   }
 });
 
-// ==================== Route de sauvegarde des tickets (avec vérification Lotto3 bloqué) ====================
+// ==================== Route de sauvegarde des tickets (MODIFIÉE) ====================
 app.post('/api/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total } = req.body;
   const ownerId = req.user.ownerId;
@@ -650,9 +650,38 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     );
     const blockedLotto3Set = new Set(blockedLotto3Res.rows.map(r => r.number));
 
-    // Vérifier chaque pari
+    // ===== NOUVEAU : Filtrer les paris payés et générer les mariages gratuits =====
+    // On ignore les paris marqués "free" envoyés par le front
+    const paidBets = bets.filter(b => !b.free);
+    const totalPaid = paidBets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+
+    // Calcul du nombre de mariages gratuits à offrir
+    let requiredFree = 0;
+    if (totalPaid >= 1 && totalPaid <= 50) requiredFree = 1;
+    else if (totalPaid >= 51 && totalPaid <= 150) requiredFree = 2;
+    else if (totalPaid >= 151) requiredFree = 3;
+
+    // Générer les mariages gratuits aléatoires
+    const newFreeBets = [];
+    for (let i = 0; i < requiredFree; i++) {
+      const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      const number = `${num1}&${num2}`;
+      const cleanNumber = num1 + num2;
+      newFreeBets.push({
+        game: 'auto_marriage',
+        number: number,
+        cleanNumber: cleanNumber,
+        amount: 0,
+        free: true,
+        freeType: 'special_marriage',
+        freeWin: 1000
+      });
+    }
+
+    // Vérifier chaque pari (uniquement les payés, les gratuits n'ont pas de limite)
     const totalsByGame = {};
-    for (const bet of bets) {
+    for (const bet of paidBets) {
       const cleanNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
       if (!cleanNumber) continue;
 
@@ -670,7 +699,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
         return res.status(403).json({ error: `Numéro Lotto3 ${cleanNumber} est bloqué globalement` });
       }
 
-      // Limite de mise par numéro
+      // Limite de mise par numéro (uniquement pour les paris payés)
       if (limitsMap.has(cleanNumber)) {
         const limit = limitsMap.get(cleanNumber);
         // Calculer le total déjà mis aujourd'hui sur ce numéro pour ce tirage
@@ -709,33 +738,8 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       }
     }
 
-    // Ajout des mariages gratuits (selon le montant joué)
-    const paidBets = bets.filter(b => !b.free);
-    const totalPaid = paidBets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
-
-    let requiredFree = 0;
-    if (totalPaid >= 1 && totalPaid <= 50) requiredFree = 1;
-    else if (totalPaid >= 51 && totalPaid <= 150) requiredFree = 2;
-    else if (totalPaid >= 151) requiredFree = 3;
-
-    const newFreeBets = [];
-    for (let i = 0; i < requiredFree; i++) {
-      const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-      const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-      const number = `${num1}&${num2}`;
-      const cleanNumber = num1 + num2;
-      newFreeBets.push({
-        game: 'auto_marriage',
-        number: number,
-        cleanNumber: cleanNumber,
-        amount: 0,
-        free: true,
-        freeType: 'special_marriage',
-        freeWin: 1000
-      });
-    }
-
-    const finalBets = [...bets, ...newFreeBets];
+    // Construire le tableau final avec les paris payés + nouveaux gratuits
+    const finalBets = [...paidBets, ...newFreeBets];
     const betsJson = JSON.stringify(finalBets);
     const finalTotal = finalBets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
 
@@ -1304,7 +1308,7 @@ app.get('/api/owner/draws', authenticate, requireRole('owner'), async (req, res)
   }
 });
 
-// Publication des résultats avec calcul des gagnants
+// ==================== Publication des résultats avec calcul des gains MODIFIÉ ====================
 app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { drawId, numbers, lotto3 } = req.body;
@@ -1359,18 +1363,23 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
           const amount = parseFloat(bet.amount) || 0;
           let gain = 0;
 
+          // ===== BORLETTE : addition des gains pour chaque lot correspondant =====
           if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
             if (cleanNumber.length === 2) {
-              if (cleanNumber === lot2) gain = amount * multipliers.lot2;
-              else if (cleanNumber === lot3) gain = amount * multipliers.lot3;
-              else if (cleanNumber === lot1) gain = amount * multipliers.lot1;
+              let totalGain = 0;
+              if (cleanNumber === lot1) totalGain += amount * multipliers.lot1;
+              if (cleanNumber === lot2) totalGain += amount * multipliers.lot2;
+              if (cleanNumber === lot3) totalGain += amount * multipliers.lot3;
+              gain = totalGain;
             }
           }
+          // ===== LOTTO3 =====
           else if (game === 'lotto3') {
             if (cleanNumber.length === 3 && cleanNumber === lotto3) {
               gain = amount * multipliers.lotto3;
             }
           }
+          // ===== MARIAGE (accepte les paires identiques) =====
           else if (game === 'mariage' || game === 'auto_marriage') {
             if (cleanNumber.length === 4) {
               const firstPair = cleanNumber.slice(0, 2);
@@ -1379,7 +1388,8 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
               let win = false;
               for (let i = 0; i < 3; i++) {
                 for (let j = 0; j < 3; j++) {
-                  if (i !== j && firstPair === pairs[i] && secondPair === pairs[j]) {
+                  // i et j peuvent être égaux (paires identiques autorisées)
+                  if (firstPair === pairs[i] && secondPair === pairs[j]) {
                     win = true;
                     break;
                   }
@@ -1395,6 +1405,7 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
               }
             }
           }
+          // ===== LOTTO4 =====
           else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (cleanNumber.length === 4 && bet.option) {
               const option = bet.option;
@@ -1405,6 +1416,7 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
               if (cleanNumber === expected) gain = amount * multipliers.lotto4;
             }
           }
+          // ===== LOTTO5 =====
           else if (game === 'lotto5' || game === 'auto_lotto5') {
             if (cleanNumber.length === 5 && bet.option) {
               const option = bet.option;
@@ -1438,6 +1450,7 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
   }
 });
 
+// Le reste des routes propriétaire (blocage, limites, etc.) est inchangé
 app.post('/api/owner/block-draw', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { drawId, block } = req.body;
@@ -1607,7 +1620,7 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
   }
 });
 
-// ==================== Routes Lotto3 bloqués (ajoutées depuis server2.js) ====================
+// ==================== Routes Lotto3 bloqués ====================
 app.get('/api/owner/blocked-lotto3', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
@@ -1683,7 +1696,7 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
       [ownerId, 'agent']
     );
 
-    // Progression des limites (avec LIKE sur le JSON, adapté au multi‑tenant)
+    // Progression des limites
     const limitsProgress = await pool.query(
       `SELECT d.name as draw_name, l.number, l.limit_amount,
                     COALESCE(SUM(t.total_amount), 0) as current_bets,
