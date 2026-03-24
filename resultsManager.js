@@ -1,4 +1,5 @@
 // resultsManager.js - Version corrigée avec appel API autonome et affichage du Lotto 3 complet
+// Ajout : onglet Agents avec balance (ventes - gains payés) et défilement horizontal
 (function() {
     if (window.resultsManagerReady) return;
     window.resultsManagerReady = true;
@@ -7,12 +8,14 @@
 
     // ==================== Création de l'UI si absente ====================
     function createResultsUI() {
+        const main = document.querySelector('.content-area');
+        if (!main) {
+            console.error('Élément .content-area introuvable');
+            return;
+        }
+
+        // Écran des résultats
         if (!document.getElementById('results-screen')) {
-            const main = document.querySelector('.content-area');
-            if (!main) {
-                console.error('Élément .content-area introuvable');
-                return;
-            }
             const screen = document.createElement('section');
             screen.id = 'results-screen';
             screen.className = 'screen';
@@ -31,6 +34,26 @@
             main.appendChild(screen);
         }
 
+        // Écran des agents
+        if (!document.getElementById('agents-screen')) {
+            const agentsScreen = document.createElement('section');
+            agentsScreen.id = 'agents-screen';
+            agentsScreen.className = 'screen';
+            agentsScreen.innerHTML = `
+                <div style="padding: 20px;">
+                    <h2 class="section-title">Balans Ajan</h2>
+                    <div class="agents-actions" style="margin-bottom: 15px; text-align: right;">
+                        <button id="refresh-agents-btn" class="filter-btn" style="padding: 8px 16px;">
+                            <i class="fas fa-sync-alt"></i> Rafraîchir
+                        </button>
+                    </div>
+                    <div id="agents-container" class="agents-list">Chajman...</div>
+                </div>
+            `;
+            main.appendChild(agentsScreen);
+        }
+
+        // Onglet Résultats
         const nav = document.querySelector('.nav-bar');
         if (nav && !document.querySelector('.nav-item[data-tab="results"]')) {
             const tab = document.createElement('a');
@@ -49,6 +72,25 @@
             nav.appendChild(tab);
         }
 
+        // Onglet Agents
+        if (nav && !document.querySelector('.nav-item[data-tab="agents"]')) {
+            const agentsTab = document.createElement('a');
+            agentsTab.href = '#';
+            agentsTab.className = 'nav-item';
+            agentsTab.setAttribute('data-tab', 'agents');
+            agentsTab.innerHTML = '<i class="fas fa-users"></i><span>Agents</span>';
+            agentsTab.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                document.getElementById('agents-screen').classList.add('active');
+                this.classList.add('active');
+                loadAgentsBalance();
+            });
+            nav.appendChild(agentsTab);
+        }
+
+        // Ajout des styles (avec scroll horizontal)
         if (!document.getElementById('results-styles')) {
             const style = document.createElement('style');
             style.id = 'results-styles';
@@ -64,12 +106,46 @@
                 .draw-time { font-size: 0.8rem; color: var(--text-dim); }
                 .result-numbers { font-family: 'Courier New', monospace; font-weight: bold; font-size: 1.2rem; background: rgba(0,212,255,0.1); padding: 6px 12px; border-radius: 20px; color: var(--secondary); }
                 .no-result { color: var(--text-dim); font-style: italic; text-align: center; padding: 20px; }
+
+                /* Styles pour l'affichage des agents avec scroll horizontal */
+                .agents-list {
+                    padding-bottom: 80px;
+                    overflow-x: auto;
+                    width: 100%;
+                }
+                .agents-table {
+                    width: 100%;
+                    min-width: 700px;
+                    border-collapse: collapse;
+                    background: var(--surface);
+                    border-radius: 16px;
+                    overflow: hidden;
+                }
+                .agents-table th, .agents-table td {
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 1px solid var(--glass-border);
+                }
+                .agents-table th {
+                    background: var(--primary);
+                    color: white;
+                }
+                .profit { color: var(--success); font-weight: bold; }
+                .loss { color: var(--danger); font-weight: bold; }
+                .recevoir { color: var(--danger); font-weight: bold; }
+                .remettre { color: var(--success); font-weight: bold; }
             `;
             document.head.appendChild(style);
         }
+
+        // Bouton de rafraîchissement
+        const refreshBtn = document.getElementById('refresh-agents-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => loadAgentsBalance());
+        }
     }
 
-    // ==================== Appel API ====================
+    // ==================== Appel API résultats ====================
     async function fetchResults(filter = 'all') {
         const container = document.getElementById('results-container');
         if (!container) return;
@@ -107,7 +183,7 @@
         }
     }
 
-    // ==================== Affichage ====================
+    // ==================== Affichage résultats ====================
     function renderResults(filter) {
         const container = document.getElementById('results-container');
         if (!container) return;
@@ -118,7 +194,6 @@
             return;
         }
 
-        // Filtrer selon la période
         const now = new Date();
         const todayStr = now.toDateString();
         const yesterday = new Date(now);
@@ -141,7 +216,6 @@
             return;
         }
 
-        // Grouper par jour
         const grouped = {};
         filtered.forEach(r => {
             const day = new Date(r.published_at).toLocaleDateString('fr-FR', {
@@ -161,13 +235,10 @@
                     hour: '2-digit', minute: '2-digit'
                 });
 
-                // Formatage des numéros : utilisation de lotto3 pour le premier nombre
                 let numbersDisplay = '—';
                 if (r.lotto3) {
-                    // Nouveau format : Lotto 3 complet (3 chiffres) suivi des deux autres lots (2 chiffres)
                     numbersDisplay = `${r.lotto3}  |  ${r.numbers[1]}  |  ${r.numbers[2]}`;
                 } else if (r.numbers) {
-                    // Anciens résultats (sans lotto3)
                     numbersDisplay = Array.isArray(r.numbers) ? r.numbers.join(' - ') : r.numbers;
                 }
 
@@ -186,6 +257,122 @@
 
         container.innerHTML = html;
     }
+
+    // ==================== Balance des agents ====================
+    async function loadAgentsBalance() {
+        const container = document.getElementById('agents-container');
+        if (!container) return;
+        container.innerHTML = '<div class="no-result">Chajman...</div>';
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            if (!token) throw new Error('Non authentifié');
+
+            const response = await fetch('/api/tickets', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
+            const data = await response.json();
+            const tickets = data.tickets || [];
+
+            const agentsMap = new Map();
+
+            tickets.forEach(ticket => {
+                const agentId = ticket.agent_id || ticket.agentId;
+                if (!agentId) return;
+
+                if (!agentsMap.has(agentId)) {
+                    agentsMap.set(agentId, {
+                        agentId,
+                        agentName: ticket.agent_name || ticket.agentName || 'Anonim',
+                        totalVentes: 0,
+                        totalGainsPayes: 0
+                    });
+                }
+                const agent = agentsMap.get(agentId);
+
+                const montant = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
+                agent.totalVentes += montant;
+
+                const estGagnant = (ticket.checked || ticket.verified) && parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0) > 0;
+                const estPaye = ticket.paid === true;
+                if (estGagnant && estPaye) {
+                    const gain = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
+                    agent.totalGainsPayes += gain;
+                }
+            });
+
+            if (agentsMap.size === 0) {
+                container.innerHTML = '<div class="no-result">Pa gen done sou ajan.</div>';
+                return;
+            }
+
+            // Construction du tableau avec les 7 colonnes
+            let html = `<table class="agents-table">
+                <thead>
+                    <tr>
+                        <th>Ajan</th>
+                        <th>Vant Total (Gdes)</th>
+                        <th>Ganyen Peye (Gdes)</th>
+                        <th>Balans (Gdes)</th>
+                        <th>Montan à Recevoir</th>
+                        <th>Montan à Remèt</th>
+                        <th>Eta</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+            for (const [, agent] of agentsMap) {
+                const balance = agent.totalVentes - agent.totalGainsPayes;
+                let montantRecevoir = 0;
+                let montantRemettre = 0;
+                let etat = 'Neut';
+
+                if (balance < 0) {
+                    montantRecevoir = Math.abs(balance);
+                    etat = 'Pèt (Mèt kay dwe bay ajan)';
+                } else if (balance > 0) {
+                    montantRemettre = balance;
+                    etat = 'Benefis (Ajan dwe remèt)';
+                } else {
+                    etat = 'Ekilibr';
+                }
+
+                const balanceClass = balance >= 0 ? 'profit' : 'loss';
+
+                html += `
+                    <tr>
+                        <td>${escapeHtml(agent.agentName)} (ID: ${agent.agentId})</td>
+                        <td>${agent.totalVentes.toLocaleString('fr-FR')}</td>
+                        <td>${agent.totalGainsPayes.toLocaleString('fr-FR')}</td>
+                        <td class="${balanceClass}">${balance.toLocaleString('fr-FR')}</td>
+                        <td class="recevoir">${montantRecevoir > 0 ? montantRecevoir.toLocaleString('fr-FR') + ' Gdes' : '—'}</td>
+                        <td class="remettre">${montantRemettre > 0 ? montantRemettre.toLocaleString('fr-FR') + ' Gdes' : '—'}</td>
+                        <td>${etat}</td>
+                    </tr>
+                `;
+            }
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+
+        } catch (error) {
+            console.error('Erreur chargement balance agents:', error);
+            container.innerHTML = '<div class="no-result">Erè chajman done ajan.</div>';
+        }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // Exposer la fonction de rafraîchissement globalement
+    window.refreshAgentsBalance = loadAgentsBalance;
 
     // ==================== Initialisation ====================
     function init() {
