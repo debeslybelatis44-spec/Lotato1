@@ -16,17 +16,7 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// ==================== Cache des fichiers statiques (12 heures) ====================
-const staticOptions = {
-  maxAge: '12h',
-  setHeaders: (res, path) => {
-    if (path.endsWith('.html') || path.endsWith('.css') || path.endsWith('.js')) {
-      res.setHeader('Cache-Control', 'public, max-age=43200'); // 12 heures
-    }
-  }
-};
-app.use(express.static(path.join(__dirname), staticOptions));
+app.use(express.static(path.join(__dirname)));
 
 // Configuration multer pour l'upload de logo
 const storage = multer.memoryStorage();
@@ -357,7 +347,7 @@ app.post('/api/auth/logout', authenticate, async (req, res) => {
   res.json({ success: true, message: 'Déconnexion réussie' });
 });
 
-// ==================== Route pour les paramètres de la loterie (avec cache ETag) ====================
+// ==================== Route pour les paramètres de la loterie ====================
 app.get('/api/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -365,37 +355,23 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
       'SELECT name, slogan, logo_url, multipliers, limits FROM lottery_settings WHERE owner_id = $1',
       [ownerId]
     );
-    let data;
     if (result.rows.length === 0) {
-      data = {
+      return res.json({
         name: 'LOTATO PRO',
         slogan: '',
         logoUrl: '',
         multipliers: {},
         limits: {}
-      };
-    } else {
-      const row = result.rows[0];
-      data = {
-        name: row.name,
-        slogan: row.slogan,
-        logoUrl: row.logo_url,
-        multipliers: row.multipliers,
-        limits: row.limits
-      };
+      });
     }
-
-    // Générer un ETag à partir du contenu JSON
-    const json = JSON.stringify(data);
-    const etag = require('crypto').createHash('md5').update(json).digest('hex');
-    res.setHeader('ETag', etag);
-    res.setHeader('Cache-Control', 'private, max-age=43200'); // 12 heures
-
-    if (req.headers['if-none-match'] === etag) {
-      return res.status(304).end();
-    }
-
-    res.json(data);
+    const row = result.rows[0];
+    res.json({
+      name: row.name,
+      slogan: row.slogan,
+      logoUrl: row.logo_url,
+      multipliers: row.multipliers,
+      limits: row.limits
+    });
   } catch (err) {
     console.error('Erreur lors de la récupération des paramètres de loterie :', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -460,26 +436,6 @@ app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, asy
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erreur mise à jour' });
-  }
-});
-
-// Nouvelle route pour mettre à jour le quota d'un propriétaire
-app.put('/api/superadmin/owners/:id/quota', authenticate, requireSuperAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { quota } = req.body;
-  if (quota === undefined || quota < 0) {
-    return res.status(400).json({ error: 'Quota invalide' });
-  }
-  try {
-    const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'owner']);
-    if (check.rows.length === 0) {
-      return res.status(404).json({ error: 'Propriétaire non trouvé' });
-    }
-    await pool.query('UPDATE users SET quota = $1 WHERE id = $2', [quota, id]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur mise à jour quota' });
   }
 });
 
@@ -594,12 +550,71 @@ app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async
   }
 });
 
-// ==================== Route de sauvegarde des tickets (avec vérification Lotto3 bloqué et limites améliorées) ====================
+// ==================== Routes communes ====================
+app.get('/api/draws', authenticate, async (req, res) => {
+  const ownerId = req.user.ownerId;
+  try {
+    const result = await pool.query(
+      'SELECT id, name, time, color, active FROM draws WHERE owner_id = $1 ORDER BY time',
+      [ownerId]
+    );
+    res.json({ draws: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.get('/api/blocked-numbers/global', authenticate, async (req, res) => {
+  const ownerId = req.user.ownerId;
+  try {
+    const result = await pool.query(
+      'SELECT number FROM blocked_numbers WHERE owner_id = $1 AND global = true',
+      [ownerId]
+    );
+    res.json({ blockedNumbers: result.rows.map(r => r.number) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.get('/api/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
+  const ownerId = req.user.ownerId;
+  const { drawId } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT number FROM blocked_numbers WHERE owner_id = $1 AND draw_id = $2 AND global = false',
+      [ownerId, drawId]
+    );
+    res.json({ blockedNumbers: result.rows.map(r => r.number) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.get('/api/number-limits', authenticate, async (req, res) => {
+  const ownerId = req.user.ownerId;
+  try {
+    const result = await pool.query(
+      'SELECT draw_id, number, limit_amount FROM number_limits WHERE owner_id = $1',
+      [ownerId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== Route de sauvegarde des tickets (avec vérification Lotto3 bloqué et limites) ====================
 app.post('/api/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total } = req.body;
   const ownerId = req.user.ownerId;
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
 
+  // Utiliser une transaction pour éviter les conditions de concurrence
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -625,14 +640,14 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     );
     const drawBlockedSet = new Set(drawBlocked.rows.map(r => r.number));
 
-    // Récupérer les limites par numéro pour ce tirage
+    // Récupérer les limites par numéro pour ce tirage (par tirage)
     const limits = await client.query(
       'SELECT number, limit_amount FROM number_limits WHERE owner_id = $1 AND draw_id = $2',
       [ownerId, drawId]
     );
     const limitsMap = new Map(limits.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
 
-    // Récupérer les limites globales par numéro
+    // Récupérer les limites globales par numéro (tous tirages)
     const globalLimits = await client.query(
       'SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1',
       [ownerId]
@@ -657,83 +672,68 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     );
     const blockedLotto3Set = new Set(blockedLotto3Res.rows.map(r => r.number));
 
-    // Récupérer les totaux déjà misés pour chaque numéro (par tirage)
-    const todayBetsMap = new Map();
-    for (const [number] of limitsMap) {
-      const result = await client.query(
-        `SELECT COALESCE(SUM((bet->>'amount')::numeric), 0) as total
-         FROM tickets, jsonb_array_elements(bets::jsonb) as bet
-         WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = $3
-         FOR UPDATE`,
-        [ownerId, drawId, number]
-      );
-      todayBetsMap.set(number, parseFloat(result.rows[0].total));
-    }
-
-    // Récupérer les totaux déjà misés pour les limites globales
-    const globalTodayBetsMap = new Map();
-    for (const [number] of globalLimitsMap) {
-      const result = await client.query(
-        `SELECT COALESCE(SUM((bet->>'amount')::numeric), 0) as total
-         FROM tickets, jsonb_array_elements(bets::jsonb) as bet
-         WHERE owner_id = $1 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = $2
-         FOR UPDATE`,
-        [ownerId, number]
-      );
-      globalTodayBetsMap.set(number, parseFloat(result.rows[0].total));
-    }
-
-    const errors = [];
+    // Vérifier chaque pari
     const totalsByGame = {};
-
     for (const bet of bets) {
       const cleanNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
       if (!cleanNumber) continue;
 
-      const game = bet.game || bet.specialType;
-
-      // Blocages
+      // Blocage global
       if (globalBlockedSet.has(cleanNumber)) {
-        errors.push(`Numéro ${cleanNumber} est bloqué globalement`);
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: `Numéro ${cleanNumber} est bloqué globalement` });
       }
+      // Blocage par tirage
       if (drawBlockedSet.has(cleanNumber)) {
-        errors.push(`Numéro ${cleanNumber} est bloqué pour ce tirage`);
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: `Numéro ${cleanNumber} est bloqué pour ce tirage` });
       }
+      // Blocage Lotto3
+      const game = bet.game || bet.specialType;
       if ((game === 'lotto3' || game === 'auto_lotto3') && cleanNumber.length === 3 && blockedLotto3Set.has(cleanNumber)) {
-        errors.push(`Numéro Lotto3 ${cleanNumber} est bloqué globalement`);
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: `Numéro Lotto3 ${cleanNumber} est bloqué globalement` });
       }
 
-      // Vérification des limites par tirage
+      // --- Vérification des limites par numéro (par tirage) ---
       if (limitsMap.has(cleanNumber)) {
         const limit = limitsMap.get(cleanNumber);
-        const currentTotal = todayBetsMap.get(cleanNumber) || 0;
+        // Calculer le total déjà mis aujourd'hui sur ce numéro pour ce tirage, avec verrouillage
+        const todayBetsResult = await client.query(
+          `SELECT COALESCE(SUM((bet->>'amount')::numeric), 0) as total
+           FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+           WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = $3
+           FOR UPDATE`,
+          [ownerId, drawId, cleanNumber]
+        );
+        const currentTotal = parseFloat(todayBetsResult.rows[0]?.total) || 0;
         const betAmount = parseFloat(bet.amount) || 0;
-        const remaining = limit - currentTotal;
         if (currentTotal + betAmount > limit) {
-          if (remaining <= 0) {
-            errors.push(`Limite atteinte pour le numéro ${cleanNumber} (max ${limit} Gdes). Aucun montant supplémentaire possible.`);
-          } else {
-            errors.push(`Limite pour le numéro ${cleanNumber} dépassée : max ${limit} Gdes, déjà misé ${currentTotal} Gdes, il reste ${remaining} Gdes.`);
-          }
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: `Limite de mise pour le numéro ${cleanNumber} dépassée (max ${limit} Gdes)` });
         }
       }
 
-      // Vérification des limites globales
+      // --- Vérification des limites globales par numéro (tous tirages) ---
       if (globalLimitsMap.has(cleanNumber)) {
         const globalLimit = globalLimitsMap.get(cleanNumber);
-        const globalCurrentTotal = globalTodayBetsMap.get(cleanNumber) || 0;
+        // Calculer le total déjà mis aujourd'hui sur ce numéro pour tous tirages, avec verrouillage
+        const globalTodayBetsResult = await client.query(
+          `SELECT COALESCE(SUM((bet->>'amount')::numeric), 0) as total
+           FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+           WHERE owner_id = $1 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = $2
+           FOR UPDATE`,
+          [ownerId, cleanNumber]
+        );
+        const globalCurrentTotal = parseFloat(globalTodayBetsResult.rows[0]?.total) || 0;
         const betAmount = parseFloat(bet.amount) || 0;
-        const globalRemaining = globalLimit - globalCurrentTotal;
         if (globalCurrentTotal + betAmount > globalLimit) {
-          if (globalRemaining <= 0) {
-            errors.push(`Limite globale atteinte pour le numéro ${cleanNumber} (max ${globalLimit} Gdes). Aucun montant supplémentaire possible.`);
-          } else {
-            errors.push(`Limite globale pour le numéro ${cleanNumber} dépassée : max ${globalLimit} Gdes, déjà misé ${globalCurrentTotal} Gdes, il reste ${globalRemaining} Gdes.`);
-          }
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: `Limite globale pour le numéro ${cleanNumber} dépassée (max ${globalLimit} Gdes)` });
         }
       }
 
-      // Accumulation par type de jeu
+      // Accumuler par type de jeu pour vérifier les limites globales
       let category = null;
       if (game === 'lotto3' || game === 'auto_lotto3') category = 'lotto3';
       else if (game === 'lotto4' || game === 'auto_lotto4') category = 'lotto4';
@@ -749,13 +749,11 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     for (const [category, total] of Object.entries(totalsByGame)) {
       const limit = gameLimits[category] || 0;
       if (limit > 0 && total > limit) {
-        errors.push(`Limite pour ${category} dépassée : max ${limit} Gdes par ticket.`);
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          error: `Limite de mise pour ${category} dépassée (max ${limit} Gdes par ticket)`
+        });
       }
-    }
-
-    if (errors.length > 0) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: errors.join('\n') });
     }
 
     // Ajout des mariages gratuits (selon le montant joué)
