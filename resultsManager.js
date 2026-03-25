@@ -1,6 +1,7 @@
 // resultsManager.js - Version avec commission sélectionnable par l'agent (10% à 20%)
-// Les tickets sont analysés sur les 15 derniers jours (glissants) pour déterminer le montant des ventes.
+// Les tickets sont analysés sur les 15 derniers jours pour déterminer les ventes.
 // Le taux de commission est choisi manuellement via un menu déroulant.
+// Sauvegarde locale (localStorage) en cas d'échec de l'API.
 (function() {
     if (window.resultsManagerReady) return;
     window.resultsManagerReady = true;
@@ -272,26 +273,52 @@
         container.innerHTML = html;
     }
 
-    // ==================== Récupération des taux de commission des agents ====================
+    // ==================== Gestion locale des taux de commission ====================
+    const LOCAL_STORAGE_KEY = 'agent_commission_rates';
+
+    function getLocalCommissionRates() {
+        try {
+            const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+            return stored ? new Map(Object.entries(JSON.parse(stored))) : new Map();
+        } catch (e) {
+            return new Map();
+        }
+    }
+
+    function saveLocalCommissionRate(agentId, rate) {
+        const map = getLocalCommissionRates();
+        map.set(agentId.toString(), rate);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(Object.fromEntries(map)));
+    }
+
+    // ==================== Récupération des taux de commission (API + fallback) ====================
     async function fetchAgentsCommission() {
         const token = localStorage.getItem('auth_token');
-        if (!token) return new Map();
+        if (!token) return getLocalCommissionRates();
 
         try {
             const res = await fetch('/api/agents', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (!res.ok) return new Map();
-            const agents = await res.json();
-            const map = new Map();
-            agents.forEach(agent => {
-                // On suppose que l'API retourne un champ commission_rate, sinon défaut 10
-                map.set(agent.id, agent.commission_rate || 10);
-            });
-            return map;
+            if (res.ok) {
+                const agents = await res.json();
+                const apiMap = new Map();
+                agents.forEach(agent => {
+                    apiMap.set(agent.id.toString(), agent.commission_rate || 10);
+                });
+                // Fusion avec les taux locaux (ceux-ci prévalent)
+                const localMap = getLocalCommissionRates();
+                for (let [id, rate] of localMap) {
+                    apiMap.set(id, rate);
+                }
+                return apiMap;
+            } else {
+                console.warn('API agents inaccessible, utilisation des taux locaux');
+                return getLocalCommissionRates();
+            }
         } catch (error) {
-            console.error('Erreur chargement taux commission:', error);
-            return new Map();
+            console.error('Erreur chargement taux commission depuis API:', error);
+            return getLocalCommissionRates();
         }
     }
 
@@ -313,7 +340,7 @@
             const data = await response.json();
             const tickets = data.tickets || [];
 
-            // Récupération des taux de commission
+            // Récupération des taux de commission (API + local)
             const agentsCommissionMap = await fetchAgentsCommission();
 
             // Calcul des ventes et gains par agent
@@ -396,7 +423,7 @@
                 }
 
                 const balanceClass = balance >= 0 ? 'profit' : 'loss';
-                const currentRate = agentsCommissionMap.get(agent.agentId) || 10;
+                const currentRate = agentsCommissionMap.get(agent.agentId.toString()) || 10;
                 const commissionAmount = agent.ventes15j * (currentRate / 100);
 
                 // Génération du select (10 à 20)
@@ -448,7 +475,7 @@
         const row = select.closest('tr');
         if (!row) return;
 
-        // Récupérer le montant des ventes sur 15 jours (dans la cellule avec classe .ventes-15j)
+        // Récupérer le montant des ventes sur 15 jours
         const ventes15jCell = row.querySelector('.ventes-15j');
         if (!ventes15jCell) return;
         const ventes15j = parseFloat(ventes15jCell.textContent.replace(/\s/g, '').replace(',', '.'));
@@ -460,30 +487,67 @@
             commissionAmountCell.textContent = newCommission.toLocaleString('fr-FR');
         }
 
-        // Sauvegarder le nouveau taux côté serveur
+        // Sauvegarder le nouveau taux
         const token = localStorage.getItem('auth_token');
-        try {
-            const res = await fetch(`/api/agents/${agentId}/commission`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ commission_rate: newRate })
-            });
-            if (!res.ok) {
-                throw new Error('Erreur de sauvegarde');
+        let saved = false;
+
+        if (token) {
+            try {
+                const res = await fetch(`/api/agents/${agentId}/commission`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ commission_rate: newRate })
+                });
+                if (res.ok) {
+                    saved = true;
+                    // Nettoyer l'éventuelle entrée locale pour cet agent
+                    const localMap = getLocalCommissionRates();
+                    if (localMap.has(agentId)) {
+                        localMap.delete(agentId);
+                        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(Object.fromEntries(localMap)));
+                    }
+                    showTemporaryMessage('Taux de commission mis à jour', 'success');
+                } else {
+                    console.warn(`Sauvegarde API échouée (${res.status}), utilisation du stockage local`);
+                }
+            } catch (error) {
+                console.error('Erreur réseau lors de la sauvegarde:', error);
             }
-            // Optionnel : afficher une notification de succès
-        } catch (error) {
-            console.error('Erreur lors de la sauvegarde du taux:', error);
-            alert('Erreur : le taux n’a pas pu être sauvegardé.');
-            // Recharger la balance pour rétablir l'ancien taux (ou annuler le changement)
-            loadAgentsBalance();
+        }
+
+        if (!saved) {
+            // Fallback : stockage local
+            saveLocalCommissionRate(agentId, newRate);
+            showTemporaryMessage('Taux enregistré localement (serveur indisponible)', 'warning');
         }
     }
 
-    // ==================== Utilitaire ====================
+    // Petit utilitaire pour afficher un message temporaire
+    function showTemporaryMessage(message, type = 'info') {
+        const msgDiv = document.createElement('div');
+        msgDiv.textContent = message;
+        msgDiv.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: ${type === 'success' ? '#4caf50' : (type === 'warning' ? '#ff9800' : '#2196f3')};
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            opacity: 0.9;
+            transition: opacity 0.5s;
+        `;
+        document.body.appendChild(msgDiv);
+        setTimeout(() => {
+            msgDiv.style.opacity = '0';
+            setTimeout(() => msgDiv.remove(), 500);
+        }, 3000);
+    }
+
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
