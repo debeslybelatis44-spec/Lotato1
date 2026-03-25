@@ -1,10 +1,12 @@
-// resultsManager.js - Version corrigée avec appel API autonome et affichage du Lotto 3 complet
-// Ajout : onglet Agents avec balance (ventes - gains payés) et défilement horizontal
+// resultsManager.js - Version avec commission progressive sur 15 jours
+// Ajout : colonnes Ventes 15j, Commission %, Commission (Gdes)
+// Les tickets sont analysés sur les 15 derniers jours (glissants) pour déterminer le taux de commission.
 (function() {
     if (window.resultsManagerReady) return;
     window.resultsManagerReady = true;
 
     let currentFilter = 'all';
+    const COMMISSION_DAYS = 15; // Période de calcul en jours
 
     // ==================== Création de l'UI si absente ====================
     function createResultsUI() {
@@ -41,7 +43,7 @@
             agentsScreen.className = 'screen';
             agentsScreen.innerHTML = `
                 <div style="padding: 20px;">
-                    <h2 class="section-title">Balans Ajan</h2>
+                    <h2 class="section-title">Balans Ajan ak Komisyon (dènye ${COMMISSION_DAYS} jou)</h2>
                     <div class="agents-actions" style="margin-bottom: 15px; text-align: right;">
                         <button id="refresh-agents-btn" class="filter-btn" style="padding: 8px 16px;">
                             <i class="fas fa-sync-alt"></i> Rafraîchir
@@ -90,7 +92,7 @@
             nav.appendChild(agentsTab);
         }
 
-        // Ajout des styles (avec scroll horizontal)
+        // Ajout des styles (avec scroll horizontal adapté)
         if (!document.getElementById('results-styles')) {
             const style = document.createElement('style');
             style.id = 'results-styles';
@@ -115,7 +117,7 @@
                 }
                 .agents-table {
                     width: 100%;
-                    min-width: 700px;
+                    min-width: 1000px; /* Élargi pour les nouvelles colonnes */
                     border-collapse: collapse;
                     background: var(--surface);
                     border-radius: 16px;
@@ -134,6 +136,7 @@
                 .loss { color: var(--danger); font-weight: bold; }
                 .recevoir { color: var(--danger); font-weight: bold; }
                 .remettre { color: var(--success); font-weight: bold; }
+                .commission-rate { color: var(--secondary); font-weight: bold; }
             `;
             document.head.appendChild(style);
         }
@@ -258,7 +261,16 @@
         container.innerHTML = html;
     }
 
-    // ==================== Balance des agents ====================
+    // ==================== Calcul du pourcentage de commission progressif ====================
+    // Barème : 10% pour 0-99 Gdes, puis +1% tous les 100 Gdes supplémentaires, plafonné à 20%
+    function calculateCommissionRate(salesAmount) {
+        if (salesAmount <= 0) return 0;
+        let rate = 10 + Math.floor(salesAmount / 100);
+        if (rate > 20) rate = 20;
+        return rate;
+    }
+
+    // ==================== Balance des agents avec commission sur 15 jours ====================
     async function loadAgentsBalance() {
         const container = document.getElementById('agents-container');
         if (!container) return;
@@ -275,6 +287,12 @@
             const data = await response.json();
             const tickets = data.tickets || [];
 
+            // Date de début de la période de commission (15 derniers jours glissants)
+            const now = new Date();
+            const startDate = new Date(now);
+            startDate.setDate(now.getDate() - COMMISSION_DAYS);
+            startDate.setHours(0, 0, 0, 0);
+
             const agentsMap = new Map();
 
             tickets.forEach(ticket => {
@@ -286,13 +304,25 @@
                         agentId,
                         agentName: ticket.agent_name || ticket.agentName || 'Anonim',
                         totalVentes: 0,
-                        totalGainsPayes: 0
+                        totalGainsPayes: 0,
+                        ventes15j: 0
                     });
                 }
                 const agent = agentsMap.get(agentId);
 
                 const montant = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
                 agent.totalVentes += montant;
+
+                // Vérifier si le ticket est dans la période de 15 jours
+                let ticketDate = null;
+                if (ticket.created_at) {
+                    ticketDate = new Date(ticket.created_at);
+                } else if (ticket.date) {
+                    ticketDate = new Date(ticket.date);
+                }
+                if (ticketDate && ticketDate >= startDate) {
+                    agent.ventes15j += montant;
+                }
 
                 const estGagnant = (ticket.checked || ticket.verified) && parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0) > 0;
                 const estPaye = ticket.paid === true;
@@ -307,12 +337,15 @@
                 return;
             }
 
-            // Construction du tableau avec les 7 colonnes
+            // Construction du tableau avec 10 colonnes (ajout des colonnes commission)
             let html = `<table class="agents-table">
                 <thead>
                     <tr>
                         <th>Ajan</th>
                         <th>Vant Total (Gdes)</th>
+                        <th>Vant ${COMMISSION_DAYS}j (Gdes)</th>
+                        <th>Komisyon %</th>
+                        <th>Komisyon (Gdes)</th>
                         <th>Ganyen Peye (Gdes)</th>
                         <th>Balans (Gdes)</th>
                         <th>Montan à Recevoir</th>
@@ -340,10 +373,18 @@
 
                 const balanceClass = balance >= 0 ? 'profit' : 'loss';
 
+                // Calcul de la commission sur 15 jours
+                const ventes15j = agent.ventes15j;
+                const commissionRate = calculateCommissionRate(ventes15j);
+                const commissionAmount = ventes15j * (commissionRate / 100);
+
                 html += `
                     <tr>
                         <td>${escapeHtml(agent.agentName)} (ID: ${agent.agentId})</td>
                         <td>${agent.totalVentes.toLocaleString('fr-FR')}</td>
+                        <td>${ventes15j.toLocaleString('fr-FR')}</td>
+                        <td class="commission-rate">${commissionRate}%</td>
+                        <td class="commission-rate">${commissionAmount.toLocaleString('fr-FR')}</td>
                         <td>${agent.totalGainsPayes.toLocaleString('fr-FR')}</td>
                         <td class="${balanceClass}">${balance.toLocaleString('fr-FR')}</td>
                         <td class="recevoir">${montantRecevoir > 0 ? montantRecevoir.toLocaleString('fr-FR') + ' Gdes' : '—'}</td>
