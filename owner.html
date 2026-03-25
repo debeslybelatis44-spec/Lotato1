@@ -1697,6 +1697,286 @@
                 toggleSupervisorField();
                 toggleCustomDates();
             };
+            // ==================== GESTION DES LIMITES GLOBALES PAR NUMÉRO ====================
+
+// Ajoute la section UI pour les limites globales dans l'onglet "Boules & Limites"
+function setupGlobalLimitsUI() {
+  const numbersTab = document.getElementById('tab-numbers');
+  if (!numbersTab || document.getElementById('global-limits-section')) return;
+
+  const globalLimitsSection = document.createElement('div');
+  globalLimitsSection.id = 'global-limits-section';
+  globalLimitsSection.innerHTML = `
+    <div class="section-title"><i class="fas fa-globe"></i> Limites globales (tous tirages)</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Numéro (00-99)</label>
+        <input type="text" id="global-limit-number" maxlength="2" placeholder="48">
+      </div>
+      <div class="form-group">
+        <label>Montant maximum (G)</label>
+        <input type="number" id="global-limit-amount" placeholder="100">
+      </div>
+      <button class="btn-primary" onclick="saveGlobalLimit()">Appliquer / Modifier</button>
+      <button class="btn-danger" onclick="deleteGlobalLimit()">Supprimer</button>
+    </div>
+    <div id="global-limits-list" class="list-container" style="max-height:200px;"></div>
+  `;
+  numbersTab.appendChild(globalLimitsSection);
+}
+
+// Charge et affiche les limites globales
+async function loadGlobalLimits() {
+  const token = localStorage.getItem('auth_token');
+  try {
+    const res = await fetch(`${API_URL}/api/owner/global-limits`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Erreur chargement limites globales');
+    const limits = await res.json();
+    const container = document.getElementById('global-limits-list');
+    if (!container) return;
+    if (limits.length === 0) {
+      container.innerHTML = '<p>Aucune limite globale définie</p>';
+      return;
+    }
+    let html = '能<table class="global-limits-table" style="width:100%;">';
+    html += '<thead><tr><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
+    limits.forEach(limit => {
+      html += `<tr>
+        <td>${limit.number}</td>
+        <td>${parseFloat(limit.limit_amount).toLocaleString()} G</td>
+        <td><button class="btn-danger" style="padding:4px 8px;" onclick="prepareDeleteGlobalLimit('${limit.number}')">Supprimer</button></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (e) {
+    console.error('Erreur loadGlobalLimits:', e);
+    const container = document.getElementById('global-limits-list');
+    if (container) container.innerHTML = '<p class="loss">❌ Erreur de chargement</p>';
+  }
+}
+
+// Sauvegarde (ajout ou modification) d'une limite globale
+async function saveGlobalLimit() {
+  const token = localStorage.getItem('auth_token');
+  const number = document.getElementById('global-limit-number').value.padStart(2, '0');
+  const amount = parseFloat(document.getElementById('global-limit-amount').value);
+  if (!number || number.length !== 2 || !/^\d{2}$/.test(number)) {
+    alert('Numéro invalide (2 chiffres requis)');
+    return;
+  }
+  if (isNaN(amount) || amount <= 0) {
+    alert('Montant limite invalide');
+    return;
+  }
+  try {
+    const res = await fetch(`${API_URL}/api/owner/global-limit`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number, limitAmount: amount })
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert('Limite globale enregistrée');
+      loadGlobalLimits();
+      loadAllRestrictions();   // rafraîchir la liste des restrictions
+      if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard(); // mettre à jour le dashboard
+    } else {
+      alert('Erreur: ' + (result.error || ''));
+    }
+  } catch (e) {
+    alert('Erreur réseau');
+  }
+}
+
+// Supprime une limite globale (utilisé par le bouton dans la liste)
+async function deleteGlobalLimit() {
+  const token = localStorage.getItem('auth_token');
+  const number = document.getElementById('global-limit-number').value.padStart(2, '0');
+  if (!number) {
+    alert('Numéro requis');
+    return;
+  }
+  if (!confirm(`Supprimer définitivement la limite globale pour le numéro ${number} ?`)) return;
+  try {
+    const res = await fetch(`${API_URL}/api/owner/global-limit`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number })
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert('Limite globale supprimée');
+      document.getElementById('global-limit-number').value = '';
+      document.getElementById('global-limit-amount').value = '';
+      loadGlobalLimits();
+      loadAllRestrictions();
+      if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
+    } else {
+      alert('Erreur: ' + (result.error || ''));
+    }
+  } catch (e) {
+    alert('Erreur réseau');
+  }
+}
+
+// Fonction auxiliaire pour préparer la suppression depuis la liste
+function prepareDeleteGlobalLimit(number) {
+  document.getElementById('global-limit-number').value = number;
+  document.getElementById('global-limit-amount').value = '';
+  deleteGlobalLimit();
+}
+
+// Modifier la fonction loadAllRestrictions pour inclure les limites globales
+const originalLoadAllRestrictions = window.loadAllRestrictions;
+window.loadAllRestrictions = async function() {
+  // Appel original pour les blocages et limites par tirage
+  if (originalLoadAllRestrictions) await originalLoadAllRestrictions();
+
+  // Ajouter les limites globales
+  const container = document.getElementById('restrictions-list');
+  if (!container) return;
+
+  const token = localStorage.getItem('auth_token');
+  try {
+    const res = await fetch(`${API_URL}/api/owner/global-limits`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Erreur chargement limites globales');
+    const globalLimits = await res.json();
+    if (globalLimits.length === 0) return;
+
+    // On récupère le contenu actuel du container pour y ajouter les lignes
+    let tableHtml = container.innerHTML;
+    // Si le container n'a pas encore de tableau, on en crée un
+    if (!tableHtml.includes('<tbody>')) {
+      tableHtml = `<table style="width:100%;">
+        <thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead>
+        <tbody>${tableHtml}</tbody>
+      </table>`;
+    }
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(tableHtml, 'text/html');
+    let tbody = doc.querySelector('tbody');
+    if (!tbody) {
+      tbody = doc.createElement('tbody');
+      doc.body.appendChild(tbody);
+    }
+    globalLimits.forEach(limit => {
+      // Vérifier si la limite est déjà affichée pour éviter les doublons
+      const existing = Array.from(tbody.querySelectorAll('tr')).some(tr => tr.innerText.includes(limit.number) && tr.innerText.includes('Limite globale'));
+      if (!existing) {
+        const row = doc.createElement('tr');
+        row.style.background = 'rgba(0,212,255,0.1)';
+        row.innerHTML = `
+          <td>🌍 Limite globale</td>
+          <td>Tous tirages</td>
+          <td><strong>${limit.number}</strong></td>
+          <td>${parseFloat(limit.limit_amount).toLocaleString()} G</td>
+          <td><button class="btn-danger" style="padding:4px 8px;" onclick="window.deleteGlobalLimitByNumber('${limit.number}')">Supprimer</button></td>
+        `;
+        tbody.appendChild(row);
+      }
+    });
+    container.innerHTML = doc.body.innerHTML;
+  } catch (e) {
+    console.error('Erreur intégration limites globales dans restrictions', e);
+  }
+};
+
+// Fonction pour supprimer une limite globale par numéro (utilisée par le bouton dans restrictions)
+window.deleteGlobalLimitByNumber = async function(number) {
+  const token = localStorage.getItem('auth_token');
+  if (!confirm(`Supprimer la limite globale pour le numéro ${number} ?`)) return;
+  try {
+    const res = await fetch(`${API_URL}/api/owner/global-limit`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number })
+    });
+    const result = await res.json();
+    if (result.success) {
+      loadAllRestrictions();
+      loadGlobalLimits();
+      if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
+    } else {
+      alert('Erreur: ' + (result.error || ''));
+    }
+  } catch (e) {
+    alert('Erreur réseau');
+  }
+};
+
+// Modifier le tableau de bord pour afficher la progression des limites globales
+const originalLoadDashboard = window.loadDashboard;
+window.loadDashboard = async function() {
+  if (originalLoadDashboard) await originalLoadDashboard();
+
+  const token = localStorage.getItem('auth_token');
+  try {
+    const res = await fetch(`${API_URL}/api/owner/dashboard`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Erreur chargement dashboard');
+    const data = await res.json();
+
+    // Afficher la progression des limites globales dans le container "limits-progress-container"
+    const container = document.getElementById('limits-progress-container');
+    if (!container) return;
+
+    let html = '';
+    if (data.global_limits_progress && data.global_limits_progress.length > 0) {
+      html += '<h3>Limites globales (tous tirages)</h3>';
+      html += '<table style="width:100%;"><thead><tr><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></tr></thead><tbody>';
+      data.global_limits_progress.forEach(item => {
+        const percent = parseFloat(item.progress_percent).toFixed(1);
+        let statusClass = '';
+        if (percent >= 90) statusClass = 'badge-danger';
+        else if (percent >= 70) statusClass = 'badge-warning';
+        else statusClass = 'badge-success';
+        html += `<tr>
+          <td>${item.number}</td>
+          <td>${parseFloat(item.limit_amount).toLocaleString()} G</td>
+          <td>${parseFloat(item.current_bets).toLocaleString()} G</td>
+          <td><span class="${statusClass}">${percent}%</span></td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+    }
+    // On ajoute cette section au début du container (sans écraser les limites par tirage déjà présentes)
+    const existingHtml = container.innerHTML;
+    if (!existingHtml.includes('Limites globales')) {
+      container.innerHTML = html + existingHtml;
+    }
+  } catch (e) {
+    console.error('Erreur récupération dashboard pour limites globales:', e);
+  }
+};
+
+// Initialisation de l'interface des limites globales
+// On appelle cette fonction au chargement et après switchTab numbers
+(function() {
+  // Créer la section UI
+  setupGlobalLimitsUI();
+
+  // Charger les données lorsque l'onglet numbers est actif
+  const originalSwitchTab = window.switchTab;
+  if (originalSwitchTab) {
+    window.switchTab = function(tabId) {
+      originalSwitchTab(tabId);
+      if (tabId === 'numbers') {
+        loadGlobalLimits();
+      }
+    };
+  }
+
+  // Charger au démarrage si l'onglet numbers est déjà actif
+  if (document.getElementById('tab-numbers')?.classList.contains('active')) {
+    loadGlobalLimits();
+  }
+})();
         </script>
     </div>
     <script>

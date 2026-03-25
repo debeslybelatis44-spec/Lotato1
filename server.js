@@ -1,4 +1,4 @@
-// server.js (version modifiée)
+// server.js
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -49,137 +49,147 @@ console.log('🔄 Vérification de la base de données...');
 async function ensureTables() {
   // Table users
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            name VARCHAR(100) NOT NULL,
-            cin VARCHAR(50),
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            role VARCHAR(20) NOT NULL CHECK (role IN ('owner','supervisor','agent','superadmin')),
-            supervisor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-            zone VARCHAR(100),
-            commission_percentage DECIMAL(5,2) DEFAULT 0,
-            blocked BOOLEAN DEFAULT false,
-            quota INTEGER DEFAULT 0,
-            phone VARCHAR(20),
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL,
+        cin VARCHAR(50),
+        username VARCHAR(50) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(20) NOT NULL CHECK (role IN ('owner','supervisor','agent','superadmin')),
+        supervisor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        zone VARCHAR(100),
+        commission_percentage DECIMAL(5,2) DEFAULT 0,
+        blocked BOOLEAN DEFAULT false,
+        quota INTEGER DEFAULT 0,
+        phone VARCHAR(20),
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
 
   // Table draws
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS draws (
-            id SERIAL PRIMARY KEY,
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            name VARCHAR(100) NOT NULL,
-            time TIME NOT NULL,
-            color VARCHAR(20),
-            active BOOLEAN DEFAULT true
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS draws (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL,
+        time TIME NOT NULL,
+        color VARCHAR(20),
+        active BOOLEAN DEFAULT true
+    )
+  `);
 
   // Table lottery_settings
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS lottery_settings (
-            owner_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-            name VARCHAR(100),
-            slogan TEXT,
-            logo_url TEXT,
-            multipliers JSONB,
-            limits JSONB
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS lottery_settings (
+        owner_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(100),
+        slogan TEXT,
+        logo_url TEXT,
+        multipliers JSONB,
+        limits JSONB
+    )
+  `);
 
   // Table blocked_numbers (blocages globaux ou par tirage)
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS blocked_numbers (
-            id SERIAL PRIMARY KEY,
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
-            number VARCHAR(2) NOT NULL,
-            global BOOLEAN DEFAULT false,
-            UNIQUE(owner_id, draw_id, number)
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS blocked_numbers (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+        number VARCHAR(2) NOT NULL,
+        global BOOLEAN DEFAULT false,
+        UNIQUE(owner_id, draw_id, number)
+    )
+  `);
 
   // Table number_limits (limites par numéro et tirage)
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS number_limits (
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
-            number VARCHAR(2),
-            limit_amount DECIMAL(10,2) NOT NULL,
-            PRIMARY KEY (owner_id, draw_id, number)
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS number_limits (
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+        number VARCHAR(2),
+        limit_amount DECIMAL(10,2) NOT NULL,
+        PRIMARY KEY (owner_id, draw_id, number)
+    )
+  `);
+
+  // Table global_number_limits (limites globales par numéro, tous tirages)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS global_number_limits (
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        number VARCHAR(2) NOT NULL,
+        limit_amount DECIMAL(10,2) NOT NULL,
+        PRIMARY KEY (owner_id, number)
+    )
+  `);
 
   // Table winning_results
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS winning_results (
-            id SERIAL PRIMARY KEY,
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
-            numbers VARCHAR(3) NOT NULL,
-            lotto3 VARCHAR(3),
-            date TIMESTAMP DEFAULT NOW()
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS winning_results (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+        numbers VARCHAR(3) NOT NULL,
+        lotto3 VARCHAR(3),
+        date TIMESTAMP DEFAULT NOW()
+    )
+  `);
 
   // Table tickets
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS tickets (
-            id SERIAL PRIMARY KEY,
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-            agent_name VARCHAR(100),
-            draw_id INTEGER REFERENCES draws(id) ON DELETE SET NULL,
-            draw_name VARCHAR(100),
-            ticket_id VARCHAR(50) UNIQUE,
-            total_amount DECIMAL(10,2) DEFAULT 0,
-            win_amount DECIMAL(10,2) DEFAULT 0,
-            paid BOOLEAN DEFAULT false,
-            paid_at TIMESTAMP,
-            checked BOOLEAN DEFAULT false,
-            bets JSONB,
-            date TIMESTAMP DEFAULT NOW()
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        agent_name VARCHAR(100),
+        draw_id INTEGER REFERENCES draws(id) ON DELETE SET NULL,
+        draw_name VARCHAR(100),
+        ticket_id VARCHAR(50) UNIQUE,
+        total_amount DECIMAL(10,2) DEFAULT 0,
+        win_amount DECIMAL(10,2) DEFAULT 0,
+        paid BOOLEAN DEFAULT false,
+        paid_at TIMESTAMP,
+        checked BOOLEAN DEFAULT false,
+        bets JSONB,
+        date TIMESTAMP DEFAULT NOW()
+    )
+  `);
 
   // Table activity_log
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS activity_log (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-            user_role VARCHAR(20),
-            action VARCHAR(100),
-            details TEXT,
-            ip_address VARCHAR(45),
-            user_agent TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS activity_log (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        user_role VARCHAR(20),
+        action VARCHAR(100),
+        details TEXT,
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
 
   // Table owner_messages (pour les messages temporaires du superadmin)
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS owner_messages (
-            id SERIAL PRIMARY KEY,
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            message TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW(),
-            expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '10 minutes'
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS owner_messages (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '10 minutes'
+    )
+  `);
 
   // Table blocked_lotto3_numbers (numéros Lotto3 bloqués globalement)
   await pool.query(`
-        CREATE TABLE IF NOT EXISTS blocked_lotto3_numbers (
-            owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            number VARCHAR(3) NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW(),
-            PRIMARY KEY (owner_id, number)
-        )
-    `);
+    CREATE TABLE IF NOT EXISTS blocked_lotto3_numbers (
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        number VARCHAR(3) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (owner_id, number)
+    )
+  `);
 
   // Index pour améliorer les performances
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_owner_date ON tickets(owner_id, date)`);
@@ -372,19 +382,19 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
 app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
-            SELECT 
-                u.id, 
-                u.name, 
-                u.username as email, 
-                u.blocked as active, 
-                u.quota,
-                u.phone,
-                u.created_at,
-                (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
-            FROM users u
-            WHERE u.role = $1
-            ORDER BY u.created_at DESC
-        `, ['owner']);
+      SELECT 
+          u.id, 
+          u.name, 
+          u.username as email, 
+          u.blocked as active, 
+          u.quota,
+          u.phone,
+          u.created_at,
+          (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
+      FROM users u
+      WHERE u.role = $1
+      ORDER BY u.created_at DESC
+    `, ['owner']);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -401,7 +411,7 @@ app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, 
     const hashed = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO users (name, username, password, role, phone, quota, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
       [name, email, hashed, 'owner', phone || null, quota || 0]
     );
     res.json({ success: true, id: result.rows[0].id });
@@ -482,7 +492,7 @@ app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req
   try {
     await pool.query(
       `INSERT INTO owner_messages (owner_id, message, created_at, expires_at)
-             VALUES ($1, $2, NOW(), NOW() + INTERVAL '10 minutes')`,
+       VALUES ($1, $2, NOW(), NOW() + INTERVAL '10 minutes')`,
       [ownerId, message]
     );
     res.json({ success: true });
@@ -517,22 +527,22 @@ app.post('/api/superadmin/messages/bulk', authenticate, requireSuperAdmin, async
 app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
-            SELECT 
-                u.id,
-                u.name,
-                u.username as email,
-                COUNT(DISTINCT ag.id) as agent_count,
-                COUNT(t.id) as ticket_count,
-                COALESCE(SUM(t.total_amount), 0) as total_bets,
-                COALESCE(SUM(t.win_amount), 0) as total_wins,
-                COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
-            FROM users u
-            LEFT JOIN users ag ON u.id = ag.owner_id AND ag.role = 'agent'
-            LEFT JOIN tickets t ON u.id = t.owner_id
-            WHERE u.role = 'owner'
-            GROUP BY u.id, u.name, u.username
-            ORDER BY u.name
-        `);
+      SELECT 
+          u.id,
+          u.name,
+          u.username as email,
+          COUNT(DISTINCT ag.id) as agent_count,
+          COUNT(t.id) as ticket_count,
+          COALESCE(SUM(t.total_amount), 0) as total_bets,
+          COALESCE(SUM(t.win_amount), 0) as total_wins,
+          COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
+      FROM users u
+      LEFT JOIN users ag ON u.id = ag.owner_id AND ag.role = 'agent'
+      LEFT JOIN tickets t ON u.id = t.owner_id
+      WHERE u.role = 'owner'
+      GROUP BY u.id, u.name, u.username
+      ORDER BY u.name
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -598,42 +608,54 @@ app.get('/api/number-limits', authenticate, async (req, res) => {
   }
 });
 
-// ==================== Route de sauvegarde des tickets (MODIFIÉE) ====================
+// ==================== Route de sauvegarde des tickets (avec vérification Lotto3 bloqué et limites) ====================
 app.post('/api/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total } = req.body;
   const ownerId = req.user.ownerId;
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
 
+  // Utiliser une transaction pour éviter les conditions de concurrence
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Vérifier que le tirage est actif
-    const drawCheck = await pool.query('SELECT active FROM draws WHERE id = $1 AND owner_id = $2', [drawId, ownerId]);
+    const drawCheck = await client.query('SELECT active FROM draws WHERE id = $1 AND owner_id = $2', [drawId, ownerId]);
     if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) {
+      await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
     }
 
     // Récupérer les blocages globaux
-    const globalBlocked = await pool.query(
+    const globalBlocked = await client.query(
       'SELECT number FROM blocked_numbers WHERE owner_id = $1 AND global = true',
       [ownerId]
     );
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
 
     // Récupérer les blocages par tirage
-    const drawBlocked = await pool.query(
+    const drawBlocked = await client.query(
       'SELECT number FROM blocked_numbers WHERE owner_id = $1 AND draw_id = $2 AND global = false',
       [ownerId, drawId]
     );
     const drawBlockedSet = new Set(drawBlocked.rows.map(r => r.number));
 
-    // Récupérer les limites par numéro
-    const limits = await pool.query(
+    // Récupérer les limites par numéro pour ce tirage (par tirage)
+    const limits = await client.query(
       'SELECT number, limit_amount FROM number_limits WHERE owner_id = $1 AND draw_id = $2',
       [ownerId, drawId]
     );
     const limitsMap = new Map(limits.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
 
+    // Récupérer les limites globales par numéro (tous tirages)
+    const globalLimits = await client.query(
+      'SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1',
+      [ownerId]
+    );
+    const globalLimitsMap = new Map(globalLimits.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
+
     // Récupérer les limites par type de jeu depuis lottery_settings
-    const settingsRes = await pool.query(
+    const settingsRes = await client.query(
       'SELECT limits FROM lottery_settings WHERE owner_id = $1',
       [ownerId]
     );
@@ -644,75 +666,70 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     }
 
     // Récupérer les numéros Lotto3 bloqués
-    const blockedLotto3Res = await pool.query(
+    const blockedLotto3Res = await client.query(
       'SELECT number FROM blocked_lotto3_numbers WHERE owner_id = $1',
       [ownerId]
     );
     const blockedLotto3Set = new Set(blockedLotto3Res.rows.map(r => r.number));
 
-    // ===== NOUVEAU : Filtrer les paris payés et générer les mariages gratuits =====
-    // On ignore les paris marqués "free" envoyés par le front
-    const paidBets = bets.filter(b => !b.free);
-    const totalPaid = paidBets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
-
-    // Calcul du nombre de mariages gratuits à offrir
-    let requiredFree = 0;
-    if (totalPaid >= 1 && totalPaid <= 50) requiredFree = 1;
-    else if (totalPaid >= 51 && totalPaid <= 150) requiredFree = 2;
-    else if (totalPaid >= 151) requiredFree = 3;
-
-    // Générer les mariages gratuits aléatoires
-    const newFreeBets = [];
-    for (let i = 0; i < requiredFree; i++) {
-      const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-      const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-      const number = `${num1}&${num2}`;
-      const cleanNumber = num1 + num2;
-      newFreeBets.push({
-        game: 'auto_marriage',
-        number: number,
-        cleanNumber: cleanNumber,
-        amount: 0,
-        free: true,
-        freeType: 'special_marriage',
-        freeWin: 1000
-      });
-    }
-
-    // Vérifier chaque pari (uniquement les payés, les gratuits n'ont pas de limite)
+    // Vérifier chaque pari
     const totalsByGame = {};
-    for (const bet of paidBets) {
+    for (const bet of bets) {
       const cleanNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
       if (!cleanNumber) continue;
 
       // Blocage global
       if (globalBlockedSet.has(cleanNumber)) {
+        await client.query('ROLLBACK');
         return res.status(403).json({ error: `Numéro ${cleanNumber} est bloqué globalement` });
       }
       // Blocage par tirage
       if (drawBlockedSet.has(cleanNumber)) {
+        await client.query('ROLLBACK');
         return res.status(403).json({ error: `Numéro ${cleanNumber} est bloqué pour ce tirage` });
       }
       // Blocage Lotto3
       const game = bet.game || bet.specialType;
       if ((game === 'lotto3' || game === 'auto_lotto3') && cleanNumber.length === 3 && blockedLotto3Set.has(cleanNumber)) {
+        await client.query('ROLLBACK');
         return res.status(403).json({ error: `Numéro Lotto3 ${cleanNumber} est bloqué globalement` });
       }
 
-      // Limite de mise par numéro (uniquement pour les paris payés)
+      // --- Vérification des limites par numéro (par tirage) ---
       if (limitsMap.has(cleanNumber)) {
         const limit = limitsMap.get(cleanNumber);
-        // Calculer le total déjà mis aujourd'hui sur ce numéro pour ce tirage
-        const todayBetsResult = await pool.query(
-          `SELECT SUM((bets->>'amount')::numeric) as total
-                     FROM tickets, jsonb_array_elements(bets::jsonb) as bet
-                     WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = $3`,
+        // Calculer le total déjà mis aujourd'hui sur ce numéro pour ce tirage, avec verrouillage
+        const todayBetsResult = await client.query(
+          `SELECT COALESCE(SUM((bet->>'amount')::numeric), 0) as total
+           FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+           WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = $3
+           FOR UPDATE`,
           [ownerId, drawId, cleanNumber]
         );
         const currentTotal = parseFloat(todayBetsResult.rows[0]?.total) || 0;
         const betAmount = parseFloat(bet.amount) || 0;
         if (currentTotal + betAmount > limit) {
+          await client.query('ROLLBACK');
           return res.status(403).json({ error: `Limite de mise pour le numéro ${cleanNumber} dépassée (max ${limit} Gdes)` });
+        }
+      }
+
+      // --- Vérification des limites globales par numéro (tous tirages) ---
+      if (globalLimitsMap.has(cleanNumber)) {
+        const globalLimit = globalLimitsMap.get(cleanNumber);
+        // Calculer le total déjà mis aujourd'hui sur ce numéro pour tous tirages, avec verrouillage
+        const globalTodayBetsResult = await client.query(
+          `SELECT COALESCE(SUM((bet->>'amount')::numeric), 0) as total
+           FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+           WHERE owner_id = $1 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = $2
+           FOR UPDATE`,
+          [ownerId, cleanNumber]
+        );
+        const globalCurrentTotal = parseFloat(globalTodayBetsResult.rows[0]?.total) || 0;
+        const betAmount = parseFloat(bet.amount) || 0;
+        if (globalCurrentTotal + betAmount > globalLimit) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: `Limite globale pour le numéro ${cleanNumber} dépassée (max ${globalLimit} Gdes)` });
         }
       }
 
@@ -732,27 +749,57 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     for (const [category, total] of Object.entries(totalsByGame)) {
       const limit = gameLimits[category] || 0;
       if (limit > 0 && total > limit) {
+        await client.query('ROLLBACK');
         return res.status(403).json({
           error: `Limite de mise pour ${category} dépassée (max ${limit} Gdes par ticket)`
         });
       }
     }
 
-    // Construire le tableau final avec les paris payés + nouveaux gratuits
-    const finalBets = [...paidBets, ...newFreeBets];
+    // Ajout des mariages gratuits (selon le montant joué)
+    const paidBets = bets.filter(b => !b.free);
+    const totalPaid = paidBets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+
+    let requiredFree = 0;
+    if (totalPaid >= 1 && totalPaid <= 50) requiredFree = 1;
+    else if (totalPaid >= 51 && totalPaid <= 150) requiredFree = 2;
+    else if (totalPaid >= 151) requiredFree = 3;
+
+    const newFreeBets = [];
+    for (let i = 0; i < requiredFree; i++) {
+      const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      const number = `${num1}&${num2}`;
+      const cleanNumber = num1 + num2;
+      newFreeBets.push({
+        game: 'auto_marriage',
+        number: number,
+        cleanNumber: cleanNumber,
+        amount: 0,
+        free: true,
+        freeType: 'special_marriage',
+        freeWin: 1000
+      });
+    }
+
+    const finalBets = [...bets, ...newFreeBets];
     const betsJson = JSON.stringify(finalBets);
     const finalTotal = finalBets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
 
-    const result = await pool.query(
+    const result = await client.query(
       `INSERT INTO tickets (owner_id, agent_id, agent_name, draw_id, draw_name, ticket_id, total_amount, bets, date)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id`,
       [ownerId, agentId, agentName, drawId, drawName, ticketId, finalTotal, betsJson]
     );
 
+    await client.query('COMMIT');
     res.json({ success: true, ticket: { id: result.rows[0].id, ticket_id: ticketId, ...req.body } });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('❌ Erreur sauvegarde ticket:', err);
     res.status(500).json({ error: 'Erreur serveur' });
+  } finally {
+    client.release();
   }
 });
 
@@ -865,12 +912,12 @@ app.get('/api/reports', authenticate, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-                COUNT(id) as total_tickets,
-                COALESCE(SUM(total_amount), 0) as total_bets,
-                COALESCE(SUM(win_amount), 0) as total_wins,
-                COALESCE(SUM(win_amount) - SUM(total_amount), 0) as balance
-             FROM tickets
-             WHERE owner_id = $1 AND agent_id = $2 AND date >= CURRENT_DATE`,
+          COUNT(id) as total_tickets,
+          COALESCE(SUM(total_amount), 0) as total_bets,
+          COALESCE(SUM(win_amount), 0) as total_wins,
+          COALESCE(SUM(win_amount) - SUM(total_amount), 0) as balance
+       FROM tickets
+       WHERE owner_id = $1 AND agent_id = $2 AND date >= CURRENT_DATE`,
       [ownerId, agentId]
     );
     const row = result.rows[0];
@@ -900,12 +947,12 @@ app.get('/api/reports/draw', authenticate, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-                COUNT(id) as total_tickets,
-                COALESCE(SUM(total_amount), 0) as total_bets,
-                COALESCE(SUM(win_amount), 0) as total_wins,
-                COALESCE(SUM(win_amount) - SUM(total_amount), 0) as balance
-             FROM tickets
-             WHERE owner_id = $1 AND agent_id = $2 AND draw_id = $3 AND date >= CURRENT_DATE`,
+          COUNT(id) as total_tickets,
+          COALESCE(SUM(total_amount), 0) as total_bets,
+          COALESCE(SUM(win_amount), 0) as total_wins,
+          COALESCE(SUM(win_amount) - SUM(total_amount), 0) as balance
+       FROM tickets
+       WHERE owner_id = $1 AND agent_id = $2 AND draw_id = $3 AND date >= CURRENT_DATE`,
       [ownerId, agentId, drawId]
     );
     const row = result.rows[0];
@@ -931,8 +978,8 @@ app.get('/api/winners', authenticate, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT * FROM tickets
-             WHERE owner_id = $1 AND agent_id = $2 AND win_amount > 0 AND date >= CURRENT_DATE
-             ORDER BY date DESC`,
+       WHERE owner_id = $1 AND agent_id = $2 AND win_amount > 0 AND date >= CURRENT_DATE
+       ORDER BY date DESC`,
       [ownerId, agentId]
     );
     res.json({ winners: result.rows });
@@ -947,10 +994,10 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT wr.*, d.name as draw_name, wr.date as published_at
-             FROM winning_results wr
-             JOIN draws d ON wr.draw_id = d.id
-             WHERE wr.owner_id = $1 AND wr.date >= CURRENT_DATE
-             ORDER BY wr.draw_id, wr.date DESC`,
+       FROM winning_results wr
+       JOIN draws d ON wr.draw_id = d.id
+       WHERE wr.owner_id = $1 AND wr.date >= CURRENT_DATE
+       ORDER BY wr.draw_id, wr.date DESC`,
       [ownerId]
     );
     // Transformer numbers en tableau
@@ -980,13 +1027,13 @@ app.get('/api/supervisor/reports/overall', authenticate, requireRole('supervisor
   try {
     const result = await pool.query(
       `SELECT 
-                COUNT(t.id) as total_tickets,
-                COALESCE(SUM(t.total_amount), 0) as total_bets,
-                COALESCE(SUM(t.win_amount), 0) as total_wins,
-                COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as balance
-             FROM tickets t
-             JOIN users u ON t.agent_id = u.id
-             WHERE t.owner_id = $1 AND u.supervisor_id = $2`,
+          COUNT(t.id) as total_tickets,
+          COALESCE(SUM(t.total_amount), 0) as total_bets,
+          COALESCE(SUM(t.win_amount), 0) as total_wins,
+          COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as balance
+       FROM tickets t
+       JOIN users u ON t.agent_id = u.id
+       WHERE t.owner_id = $1 AND u.supervisor_id = $2`,
       [ownerId, supervisorId]
     );
     res.json(result.rows[0]);
@@ -1002,15 +1049,15 @@ app.get('/api/supervisor/agents', authenticate, requireRole('supervisor'), async
   try {
     const result = await pool.query(
       `SELECT u.id, u.name, u.username, u.blocked, u.zone,
-                    COALESCE(SUM(t.total_amount), 0) as total_bets,
-                    COALESCE(SUM(t.win_amount), 0) as total_wins,
-                    COUNT(t.id) as total_tickets,
-                    COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as balance,
-                    COALESCE(SUM(CASE WHEN t.paid = false THEN t.win_amount ELSE 0 END), 0) as unpaid_wins
-             FROM users u
-             LEFT JOIN tickets t ON u.id = t.agent_id AND t.date >= NOW() - INTERVAL '1 day'
-             WHERE u.owner_id = $1 AND u.supervisor_id = $2 AND u.role = 'agent'
-             GROUP BY u.id`,
+              COALESCE(SUM(t.total_amount), 0) as total_bets,
+              COALESCE(SUM(t.win_amount), 0) as total_wins,
+              COUNT(t.id) as total_tickets,
+              COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as balance,
+              COALESCE(SUM(CASE WHEN t.paid = false THEN t.win_amount ELSE 0 END), 0) as unpaid_wins
+       FROM users u
+       LEFT JOIN tickets t ON u.id = t.agent_id AND t.date >= NOW() - INTERVAL '1 day'
+       WHERE u.owner_id = $1 AND u.supervisor_id = $2 AND u.role = 'agent'
+       GROUP BY u.id`,
       [ownerId, supervisorId]
     );
     res.json(result.rows);
@@ -1027,9 +1074,9 @@ app.get('/api/supervisor/tickets/recent', authenticate, requireRole('supervisor'
   try {
     const result = await pool.query(
       `SELECT t.* FROM tickets t
-             JOIN users u ON t.agent_id = u.id
-             WHERE t.owner_id = $1 AND u.supervisor_id = $2 AND t.agent_id = $3
-             ORDER BY t.date DESC LIMIT 20`,
+       JOIN users u ON t.agent_id = u.id
+       WHERE t.owner_id = $1 AND u.supervisor_id = $2 AND t.agent_id = $3
+       ORDER BY t.date DESC LIMIT 20`,
       [ownerId, supervisorId, agentId]
     );
     res.json(result.rows);
@@ -1045,11 +1092,11 @@ app.get('/api/supervisor/tickets', authenticate, requireRole('supervisor'), asyn
   const { page = 0, limit = 20, agentId, gain, paid, period, fromDate, toDate } = req.query;
 
   let query = `
-        SELECT t.*
-        FROM tickets t
-        JOIN users u ON t.agent_id = u.id
-        WHERE t.owner_id = $1 AND u.supervisor_id = $2
-    `;
+    SELECT t.*
+    FROM tickets t
+    JOIN users u ON t.agent_id = u.id
+    WHERE t.owner_id = $1 AND u.supervisor_id = $2
+  `;
   const params = [ownerId, supervisorId];
   let paramIndex = 3;
 
@@ -1149,8 +1196,8 @@ app.post('/api/supervisor/tickets/:id/pay', authenticate, requireRole('superviso
   try {
     const check = await pool.query(
       `SELECT t.id FROM tickets t
-             JOIN users u ON t.agent_id = u.id
-             WHERE t.id = $1 AND t.owner_id = $2 AND u.supervisor_id = $3`,
+       JOIN users u ON t.agent_id = u.id
+       WHERE t.id = $1 AND t.owner_id = $2 AND u.supervisor_id = $3`,
       [ticketId, ownerId, supervisorId]
     );
     if (check.rows.length === 0) {
@@ -1170,8 +1217,8 @@ app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, r
   try {
     const result = await pool.query(
       `SELECT message FROM owner_messages
-             WHERE owner_id = $1 AND expires_at > NOW()
-             ORDER BY created_at DESC LIMIT 1`,
+       WHERE owner_id = $1 AND expires_at > NOW()
+       ORDER BY created_at DESC LIMIT 1`,
       [ownerId]
     );
     if (result.rows.length > 0) {
@@ -1205,9 +1252,9 @@ app.get('/api/owner/agents', authenticate, requireRole('owner'), async (req, res
   try {
     const result = await pool.query(
       `SELECT u.id, u.name, u.username, u.blocked, u.zone, u.cin, u.commission_percentage, s.name as supervisor_name
-             FROM users u
-             LEFT JOIN users s ON u.supervisor_id = s.id
-             WHERE u.owner_id = $1 AND u.role = $2`,
+       FROM users u
+       LEFT JOIN users s ON u.supervisor_id = s.id
+       WHERE u.owner_id = $1 AND u.role = $2`,
       [ownerId, 'agent']
     );
     const agents = result.rows.map(a => ({ ...a, email: a.username }));
@@ -1244,7 +1291,7 @@ app.post('/api/owner/create-user', authenticate, requireRole('owner'), async (re
     const hashed = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO users (owner_id, name, cin, username, password, role, supervisor_id, zone, commission_percentage, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, name, username, role, cin, zone, commission_percentage`,
       [ownerId, name, cin || null, username, hashed, role, supervisorId || null, zone || null, commissionPercentage || 0]
     );
     const user = { ...result.rows[0], email: result.rows[0].username };
@@ -1308,7 +1355,7 @@ app.get('/api/owner/draws', authenticate, requireRole('owner'), async (req, res)
   }
 });
 
-// ==================== Publication des résultats avec calcul des gains MODIFIÉ ====================
+// Publication des résultats avec calcul des gagnants
 app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { drawId, numbers, lotto3 } = req.body;
@@ -1319,7 +1366,7 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
     // Insérer le résultat
     await pool.query(
       `INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date)
-             VALUES ($1, $2, $3, $4, NOW())`,
+       VALUES ($1, $2, $3, $4, NOW())`,
       [ownerId, drawId, JSON.stringify(numbers), lotto3]
     );
 
@@ -1363,23 +1410,18 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
           const amount = parseFloat(bet.amount) || 0;
           let gain = 0;
 
-          // ===== BORLETTE : addition des gains pour chaque lot correspondant =====
           if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
             if (cleanNumber.length === 2) {
-              let totalGain = 0;
-              if (cleanNumber === lot1) totalGain += amount * multipliers.lot1;
-              if (cleanNumber === lot2) totalGain += amount * multipliers.lot2;
-              if (cleanNumber === lot3) totalGain += amount * multipliers.lot3;
-              gain = totalGain;
+              if (cleanNumber === lot2) gain = amount * multipliers.lot2;
+              else if (cleanNumber === lot3) gain = amount * multipliers.lot3;
+              else if (cleanNumber === lot1) gain = amount * multipliers.lot1;
             }
           }
-          // ===== LOTTO3 =====
           else if (game === 'lotto3') {
             if (cleanNumber.length === 3 && cleanNumber === lotto3) {
               gain = amount * multipliers.lotto3;
             }
           }
-          // ===== MARIAGE (accepte les paires identiques) =====
           else if (game === 'mariage' || game === 'auto_marriage') {
             if (cleanNumber.length === 4) {
               const firstPair = cleanNumber.slice(0, 2);
@@ -1388,8 +1430,7 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
               let win = false;
               for (let i = 0; i < 3; i++) {
                 for (let j = 0; j < 3; j++) {
-                  // i et j peuvent être égaux (paires identiques autorisées)
-                  if (firstPair === pairs[i] && secondPair === pairs[j]) {
+                  if (i !== j && firstPair === pairs[i] && secondPair === pairs[j]) {
                     win = true;
                     break;
                   }
@@ -1405,7 +1446,6 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
               }
             }
           }
-          // ===== LOTTO4 =====
           else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (cleanNumber.length === 4 && bet.option) {
               const option = bet.option;
@@ -1416,7 +1456,6 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
               if (cleanNumber === expected) gain = amount * multipliers.lotto4;
             }
           }
-          // ===== LOTTO5 =====
           else if (game === 'lotto5' || game === 'auto_lotto5') {
             if (cleanNumber.length === 5 && bet.option) {
               const option = bet.option;
@@ -1450,7 +1489,6 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
   }
 });
 
-// Le reste des routes propriétaire (blocage, limites, etc.) est inchangé
 app.post('/api/owner/block-draw', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { drawId, block } = req.body;
@@ -1515,9 +1553,9 @@ app.get('/api/owner/blocked-numbers-per-draw', authenticate, requireRole('owner'
   try {
     const result = await pool.query(
       `SELECT b.draw_id, d.name as draw_name, b.number
-             FROM blocked_numbers b
-             JOIN draws d ON b.draw_id = d.id
-             WHERE b.owner_id = $1 AND b.global = false`,
+       FROM blocked_numbers b
+       JOIN draws d ON b.draw_id = d.id
+       WHERE b.owner_id = $1 AND b.global = false`,
       [ownerId]
     );
     res.json(result.rows);
@@ -1562,9 +1600,9 @@ app.get('/api/owner/number-limits', authenticate, requireRole('owner'), async (r
   try {
     const result = await pool.query(
       `SELECT l.draw_id, d.name as draw_name, l.number, l.limit_amount
-             FROM number_limits l
-             JOIN draws d ON l.draw_id = d.id
-             WHERE l.owner_id = $1`,
+       FROM number_limits l
+       JOIN draws d ON l.draw_id = d.id
+       WHERE l.owner_id = $1`,
       [ownerId]
     );
     res.json(result.rows);
@@ -1580,8 +1618,8 @@ app.post('/api/owner/number-limit', authenticate, requireRole('owner'), async (r
   try {
     await pool.query(
       `INSERT INTO number_limits (owner_id, draw_id, number, limit_amount)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (owner_id, draw_id, number) DO UPDATE SET limit_amount = EXCLUDED.limit_amount`,
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (owner_id, draw_id, number) DO UPDATE SET limit_amount = EXCLUDED.limit_amount`,
       [ownerId, drawId, number, limitAmount]
     );
     res.json({ success: true });
@@ -1668,6 +1706,62 @@ app.post('/api/owner/unblock-lotto3', authenticate, requireRole('owner'), async 
   }
 });
 
+// ==================== Routes limites globales par numéro ====================
+app.get('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  try {
+    const result = await pool.query(
+      'SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1 ORDER BY number',
+      [ownerId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('❌ Erreur récupération limites globales:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.post('/api/owner/global-limit', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { number, limitAmount } = req.body;
+  if (!number || number.length !== 2 || !/^\d{2}$/.test(number)) {
+    return res.status(400).json({ error: 'Numéro invalide (2 chiffres requis)' });
+  }
+  if (limitAmount === undefined || limitAmount <= 0) {
+    return res.status(400).json({ error: 'Montant limite invalide' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO global_number_limits (owner_id, number, limit_amount)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (owner_id, number) DO UPDATE SET limit_amount = EXCLUDED.limit_amount`,
+      [ownerId, number, limitAmount]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erreur ajout/modif limite globale:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.delete('/api/owner/global-limit', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { number } = req.body;
+  if (!number) {
+    return res.status(400).json({ error: 'Numéro requis' });
+  }
+  try {
+    await pool.query(
+      'DELETE FROM global_number_limits WHERE owner_id = $1 AND number = $2',
+      [ownerId, number]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erreur suppression limite globale:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // ==================== Dashboard propriétaire enrichi ====================
 app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
@@ -1686,27 +1780,40 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
     );
     const agentsGainLoss = await pool.query(
       `SELECT u.id, u.name,
-                COALESCE(SUM(t.total_amount), 0) as total_bets,
-                COALESCE(SUM(t.win_amount), 0) as total_wins,
-                COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
-             FROM users u
-             LEFT JOIN tickets t ON u.id = t.agent_id AND t.date >= CURRENT_DATE
-             WHERE u.owner_id = $1 AND u.role = $2
-             GROUP BY u.id`,
+              COALESCE(SUM(t.total_amount), 0) as total_bets,
+              COALESCE(SUM(t.win_amount), 0) as total_wins,
+              COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
+       FROM users u
+       LEFT JOIN tickets t ON u.id = t.agent_id AND t.date >= CURRENT_DATE
+       WHERE u.owner_id = $1 AND u.role = $2
+       GROUP BY u.id`,
       [ownerId, 'agent']
     );
 
-    // Progression des limites
+    // Progression des limites (par tirage)
     const limitsProgress = await pool.query(
       `SELECT d.name as draw_name, l.number, l.limit_amount,
-                    COALESCE(SUM(t.total_amount), 0) as current_bets,
-                    (COALESCE(SUM(t.total_amount), 0) / l.limit_amount * 100) as progress_percent
-             FROM number_limits l
-             JOIN draws d ON l.draw_id = d.id
-             LEFT JOIN tickets t ON t.draw_id = l.draw_id AND t.bets::text LIKE '%'||l.number||'%' AND DATE(t.date) = CURRENT_DATE
-             WHERE l.owner_id = $1
-             GROUP BY d.name, l.number, l.limit_amount
-             ORDER BY progress_percent DESC`,
+              COALESCE(SUM(t.total_amount), 0) as current_bets,
+              (COALESCE(SUM(t.total_amount), 0) / l.limit_amount * 100) as progress_percent
+       FROM number_limits l
+       JOIN draws d ON l.draw_id = d.id
+       LEFT JOIN tickets t ON t.draw_id = l.draw_id AND t.bets::text LIKE '%'||l.number||'%' AND DATE(t.date) = CURRENT_DATE
+       WHERE l.owner_id = $1
+       GROUP BY d.name, l.number, l.limit_amount
+       ORDER BY progress_percent DESC`,
+      [ownerId]
+    );
+
+    // Progression des limites globales
+    const globalLimitsProgress = await pool.query(
+      `SELECT gl.number, gl.limit_amount,
+              COALESCE(SUM((bet->>'amount')::numeric), 0) as current_bets,
+              (COALESCE(SUM((bet->>'amount')::numeric), 0) / gl.limit_amount * 100) as progress_percent
+       FROM global_number_limits gl
+       LEFT JOIN tickets t ON t.owner_id = gl.owner_id AND DATE(t.date) = CURRENT_DATE,
+            jsonb_array_elements(t.bets::jsonb) as bet
+       WHERE gl.owner_id = $1 AND bet->>'cleanNumber' = gl.number
+       GROUP BY gl.number, gl.limit_amount`,
       [ownerId]
     );
 
@@ -1721,6 +1828,7 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
       connected,
       sales_today: parseFloat(sales.rows[0].total),
       limits_progress: limitsProgress.rows,
+      global_limits_progress: globalLimitsProgress.rows,
       agents_gain_loss: agentsGainLoss.rows
     });
   } catch (err) {
@@ -1735,14 +1843,14 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
   const { supervisorId, agentId, drawId, period, fromDate, toDate, gainLoss } = req.query;
 
   let baseQuery = `
-        SELECT 
-            COUNT(id) as tickets,
-            COALESCE(SUM(total_amount), 0) as bets,
-            COALESCE(SUM(win_amount), 0) as wins,
-            COALESCE(SUM(win_amount) - SUM(total_amount), 0) as result
-        FROM tickets
-        WHERE owner_id = $1
-    `;
+    SELECT 
+        COUNT(id) as tickets,
+        COALESCE(SUM(total_amount), 0) as bets,
+        COALESCE(SUM(win_amount), 0) as wins,
+        COALESCE(SUM(win_amount) - SUM(total_amount), 0) as result
+    FROM tickets
+    WHERE owner_id = $1
+  `;
   const params = [ownerId];
   let paramIndex = 2;
 
@@ -1784,15 +1892,15 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     const summary = summaryResult.rows[0];
 
     let detailQuery = `
-            SELECT d.id as draw_id, d.name as draw_name, 
-                   COUNT(t.id) as tickets, 
-                   COALESCE(SUM(t.total_amount), 0) as bets, 
-                   COALESCE(SUM(t.win_amount), 0) as wins, 
-                   COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
-            FROM tickets t
-            JOIN draws d ON t.draw_id = d.id
-            WHERE t.owner_id = $1
-        `;
+      SELECT d.id as draw_id, d.name as draw_name, 
+             COUNT(t.id) as tickets, 
+             COALESCE(SUM(t.total_amount), 0) as bets, 
+             COALESCE(SUM(t.win_amount), 0) as wins, 
+             COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
+      FROM tickets t
+      JOIN draws d ON t.draw_id = d.id
+      WHERE t.owner_id = $1
+    `;
     const detailParams = [ownerId];
     let detailParamIndex = 2;
 
@@ -1836,15 +1944,15 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     // Compter les agents en gain/perte (pour la période)
     const gainLossCount = await pool.query(
       `SELECT 
-                COUNT(CASE WHEN net_result > 0 THEN 1 END) as gain_count,
-                COUNT(CASE WHEN net_result < 0 THEN 1 END) as loss_count
-             FROM (
-                SELECT u.id, COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
-                FROM users u
-                LEFT JOIN tickets t ON u.id = t.agent_id ${period === 'today' ? 'AND t.date >= CURRENT_DATE' : ''}
-                WHERE u.owner_id = $1 AND u.role = 'agent'
-                GROUP BY u.id
-             ) sub`,
+          COUNT(CASE WHEN net_result > 0 THEN 1 END) as gain_count,
+          COUNT(CASE WHEN net_result < 0 THEN 1 END) as loss_count
+       FROM (
+          SELECT u.id, COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
+          FROM users u
+          LEFT JOIN tickets t ON u.id = t.agent_id ${period === 'today' ? 'AND t.date >= CURRENT_DATE' : ''}
+          WHERE u.owner_id = $1 AND u.role = 'agent'
+          GROUP BY u.id
+       ) sub`,
       [ownerId]
     );
 
@@ -1871,10 +1979,10 @@ app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, re
   const { page = 0, limit = 20, supervisorId, agentId, drawId, period, fromDate, toDate, gain, paid } = req.query;
 
   let query = `
-        SELECT t.*
-        FROM tickets t
-        WHERE t.owner_id = $1
-    `;
+    SELECT t.*
+    FROM tickets t
+    WHERE t.owner_id = $1
+  `;
   const params = [ownerId];
   let paramIndex = 2;
 
@@ -2018,13 +2126,13 @@ app.post('/api/owner/settings', authenticate, requireRole('owner'), upload.singl
   try {
     await pool.query(
       `INSERT INTO lottery_settings (owner_id, name, slogan, logo_url, multipliers, limits)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (owner_id) DO UPDATE SET
-                name = EXCLUDED.name,
-                slogan = EXCLUDED.slogan,
-                logo_url = EXCLUDED.logo_url,
-                multipliers = EXCLUDED.multipliers,
-                limits = EXCLUDED.limits`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (owner_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          slogan = EXCLUDED.slogan,
+          logo_url = EXCLUDED.logo_url,
+          multipliers = EXCLUDED.multipliers,
+          limits = EXCLUDED.limits`,
       [ownerId, name || 'LOTATO PRO', slogan || '', logoUrl || '', JSON.stringify(multipliers || {}), JSON.stringify(limits || {})]
     );
     res.json({ success: true });
