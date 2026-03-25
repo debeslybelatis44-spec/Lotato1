@@ -403,7 +403,6 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
 });
 
 // ==================== Routes superadmin ====================
-// ==================== Routes superadmin ====================
 app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -756,7 +755,6 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
 
     if (errors.length > 0) {
       await client.query('ROLLBACK');
-      // Renvoyer toutes les erreurs sous forme d'une seule chaîne (compatible avec l'alerte)
       return res.status(403).json({ error: errors.join('\n') });
     }
 
