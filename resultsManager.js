@@ -1,12 +1,12 @@
-// resultsManager.js - Version avec commission progressive sur 15 jours
-// Ajout : colonnes Ventes 15j, Commission %, Commission (Gdes)
-// Les tickets sont analysés sur les 15 derniers jours (glissants) pour déterminer le taux de commission.
+// resultsManager.js - Version avec commission sélectionnable par l'agent (10% à 20%)
+// Les tickets sont analysés sur les 15 derniers jours (glissants) pour déterminer le montant des ventes.
+// Le taux de commission est choisi manuellement via un menu déroulant.
 (function() {
     if (window.resultsManagerReady) return;
     window.resultsManagerReady = true;
 
     let currentFilter = 'all';
-    const COMMISSION_DAYS = 15; // Période de calcul en jours
+    const COMMISSION_DAYS = 15; // Période de calcul des ventes
 
     // ==================== Création de l'UI si absente ====================
     function createResultsUI() {
@@ -117,7 +117,7 @@
                 }
                 .agents-table {
                     width: 100%;
-                    min-width: 1000px; /* Élargi pour les nouvelles colonnes */
+                    min-width: 1000px;
                     border-collapse: collapse;
                     background: var(--surface);
                     border-radius: 16px;
@@ -136,7 +136,18 @@
                 .loss { color: var(--danger); font-weight: bold; }
                 .recevoir { color: var(--danger); font-weight: bold; }
                 .remettre { color: var(--success); font-weight: bold; }
-                .commission-rate { color: var(--secondary); font-weight: bold; }
+                .commission-rate-select {
+                    padding: 6px 10px;
+                    border-radius: 8px;
+                    background: var(--surface);
+                    color: var(--text);
+                    border: 1px solid var(--glass-border);
+                    cursor: pointer;
+                }
+                .commission-amount {
+                    font-weight: bold;
+                    color: var(--secondary);
+                }
             `;
             document.head.appendChild(style);
         }
@@ -261,16 +272,30 @@
         container.innerHTML = html;
     }
 
-    // ==================== Calcul du pourcentage de commission progressif ====================
-    // Barème : 10% pour 0-99 Gdes, puis +1% tous les 100 Gdes supplémentaires, plafonné à 20%
-    function calculateCommissionRate(salesAmount) {
-        if (salesAmount <= 0) return 0;
-        let rate = 10 + Math.floor(salesAmount / 100);
-        if (rate > 20) rate = 20;
-        return rate;
+    // ==================== Récupération des taux de commission des agents ====================
+    async function fetchAgentsCommission() {
+        const token = localStorage.getItem('auth_token');
+        if (!token) return new Map();
+
+        try {
+            const res = await fetch('/api/agents', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) return new Map();
+            const agents = await res.json();
+            const map = new Map();
+            agents.forEach(agent => {
+                // On suppose que l'API retourne un champ commission_rate, sinon défaut 10
+                map.set(agent.id, agent.commission_rate || 10);
+            });
+            return map;
+        } catch (error) {
+            console.error('Erreur chargement taux commission:', error);
+            return new Map();
+        }
     }
 
-    // ==================== Balance des agents avec commission sur 15 jours ====================
+    // ==================== Balance des agents avec commission sélectionnable ====================
     async function loadAgentsBalance() {
         const container = document.getElementById('agents-container');
         if (!container) return;
@@ -280,6 +305,7 @@
             const token = localStorage.getItem('auth_token');
             if (!token) throw new Error('Non authentifié');
 
+            // Récupération des tickets
             const response = await fetch('/api/tickets', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -287,13 +313,15 @@
             const data = await response.json();
             const tickets = data.tickets || [];
 
-            // Date de début de la période de commission (15 derniers jours glissants)
+            // Récupération des taux de commission
+            const agentsCommissionMap = await fetchAgentsCommission();
+
+            // Calcul des ventes et gains par agent
+            const agentsMap = new Map();
             const now = new Date();
             const startDate = new Date(now);
             startDate.setDate(now.getDate() - COMMISSION_DAYS);
             startDate.setHours(0, 0, 0, 0);
-
-            const agentsMap = new Map();
 
             tickets.forEach(ticket => {
                 const agentId = ticket.agent_id || ticket.agentId;
@@ -313,13 +341,9 @@
                 const montant = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
                 agent.totalVentes += montant;
 
-                // Vérifier si le ticket est dans la période de 15 jours
                 let ticketDate = null;
-                if (ticket.created_at) {
-                    ticketDate = new Date(ticket.created_at);
-                } else if (ticket.date) {
-                    ticketDate = new Date(ticket.date);
-                }
+                if (ticket.created_at) ticketDate = new Date(ticket.created_at);
+                else if (ticket.date) ticketDate = new Date(ticket.date);
                 if (ticketDate && ticketDate >= startDate) {
                     agent.ventes15j += montant;
                 }
@@ -337,7 +361,7 @@
                 return;
             }
 
-            // Construction du tableau avec 10 colonnes (ajout des colonnes commission)
+            // Construction du tableau avec select pour le taux
             let html = `<table class="agents-table">
                 <thead>
                     <tr>
@@ -372,19 +396,23 @@
                 }
 
                 const balanceClass = balance >= 0 ? 'profit' : 'loss';
+                const currentRate = agentsCommissionMap.get(agent.agentId) || 10;
+                const commissionAmount = agent.ventes15j * (currentRate / 100);
 
-                // Calcul de la commission sur 15 jours
-                const ventes15j = agent.ventes15j;
-                const commissionRate = calculateCommissionRate(ventes15j);
-                const commissionAmount = ventes15j * (commissionRate / 100);
+                // Génération du select (10 à 20)
+                let selectHtml = `<select class="commission-rate-select" data-agent-id="${agent.agentId}">`;
+                for (let rate = 10; rate <= 20; rate++) {
+                    selectHtml += `<option value="${rate}" ${currentRate === rate ? 'selected' : ''}>${rate}%</option>`;
+                }
+                selectHtml += `</select>`;
 
                 html += `
-                    <tr>
+                    <tr data-agent-id="${agent.agentId}">
                         <td>${escapeHtml(agent.agentName)} (ID: ${agent.agentId})</td>
                         <td>${agent.totalVentes.toLocaleString('fr-FR')}</td>
-                        <td>${ventes15j.toLocaleString('fr-FR')}</td>
-                        <td class="commission-rate">${commissionRate}%</td>
-                        <td class="commission-rate">${commissionAmount.toLocaleString('fr-FR')}</td>
+                        <td class="ventes-15j">${agent.ventes15j.toLocaleString('fr-FR')}</td>
+                        <td>${selectHtml}</td>
+                        <td class="commission-amount">${commissionAmount.toLocaleString('fr-FR')}</td>
                         <td>${agent.totalGainsPayes.toLocaleString('fr-FR')}</td>
                         <td class="${balanceClass}">${balance.toLocaleString('fr-FR')}</td>
                         <td class="recevoir">${montantRecevoir > 0 ? montantRecevoir.toLocaleString('fr-FR') + ' Gdes' : '—'}</td>
@@ -396,12 +424,66 @@
             html += `</tbody></table>`;
             container.innerHTML = html;
 
+            // Attacher les événements de changement de taux
+            attachCommissionSelectListeners();
+
         } catch (error) {
             console.error('Erreur chargement balance agents:', error);
             container.innerHTML = '<div class="no-result">Erè chajman done ajan.</div>';
         }
     }
 
+    // ==================== Gestion du changement de taux de commission ====================
+    function attachCommissionSelectListeners() {
+        document.querySelectorAll('.commission-rate-select').forEach(select => {
+            select.removeEventListener('change', handleCommissionChange);
+            select.addEventListener('change', handleCommissionChange);
+        });
+    }
+
+    async function handleCommissionChange(event) {
+        const select = event.target;
+        const agentId = select.dataset.agentId;
+        const newRate = parseInt(select.value, 10);
+        const row = select.closest('tr');
+        if (!row) return;
+
+        // Récupérer le montant des ventes sur 15 jours (dans la cellule avec classe .ventes-15j)
+        const ventes15jCell = row.querySelector('.ventes-15j');
+        if (!ventes15jCell) return;
+        const ventes15j = parseFloat(ventes15jCell.textContent.replace(/\s/g, '').replace(',', '.'));
+
+        // Calculer et mettre à jour le montant de la commission
+        const commissionAmountCell = row.querySelector('.commission-amount');
+        if (commissionAmountCell) {
+            const newCommission = ventes15j * (newRate / 100);
+            commissionAmountCell.textContent = newCommission.toLocaleString('fr-FR');
+        }
+
+        // Sauvegarder le nouveau taux côté serveur
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`/api/agents/${agentId}/commission`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ commission_rate: newRate })
+            });
+            if (!res.ok) {
+                throw new Error('Erreur de sauvegarde');
+            }
+            // Optionnel : afficher une notification de succès
+        } catch (error) {
+            console.error('Erreur lors de la sauvegarde du taux:', error);
+            alert('Erreur : le taux n’a pas pu être sauvegardé.');
+            // Recharger la balance pour rétablir l'ancien taux (ou annuler le changement)
+            loadAgentsBalance();
+        }
+    }
+
+    // ==================== Utilitaire ====================
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -435,6 +517,7 @@
         }
 
         fetchResults('all');
+        // Les agents seront chargés lors du clic sur l'onglet Agents
     }
 
     if (document.readyState === 'loading') {
