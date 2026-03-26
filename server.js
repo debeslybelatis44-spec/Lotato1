@@ -1,7 +1,4 @@
-// server.js - Version multi‑propriétaire corrigée
-// Gestion des limites : tables séparées (global_number_limits, draw_number_limits, global_blocked_numbers, draw_blocked_numbers, blocked_lotto3_numbers)
-// Filtrage des tickets : agents → leurs propres tickets, superviseurs → tickets de leurs agents, propriétaires → tous leurs tickets
-
+// server.js - Version multi‑propriétaire avec tirages communs
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -24,7 +21,7 @@ app.use(express.static(path.join(__dirname)));
 const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-// PostgreSQL
+// ==================== Connexion PostgreSQL ====================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -47,7 +44,7 @@ console.log('🔄 Vérification de la base de données...');
 
 // ==================== Création des tables ====================
 async function ensureTables() {
-  // Table users (owners, supervisors, agents)
+  // Table users (propriétaires, superviseurs, agents)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -67,11 +64,10 @@ async function ensureTables() {
     )
   `);
 
-  // Draws
+  // Table draws (commune à tous les propriétaires)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS draws (
         id SERIAL PRIMARY KEY,
-        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         name VARCHAR(100) NOT NULL,
         time TIME NOT NULL,
         color VARCHAR(20),
@@ -79,7 +75,7 @@ async function ensureTables() {
     )
   `);
 
-  // Lottery settings
+  // Table lottery_settings (par propriétaire)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS lottery_settings (
         owner_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -91,7 +87,7 @@ async function ensureTables() {
     )
   `);
 
-  // Winning results
+  // Table winning_results (par propriétaire)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS winning_results (
         id SERIAL PRIMARY KEY,
@@ -103,7 +99,7 @@ async function ensureTables() {
     )
   `);
 
-  // Tickets
+  // Table tickets (par propriétaire)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
@@ -148,7 +144,7 @@ async function ensureTables() {
     )
   `);
 
-  // --- Tables de gestion des limites et blocages (multi‑propriétaire) ---
+  // === Tables de gestion des limites et blocages (par propriétaire) ===
   await pool.query(`
     CREATE TABLE IF NOT EXISTS global_number_limits (
         owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -246,7 +242,7 @@ const requireSuperAdmin = (req, res, next) => {
   next();
 };
 
-// ==================== Routes d'authentification (inchangées) ====================
+// ==================== Routes d'authentification ====================
 app.post('/api/auth/login', async (req, res) => {
   const { username, password, role } = req.body;
   try {
@@ -332,7 +328,9 @@ app.post('/api/auth/logout', authenticate, async (req, res) => {
   res.json({ success: true, message: 'Déconnexion réussie' });
 });
 
-// ==================== Paramètres loterie ====================
+// ==================== Routes communes ====================
+
+// Paramètres loterie (propres au propriétaire)
 app.get('/api/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -357,144 +355,30 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
   }
 });
 
-// ==================== Routes superadmin (inchangées) ====================
-app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT u.id, u.name, u.username as email, u.blocked as active, u.quota, u.phone, u.created_at,
-             (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
-      FROM users u WHERE u.role = 'owner' ORDER BY u.created_at DESC
-    `);
-    res.json(result.rows);
-  } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
-});
-
-app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
-  const { name, email, password, phone, quota } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'Champs requis manquants' });
-  try {
-    const hashed = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      `INSERT INTO users (name, username, password, role, phone, quota, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
-      [name, email, hashed, 'owner', phone || null, quota || 0]
-    );
-    res.json({ success: true, id: result.rows[0].id });
-  } catch (err) {
-    if (err.code === '23505') return res.status(400).json({ error: 'Email déjà utilisé' });
-    res.status(500).json({ error: 'Erreur création' });
-  }
-});
-
-app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { block } = req.body;
-  try {
-    await pool.query('UPDATE users SET blocked = $1 WHERE id = $2 AND role = $3', [block, id, 'owner']);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: 'Erreur mise à jour' }); }
-});
-
-app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'owner']);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Propriétaire non trouvé' });
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: 'Erreur suppression' }); }
-});
-
-app.delete('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'agent']);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Agent non trouvé' });
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: 'Erreur suppression' }); }
-});
-
-app.delete('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Superviseur non trouvé' });
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: 'Erreur suppression' }); }
-});
-
-app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req, res) => {
-  const { ownerId, message } = req.body;
-  if (!ownerId || !message) return res.status(400).json({ error: 'ownerId et message requis' });
-  try {
-    await pool.query(
-      `INSERT INTO owner_messages (owner_id, message, created_at, expires_at)
-       VALUES ($1, $2, NOW(), NOW() + INTERVAL '10 minutes')`,
-      [ownerId, message]
-    );
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: 'Erreur envoi message' }); }
-});
-
-app.post('/api/superadmin/messages/bulk', authenticate, requireSuperAdmin, async (req, res) => {
-  const { ownerIds, message } = req.body;
-  if (!ownerIds || !Array.isArray(ownerIds) || ownerIds.length === 0 || !message) {
-    return res.status(400).json({ error: 'Liste de propriétaires et message requis' });
-  }
-  try {
-    const values = ownerIds.map((_, i) => `($${i*3+1}, $${i*3+2}, NOW(), NOW() + INTERVAL '10 minutes')`).join(',');
-    const flatParams = ownerIds.flatMap(id => [id, message]);
-    await pool.query(`INSERT INTO owner_messages (owner_id, message, created_at, expires_at) VALUES ${values}`, flatParams);
-    res.json({ success: true, count: ownerIds.length });
-  } catch (err) { res.status(500).json({ error: 'Erreur envoi messages' }); }
-});
-
-app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT u.id, u.name, u.username as email,
-             COUNT(DISTINCT ag.id) as agent_count,
-             COUNT(t.id) as ticket_count,
-             COALESCE(SUM(t.total_amount), 0) as total_bets,
-             COALESCE(SUM(t.win_amount), 0) as total_wins,
-             COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
-      FROM users u
-      LEFT JOIN users ag ON u.id = ag.owner_id AND ag.role = 'agent'
-      LEFT JOIN tickets t ON u.id = t.owner_id
-      WHERE u.role = 'owner'
-      GROUP BY u.id, u.name, u.username
-      ORDER BY u.name
-    `);
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
-});
-
-// ==================== Routes communes (filtrage rôle) ====================
+// Tirages (communs à tous)
 app.get('/api/draws', authenticate, async (req, res) => {
-  const ownerId = req.user.ownerId;
   try {
-    const result = await pool.query(
-      'SELECT id, name, time, color, active FROM draws WHERE owner_id = $1 ORDER BY time',
-      [ownerId]
-    );
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
     res.json({ draws: result.rows });
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
-// Blocages globaux et par tirage (public pour tous les utilisateurs du propriétaire)
+// Blocages globaux (propres au propriétaire)
 app.get('/api/blocked-numbers/global', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
-    const result = await pool.query(
-      'SELECT number FROM global_blocked_numbers WHERE owner_id = $1',
-      [ownerId]
-    );
+    const result = await pool.query('SELECT number FROM global_blocked_numbers WHERE owner_id = $1', [ownerId]);
     res.json({ blockedNumbers: result.rows.map(r => r.number) });
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
+// Blocages par tirage (propres au propriétaire)
 app.get('/api/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   const { drawId } = req.params;
@@ -504,10 +388,13 @@ app.get('/api/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
       [ownerId, drawId]
     );
     res.json({ blockedNumbers: result.rows.map(r => r.number) });
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
-// Limites (fusion globales + par tirage)
+// Limites (globales et par tirage) fusionnées
 app.get('/api/number-limits', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -524,10 +411,13 @@ app.get('/api/number-limits', authenticate, async (req, res) => {
       [ownerId]
     );
     res.json([...global.rows, ...draw.rows]);
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
-// ==================== Route de sauvegarde des tickets (logique limites corrigée) ====================
+// ==================== Sauvegarde des tickets (avec vérification limites) ====================
 app.post('/api/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total } = req.body;
   const ownerId = req.user.ownerId;
@@ -535,12 +425,12 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
 
   try {
     // Vérifier que le tirage est actif
-    const drawCheck = await pool.query('SELECT active FROM draws WHERE id = $1 AND owner_id = $2', [drawId, ownerId]);
+    const drawCheck = await pool.query('SELECT active FROM draws WHERE id = $1', [drawId]);
     if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) {
       return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
     }
 
-    // Blocages
+    // Blocages (propres au propriétaire)
     const globalBlocked = await pool.query('SELECT number FROM global_blocked_numbers WHERE owner_id = $1', [ownerId]);
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
     const drawBlocked = await pool.query('SELECT number FROM draw_blocked_numbers WHERE owner_id = $1 AND draw_id = $2', [ownerId, drawId]);
@@ -548,13 +438,13 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     const blockedLotto3 = await pool.query('SELECT number FROM blocked_lotto3_numbers WHERE owner_id = $1', [ownerId]);
     const blockedLotto3Set = new Set(blockedLotto3.rows.map(r => r.number));
 
-    // Limites globales et par tirage
+    // Limites (propres au propriétaire)
     const globalLimitsRes = await pool.query('SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1', [ownerId]);
     const globalLimitsMap = new Map(globalLimitsRes.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
     const drawLimitsRes = await pool.query('SELECT number, limit_amount FROM draw_number_limits WHERE owner_id = $1 AND draw_id = $2', [ownerId, drawId]);
     const drawLimitsMap = new Map(drawLimitsRes.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
 
-    // Limites de jeux
+    // Limites par type de jeu
     const settingsRes = await pool.query('SELECT limits FROM lottery_settings WHERE owner_id = $1', [ownerId]);
     let gameLimits = { lotto3: 0, lotto4: 0, lotto5: 0, mariage: 0 };
     if (settingsRes.rows.length > 0 && settingsRes.rows[0].limits) {
@@ -562,7 +452,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       gameLimits = typeof raw === 'string' ? JSON.parse(raw) : raw;
     }
 
-    // Collecte des numéros à vérifier
+    // Collecte des numéros avec limites
     const numbersWithGlobalLimit = new Set();
     const numbersWithDrawLimit = new Set();
 
@@ -576,7 +466,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       }
     }
 
-    // Totaux déjà mis aujourd'hui (globaux)
+    // Totaux déjà mis aujourd'hui (global)
     const globalTotalsMap = new Map();
     if (numbersWithGlobalLimit.size > 0) {
       const resTot = await pool.query(`
@@ -707,7 +597,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
   }
 });
 
-// ==================== Route commune /api/tickets (filtrage par rôle) ====================
+// ==================== Routes communes pour les tickets (filtrage par rôle) ====================
 app.get('/api/tickets', authenticate, async (req, res) => {
   const user = req.user;
   const ownerId = user.ownerId;
@@ -750,7 +640,7 @@ app.get('/api/tickets', authenticate, async (req, res) => {
   }
 });
 
-// Suppression ticket (déjà filtrée)
+// Suppression d'un ticket (avec droits)
 app.delete('/api/tickets/:id', authenticate, async (req, res) => {
   const user = req.user;
   const ticketId = req.params.id;
@@ -786,6 +676,7 @@ app.delete('/api/tickets/:id', authenticate, async (req, res) => {
   }
 });
 
+// Paiement d'un ticket (agent)
 app.post('/api/winners/pay/:ticketId', authenticate, requireRole('agent'), async (req, res) => {
   const ticketId = req.params.ticketId;
   const agentId = req.user.id;
@@ -890,6 +781,7 @@ app.get('/api/winners', authenticate, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// Résultats des tirages (propres au propriétaire)
 app.get('/api/winners/results', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -911,7 +803,7 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// ==================== Routes superviseur (avec filtrage jour) ====================
+// ==================== Routes superviseur ====================
 app.get('/api/supervisor/reports/overall', authenticate, requireRole('supervisor'), async (req, res) => {
   const supervisorId = req.user.id;
   const ownerId = req.user.ownerId;
@@ -1060,7 +952,7 @@ app.post('/api/supervisor/tickets/:id/pay', authenticate, requireRole('superviso
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// ==================== Routes propriétaire (inchangées mais avec nouvelles tables) ====================
+// ==================== Routes propriétaire ====================
 app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
@@ -1148,16 +1040,13 @@ app.put('/api/owner/change-supervisor', authenticate, requireRole('owner'), asyn
 });
 
 app.get('/api/owner/draws', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
   try {
-    const result = await pool.query(
-      'SELECT id, name, time, color, active FROM draws WHERE owner_id = $1 ORDER BY time',
-      [ownerId]
-    );
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
+// Publication des résultats (propriétaire, utilise les tirages communs)
 app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { drawId, numbers, lotto3 } = req.body;
@@ -1249,15 +1138,14 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
 });
 
 app.post('/api/owner/block-draw', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
   const { drawId, block } = req.body;
   try {
-    await pool.query('UPDATE draws SET active = $1 WHERE id = $2 AND owner_id = $3', [!block, drawId, ownerId]);
+    await pool.query('UPDATE draws SET active = $1 WHERE id = $2', [!block, drawId]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
-// Blocages propriétaire
+// Blocages propriétaire (globaux)
 app.get('/api/owner/blocked-numbers', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
@@ -1286,6 +1174,7 @@ app.post('/api/owner/unblock-number', authenticate, requireRole('owner'), async 
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
+// Blocages par tirage
 app.get('/api/owner/blocked-numbers-per-draw', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
@@ -1399,7 +1288,7 @@ app.post('/api/owner/unblock-lotto3', authenticate, requireRole('owner'), async 
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Dashboard propriétaire (adapté aux nouvelles tables)
+// Dashboard propriétaire
 app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
@@ -1677,6 +1566,123 @@ app.get('/api/owner/quota', authenticate, requireRole('owner'), async (req, res)
     const usedRes = await pool.query('SELECT COUNT(*) FROM users WHERE owner_id = $1 AND role IN ($2, $3)', [ownerId, 'agent', 'supervisor']);
     const used = parseInt(usedRes.rows[0].count);
     res.json({ quota, used });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// ==================== Routes superadmin (inchangées) ====================
+// ... (les routes superadmin sont identiques à la version précédente, mais adaptées car draws est commun)
+// Je les réinclus brièvement pour que le code soit complet. On peut les reprendre telles quelles.
+
+app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.username as email, u.blocked as active, u.quota, u.phone, u.created_at,
+             (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
+      FROM users u WHERE u.role = 'owner' ORDER BY u.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
+  const { name, email, password, phone, quota } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Champs requis manquants' });
+  try {
+    const hashed = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      `INSERT INTO users (name, username, password, role, phone, quota, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
+      [name, email, hashed, 'owner', phone || null, quota || 0]
+    );
+    res.json({ success: true, id: result.rows[0].id });
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'Email déjà utilisé' });
+    res.status(500).json({ error: 'Erreur création' });
+  }
+});
+
+app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { block } = req.body;
+  try {
+    await pool.query('UPDATE users SET blocked = $1 WHERE id = $2 AND role = $3', [block, id, 'owner']);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur mise à jour' }); }
+});
+
+app.delete('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'owner']);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Propriétaire non trouvé' });
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur suppression' }); }
+});
+
+app.delete('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'agent']);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Agent non trouvé' });
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur suppression' }); }
+});
+
+app.delete('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const check = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Superviseur non trouvé' });
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur suppression' }); }
+});
+
+app.post('/api/superadmin/messages', authenticate, requireSuperAdmin, async (req, res) => {
+  const { ownerId, message } = req.body;
+  if (!ownerId || !message) return res.status(400).json({ error: 'ownerId et message requis' });
+  try {
+    await pool.query(
+      `INSERT INTO owner_messages (owner_id, message, created_at, expires_at)
+       VALUES ($1, $2, NOW(), NOW() + INTERVAL '10 minutes')`,
+      [ownerId, message]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur envoi message' }); }
+});
+
+app.post('/api/superadmin/messages/bulk', authenticate, requireSuperAdmin, async (req, res) => {
+  const { ownerIds, message } = req.body;
+  if (!ownerIds || !Array.isArray(ownerIds) || ownerIds.length === 0 || !message) {
+    return res.status(400).json({ error: 'Liste de propriétaires et message requis' });
+  }
+  try {
+    const values = ownerIds.map((_, i) => `($${i*3+1}, $${i*3+2}, NOW(), NOW() + INTERVAL '10 minutes')`).join(',');
+    const flatParams = ownerIds.flatMap(id => [id, message]);
+    await pool.query(`INSERT INTO owner_messages (owner_id, message, created_at, expires_at) VALUES ${values}`, flatParams);
+    res.json({ success: true, count: ownerIds.length });
+  } catch (err) { res.status(500).json({ error: 'Erreur envoi messages' }); }
+});
+
+app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.username as email,
+             COUNT(DISTINCT ag.id) as agent_count,
+             COUNT(t.id) as ticket_count,
+             COALESCE(SUM(t.total_amount), 0) as total_bets,
+             COALESCE(SUM(t.win_amount), 0) as total_wins,
+             COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
+      FROM users u
+      LEFT JOIN users ag ON u.id = ag.owner_id AND ag.role = 'agent'
+      LEFT JOIN tickets t ON u.id = t.owner_id
+      WHERE u.role = 'owner'
+      GROUP BY u.id, u.name, u.username
+      ORDER BY u.name
+    `);
+    res.json(result.rows);
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
