@@ -103,8 +103,7 @@ async function ensureTables() {
         )
     `);
 
-  // Table number_limits (limites par numéro et tirage)
-  // Modifiée pour accepter draw_id NULL (limite globale)
+  // Table number_limits (limites par numéro et tirage) – draw_id peut être NULL pour les limites globales
   await pool.query(`
         CREATE TABLE IF NOT EXISTS number_limits (
             owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -114,7 +113,7 @@ async function ensureTables() {
             UNIQUE(owner_id, draw_id, number)
         )
     `);
-  // On s'assure que la colonne draw_id accepte NULL
+  // S'assurer que draw_id accepte NULL
   await pool.query(`
         ALTER TABLE number_limits ALTER COLUMN draw_id DROP NOT NULL
     `).catch(e => console.log('⚠️ draw_id déjà nullable'));
@@ -606,7 +605,7 @@ app.get('/api/number-limits', authenticate, async (req, res) => {
   }
 });
 
-// ==================== Route de sauvegarde des tickets (avec limites globales) ====================
+// ==================== Route de sauvegarde des tickets (avec limites globales et cumul intra-ticket) ====================
 app.post('/api/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total } = req.body;
   const ownerId = req.user.ownerId;
@@ -669,8 +668,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     );
     const blockedLotto3Set = new Set(blockedLotto3Res.rows.map(r => r.number));
 
-    // Vérifier chaque pari
-    const totalsByGame = {};
+    // Vérifications préliminaires : blocages, Lotto3 bloqué, etc.
     for (const bet of bets) {
       const cleanNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
       if (!cleanNumber) continue;
@@ -688,26 +686,41 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       if ((game === 'lotto3' || game === 'auto_lotto3') && cleanNumber.length === 3 && blockedLotto3Set.has(cleanNumber)) {
         return res.status(403).json({ error: `Numéro Lotto3 ${cleanNumber} est bloqué globalement` });
       }
+    }
 
-      // Limite de mise par numéro
-      if (limitsMap.has(cleanNumber)) {
-        const limit = limitsMap.get(cleanNumber);
-        // Calculer le total déjà mis aujourd'hui sur ce numéro pour ce tirage
-        const todayBetsResult = await pool.query(
-          `SELECT SUM((bets->>'amount')::numeric) as total
-           FROM tickets, jsonb_array_elements(bets::jsonb) as bet
-           WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE 
-             AND bet->>'cleanNumber' = $3`,
-          [ownerId, drawId, cleanNumber]
-        );
-        const currentTotal = parseFloat(todayBetsResult.rows[0]?.total) || 0;
-        const betAmount = parseFloat(bet.amount) || 0;
-        if (currentTotal + betAmount > limit) {
-          return res.status(403).json({ error: `Limite de mise pour le numéro ${cleanNumber} dépassée (max ${limit} Gdes)` });
-        }
+    // --- Vérification des limites par numéro avec cumul intra-ticket ---
+    // On accumule d'abord les montants par numéro pour ce ticket
+    const ticketAmounts = new Map(); // cleanNumber -> somme des montants
+    for (const bet of bets) {
+      const cleanNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+      if (!cleanNumber) continue;
+      const amount = parseFloat(bet.amount) || 0;
+      if (amount <= 0) continue;
+      ticketAmounts.set(cleanNumber, (ticketAmounts.get(cleanNumber) || 0) + amount);
+    }
+
+    // Pour chaque numéro, vérifier la limite
+    for (const [cleanNumber, ticketAmount] of ticketAmounts) {
+      if (!limitsMap.has(cleanNumber)) continue;
+      const limit = limitsMap.get(cleanNumber);
+      // Récupérer le total déjà mis aujourd'hui pour ce numéro (hors ticket en cours)
+      const todayBetsResult = await pool.query(
+        `SELECT SUM((bets->>'amount')::numeric) as total
+         FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+         WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE 
+           AND bet->>'cleanNumber' = $3`,
+        [ownerId, drawId, cleanNumber]
+      );
+      const currentTotal = parseFloat(todayBetsResult.rows[0]?.total) || 0;
+      if (currentTotal + ticketAmount > limit) {
+        return res.status(403).json({ error: `Limite de mise pour le numéro ${cleanNumber} dépassée (max ${limit} Gdes). Déjà mis: ${currentTotal}, tentative: ${ticketAmount}` });
       }
+    }
 
-      // Accumuler par type de jeu pour vérifier les limites globales
+    // Vérifier les limites par type de jeu (cumul intra-ticket aussi)
+    const totalsByGame = {};
+    for (const bet of bets) {
+      const game = bet.game || bet.specialType;
       let category = null;
       if (game === 'lotto3' || game === 'auto_lotto3') category = 'lotto3';
       else if (game === 'lotto4' || game === 'auto_lotto4') category = 'lotto4';
@@ -718,8 +731,6 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
         totalsByGame[category] = (totalsByGame[category] || 0) + amount;
       }
     }
-
-    // Vérifier les limites par type de jeu
     for (const [category, total] of Object.entries(totalsByGame)) {
       const limit = gameLimits[category] || 0;
       if (limit > 0 && total > limit) {
