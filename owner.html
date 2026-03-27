@@ -1130,40 +1130,60 @@
             }
 
             async function loadAllRestrictions() {
-                const container = document.getElementById('restrictions-list');
-                container.innerHTML = '<p>Chargement des restrictions...</p>';
-                try {
-                    const [globalBlocked, perDrawBlocked, limits, blockedDraws] = await Promise.all([
-                        fetchGlobalBlockedNumbers(),
-                        fetchPerDrawBlockedNumbers(),
-                        fetchNumberLimits(),
-                        fetchBlockedDraws()
-                    ]);
-                    if (globalBlocked.length === 0 && perDrawBlocked.length === 0 && limits.length === 0 && blockedDraws.length === 0) {
-                        container.innerHTML = '<p class="badge-success" style="padding:10px;">✅ Aucune restriction active</p>';
-                        return;
-                    }
-                    let html = '能<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
-                    blockedDraws.forEach(item => {
-                        html += `<tr style="background:rgba(255,77,77,0.1);"><td>⏸️ Tirage bloqué</td><td>${item.drawName}</td><td>—</td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td></tr>`;
-                    });
-                    globalBlocked.forEach(item => {
-                        html += `<tr style="background:rgba(255,77,77,0.1);"><td>🚫 Blocage global</td><td>Tous</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockNumberGlobalWithValue('${item.number}')">Débloquer</button></td></tr>`;
-                    });
-                    perDrawBlocked.forEach(item => {
-                        html += `<tr style="background:rgba(255,170,0,0.1);"><td>🔒 Blocage spécifique</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockPerDraw('${item.draw_id}', '${item.number}')">Débloquer</button></td></tr>`;
-                    });
-                    limits.forEach(item => {
-                        html += `<tr><td>💰 Limite de mise</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>${parseFloat(item.limit_amount).toLocaleString()} G</td><td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${item.draw_id}', '${item.number}')">Supprimer</button></td></tr>`;
-                    });
-                    html += '</tbody></table>';
-                    container.innerHTML = html;
-                } catch (e) {
-                    container.innerHTML = '<p class="loss">❌ Erreur lors du chargement des restrictions. Vérifiez les appels API.</p>';
-                    console.error(e);
-                }
-            }
+    const container = document.getElementById('restrictions-list');
+    container.innerHTML = '<p>Chargement des restrictions...</p>';
+    try {
+        // Récupérer les restrictions, en isolant l'appel à fetchBlockedDraws qui peut échouer
+        const globalBlocked = await fetchGlobalBlockedNumbers();
+        const perDrawBlocked = await fetchPerDrawBlockedNumbers();
+        const limits = await fetchNumberLimits();
 
+        let blockedDraws = [];
+        try {
+            blockedDraws = await fetchBlockedDraws();
+        } catch (e) {
+            console.warn('Impossible de récupérer les tirages bloqués (route peut être manquante) :', e);
+            // On continue sans cette section
+        }
+
+        if (globalBlocked.length === 0 && perDrawBlocked.length === 0 && limits.length === 0 && blockedDraws.length === 0) {
+            container.innerHTML = '<p class="badge-success" style="padding:10px;">✅ Aucune restriction active</p>';
+            return;
+        }
+
+        let html = '能<table> <thead> <tr> <th>Type</th> <th>Tirage</th> <th>Numéro</th> <th>Limite (G)</th> <th>Action</th> </tr> </thead> <tbody>';
+
+        // Tirages bloqués
+        blockedDraws.forEach(item => {
+            html += `<tr style="background:rgba(255,77,77,0.1);"><td>⏸️ Tirage bloqué</td><td>${item.drawName}</td><td>—</td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td></tr>`;
+        });
+
+        // Blocages globaux
+        globalBlocked.forEach(item => {
+            html += `<tr style="background:rgba(255,77,77,0.1);"><td>🚫 Blocage global</td><td>Tous</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockNumberGlobalWithValue('${item.number}')">Débloquer</button></td></tr>`;
+        });
+
+        // Blocages par tirage
+        perDrawBlocked.forEach(item => {
+            html += `<tr style="background:rgba(255,170,0,0.1);"><td>🔒 Blocage spécifique</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockPerDraw('${item.draw_id}', '${item.number}')">Débloquer</button></td></tr>`;
+        });
+
+        // Limites de mise
+        limits.forEach(item => {
+            // Afficher "🌍 Global" si c'est une limite globale (draw_name null)
+            const displayDraw = item.draw_name ? item.draw_name : '🌍 Global';
+            // Pour l'action de suppression, on passe 'global' si draw_id est null
+            const drawIdForAction = (item.draw_id === null || item.draw_id === undefined) ? 'global' : item.draw_id;
+            html += `<tr><td>💰 Limite de mise</td><td>${displayDraw}</td><td><strong>${item.number}</strong></td><td>${parseFloat(item.limit_amount).toLocaleString()} G</td><td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${drawIdForAction}', '${item.number}')">Supprimer</button></td></tr>`;
+        });
+
+        html += '</tbody> </table>';
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<p class="loss">❌ Erreur lors du chargement des restrictions. Vérifiez les appels API.</p>';
+        console.error(e);
+    }
+}
             async function unblockNumberGlobalWithValue(num) {
                 const token = localStorage.getItem('auth_token');
                 await fetch(`${API_URL}/api/owner/unblock-number`, {
