@@ -75,27 +75,31 @@
             font-size:0.9rem;
             background:rgba(0,241,144,0.2);
         }
-        /* Styles pour l'impression (rapport détaillé) */
-        @media print {
-            body * {
-                visibility: hidden;
-            }
-            #detailed-report-container, #detailed-report-container * {
-                visibility: visible;
-            }
-            #detailed-report-container {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                margin: 0;
-                padding: 0;
-                background: white;
-                color: black;
-            }
-            .no-print, .no-print * {
-                display: none !important;
-            }
+        /* Styles pour le rapport détaillé */
+        .report-section {
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .report-section h3 {
+            background: rgba(255,255,255,0.05);
+            padding: 12px 15px;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        .report-section table {
+            font-size: 0.85rem;
+        }
+        .report-section .subtotal-row {
+            background: rgba(255,255,255,0.08);
+            font-weight: bold;
+        }
+        .free-agents-section {
+            border-color: #ffaa00;
+        }
+        .free-agents-section h3 {
+            background: rgba(255,170,0,0.2);
         }
     </style>
 </head>
@@ -216,7 +220,6 @@
                     <label>Zone / Localisation</label>
                     <input type="text" id="create-zone" placeholder="Port-au-Prince">
                 </div>
-                <!-- Champ commission (présent dans la version multi-tenant) -->
                 <div class="form-group">
                     <label>Commission (%)</label>
                     <input type="number" id="create-commission" value="0" min="0" step="0.01" placeholder="10">
@@ -389,18 +392,42 @@
                 <canvas id="reportChart"></canvas>
             </div>
 
-            <!-- NOUVEAU : Rapport détaillé des agents -->
-            <div class="section-title"><i class="fas fa-chart-line"></i> Rapport détaillé des agents</div>
-            <div class="form-grid" style="grid-template-columns:auto auto;">
-                <button class="btn-primary" onclick="loadDetailedAgentReport()" id="detailed-report-btn">
-                    <i class="fas fa-chart-bar"></i> Générer rapport détaillé
-                </button>
-                <button class="btn-primary" onclick="printDetailedReport()" id="print-detailed-btn" style="display:none;">
-                    <i class="fas fa-print"></i> Imprimer (8.5×11)
-                </button>
+            <!-- ========== RAPPORT DÉTAILLÉ PAR SUPERVISEUR ========== -->
+            <div class="section-title"><i class="fas fa-chart-line"></i> Rapport détaillé par superviseur</div>
+            <div class="form-grid" style="grid-template-columns:repeat(4, auto) 1fr auto;">
+                <div class="form-group">
+                    <label>Période par défaut</label>
+                    <select id="detail-period-select" onchange="toggleDetailCustomDates()">
+                        <option value="15days">15 derniers jours</option>
+                        <option value="30days">30 derniers jours</option>
+                        <option value="custom">Personnalisée</option>
+                    </select>
+                </div>
+                <div id="detail-custom-dates" style="display:none; grid-column:span 2; display:flex; gap:10px;">
+                    <div class="form-group">
+                        <label>Du</label>
+                        <input type="date" id="detail-from">
+                    </div>
+                    <div class="form-group">
+                        <label>Au</label>
+                        <input type="date" id="detail-to">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button class="btn-primary" onclick="loadDetailedReport()" id="detail-report-btn">
+                        <i class="fas fa-chart-bar"></i> Générer rapport
+                    </button>
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button class="btn-primary" onclick="printDetailedReport()" id="print-detailed-btn" style="display:none;">
+                        <i class="fas fa-print"></i> Imprimer (8.5×11)
+                    </button>
+                </div>
             </div>
             <div id="detailed-report-container" class="list-container" style="margin-top:20px; max-height:600px; overflow-x:auto;">
-                <p>Cliquez sur "Générer rapport détaillé" pour afficher les données.</p>
+                <p>Cliquez sur "Générer rapport" pour afficher les données.</p>
             </div>
         </div>
 
@@ -591,7 +618,7 @@
                     if (!data.valid) throw new Error('Token invalide');
                     
                     document.getElementById('owner-name').innerHTML = `<i class="fas fa-crown"></i> ${localStorage.getItem('user_name') || 'Propriétaire'}`;
-                    loadQuota(); // Charger le quota
+                    loadQuota();
                     fetchOwnerMessages();
                 } catch (error) {
                     console.error('Erreur de vérification token:', error);
@@ -614,17 +641,15 @@
                         const data = await res.json();
                         document.getElementById('quota-used').innerText = data.used;
                         document.getElementById('quota-total').innerText = data.quota;
-
-                        // Changer la couleur du badge selon l'utilisation
                         const badge = document.getElementById('quota-badge');
                         const used = data.used;
                         const total = data.quota;
                         if (used >= total) {
-                            badge.style.backgroundColor = 'rgba(255,77,77,0.2)'; // rouge
+                            badge.style.backgroundColor = 'rgba(255,77,77,0.2)';
                         } else if (used >= total * 0.8) {
-                            badge.style.backgroundColor = 'rgba(255,193,7,0.2)'; // orange
+                            badge.style.backgroundColor = 'rgba(255,193,7,0.2)';
                         } else {
-                            badge.style.backgroundColor = 'rgba(0,241,144,0.2)'; // vert
+                            badge.style.backgroundColor = 'rgba(0,241,144,0.2)';
                         }
                     }
                 } catch (e) {
@@ -694,22 +719,16 @@
                 }
             }
 
-            // ---------- TABLEAU DE BORD MODIFIÉ ----------
+            // ---------- TABLEAU DE BORD (inchangé) ----------
             async function loadDashboard() {
                 const token = localStorage.getItem('auth_token');
                 try {
-                    // Charger les données du dashboard
                     const res = await fetch(`${API_URL}/api/owner/dashboard`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    if (!res.ok) {
-                        const errorText = await res.text();
-                        throw new Error(`Erreur ${res.status}: ${errorText}`);
-                    }
+                    if (!res.ok) throw new Error(`Erreur ${res.status}`);
                     const data = await res.json();
-                    console.log('Dashboard data:', data);
 
-                    // Mise à jour des connectés
                     document.getElementById('connected-sup-count').innerText = data.connected.supervisors_count;
                     document.getElementById('connected-agent-count').innerText = data.connected.agents_count;
                     
@@ -721,10 +740,8 @@
                     data.connected.agents.forEach(a => agentList += `<div>👤 ${a.name} (${a.username || a.email})</div>`);
                     document.getElementById('connected-agent-list').innerHTML = agentList || '<span style="opacity:0.7;">Aucun agent connecté</span>';
 
-                    // Ventes du jour (fournies par dashboard)
                     document.getElementById('sales-today').innerHTML = `${data.sales_today.toLocaleString()} G`;
 
-                    // Récupérer les statistiques détaillées du jour via reports
                     const reportRes = await fetch(`${API_URL}/api/owner/reports?period=today`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
@@ -732,15 +749,11 @@
                     if (reportRes.ok) {
                         const reportData = await reportRes.json();
                         const stats = reportData.summary || {};
-                        
                         document.getElementById('total-tickets-today').innerHTML = (stats.total_tickets || 0).toLocaleString();
                         document.getElementById('total-wins-today').innerHTML = `${(stats.total_wins || 0).toLocaleString()} G`;
-                        
                         const netResult = stats.net_result || 0;
                         const balanceEl = document.getElementById('balance-today');
                         balanceEl.innerHTML = `${Math.abs(netResult).toLocaleString()} G`;
-                        
-                        // Message gain/perte du jour
                         const messageDiv = document.getElementById('daily-profit-message');
                         if (netResult > 0) {
                             balanceEl.style.color = '#00f190';
@@ -761,55 +774,39 @@
                             messageDiv.style.display = 'none';
                         }
                     } else {
-                        console.warn('Impossible de récupérer les statistiques du jour');
                         document.getElementById('total-tickets-today').innerHTML = '0';
                         document.getElementById('total-wins-today').innerHTML = '0 G';
                         document.getElementById('balance-today').innerHTML = '0 G';
                     }
 
-                    // Progression des limites
                     let limitsHtml = '';
                     if (data.limits_progress.length === 0) {
                         limitsHtml = '<p>Aucune limite définie</p>';
                     } else {
-                        limitsHtml = '<table><thead>西峡<th>Tirage</th><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></tr></thead><tbody>';
+                        limitsHtml = '</td><thead>西峡<th>Tirage</th><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></thead><tbody>';
                         data.limits_progress.forEach(l => {
                             const percent = parseFloat(l.progress_percent).toFixed(1);
                             let statusClass = '';
                             if (percent >= 90) statusClass = 'badge-danger';
                             else if (percent >= 70) statusClass = 'badge-warning';
                             else statusClass = 'badge-success';
-                            limitsHtml += `<tr>
-                                <td>${l.draw_name}</td>
-                                <td>${l.number}</td>
-                                <td>${parseFloat(l.limit_amount).toLocaleString()} G</td>
-                                <td>${parseFloat(l.current_bets).toLocaleString()} G</td>
-                                <td><span class="${statusClass}">${percent}%</span></td>
-                            </tr>`;
+                            limitsHtml += `<tr><td>${l.draw_name}</td><td>${l.number}</td><td>${parseFloat(l.limit_amount).toLocaleString()} G</td><td>${parseFloat(l.current_bets).toLocaleString()} G</td><td><span class="${statusClass}">${percent}%</span></td></tr>`;
                         });
-                        limitsHtml += '</tbody> </table>';
+                        limitsHtml += '</tbody> widetable';
                     }
                     document.getElementById('limits-progress-container').innerHTML = limitsHtml;
 
-                    // Agents avec gains/pertes
                     let agentsHtml = '';
                     if (data.agents_gain_loss.length === 0) {
                         agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
                     } else {
-                        agentsHtml = '<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
+                        agentsHtml = '能<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
                         data.agents_gain_loss.forEach(a => {
                             const netResult = parseFloat(a.total_bets) - parseFloat(a.total_wins);
                             const netClass = netResult >= 0 ? 'profit' : 'loss';
                             const statusIcon = netResult >= 0 ? '✅' : '❌';
                             const statusText = netResult >= 0 ? 'Gagnant' : 'Perdant';
-                            
-                            agentsHtml += `<tr>
-                                <td>${a.name}</td>
-                                <td>${parseFloat(a.total_bets).toLocaleString()} G</td>
-                                <td>${parseFloat(a.total_wins).toLocaleString()} G</td>
-                                <td class="${netClass}">${netResult.toLocaleString()} G</td>
-                                <td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td>
-                            </tr>`;
+                            agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
                         });
                         agentsHtml += '</tbody></table>';
                     }
@@ -821,39 +818,23 @@
                 }
             }
 
-            // ---------- GESTION UTILISATEURS ----------
+            // ---------- GESTION UTILISATEURS (inchangé) ----------
             async function loadUsersLists() {
                 const token = localStorage.getItem('auth_token');
                 try {
-                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (!supRes.ok) throw new Error('Erreur chargement superviseurs');
+                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
                     const supervisors = await supRes.json();
                     let supHtml = '';
                     supervisors.forEach(s => {
-                        supHtml += `<div class="item-row">
-                            <span><strong>${s.name}</strong> (${s.email})</span>
-                            <span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span>
-                            <button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button>
-                        </div>`;
+                        supHtml += `<div class="item-row"><span><strong>${s.name}</strong> (${s.email})</span><span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
                     });
                     document.getElementById('supervisors-list').innerHTML = supHtml || '<p>Aucun superviseur</p>';
 
-                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (!agentRes.ok) throw new Error('Erreur chargement agents');
+                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
                     const agents = await agentRes.json();
                     let agentHtml = '';
                     agents.forEach(a => {
-                        agentHtml += `<div class="item-row">
-                            <span><strong>${a.name}</strong> (${a.email})</span>
-                            <span>Superviseur: ${a.supervisor_name || 'libre'}</span>
-                            <span>Commission: ${a.commission_percentage || 0}%</span>
-                            <span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span>
-                            <button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button>
-                        </div>`;
+                        agentHtml += `<div class="item-row"><span><strong>${a.name}</strong> (${a.email})</span><span>Superviseur: ${a.supervisor_name || 'libre'}</span><span>Commission: ${a.commission_percentage || 0}%</span><span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
                     });
                     document.getElementById('agents-list').innerHTML = agentHtml || '<p>Aucun agent</p>';
 
@@ -903,23 +884,13 @@
                     const result = await res.json();
                     if (result.success) {
                         showMessage('user-create-message', '✅ Utilisateur créé avec succès', true);
-                        loadQuota(); // Mettre à jour le quota après création
-                        
+                        loadQuota();
                         if (result.user) {
                             const user = result.user;
-                            const details = `
-                                <p><strong>Nom :</strong> ${user.name}</p>
-                                <p><strong>Identifiant :</strong> ${user.username}</p>
-                                <p><strong>Rôle :</strong> ${user.role}</p>
-                                <p><strong>CIN :</strong> ${user.cin || 'Non renseigné'}</p>
-                                <p><strong>Zone :</strong> ${user.zone || 'Non renseignée'}</p>
-                                <p><strong>Superviseur :</strong> ${user.supervisor_name || 'Aucun'}</p>
-                                <p><strong>Commission :</strong> ${user.commission_percentage || 0}%</p>
-                            `;
+                            const details = `<p><strong>Nom :</strong> ${user.name}</p><p><strong>Identifiant :</strong> ${user.username}</p><p><strong>Rôle :</strong> ${user.role}</p><p><strong>CIN :</strong> ${user.cin || 'Non renseigné'}</p><p><strong>Zone :</strong> ${user.zone || 'Non renseignée'}</p><p><strong>Superviseur :</strong> ${user.supervisor_name || 'Aucun'}</p><p><strong>Commission :</strong> ${user.commission_percentage || 0}%</p>`;
                             document.getElementById('created-user-details').innerHTML = details;
                             document.getElementById('user-created-info').style.display = 'block';
                         }
-
                         loadUsersLists();
                         document.getElementById('create-fullname').value = '';
                         document.getElementById('create-cin').value = '';
@@ -958,13 +929,11 @@
                 loadUsersLists();
             }
 
-            // ---------- TIRAGES ----------
+            // ---------- TIRAGES (inchangé) ----------
             async function loadDraws() {
                 const token = localStorage.getItem('auth_token');
                 try {
-                    const res = await fetch(`${API_URL}/api/owner/draws`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
                     const draws = await res.json();
                     let opts = '<option value="">Sélectionnez un tirage</option>';
                     draws.forEach(d => { opts += `<option value="${d.id}">${d.name} (${d.time || ''})</option>`; });
@@ -973,7 +942,6 @@
                 } catch (e) { console.error(e); }
             }
 
-            // ---------- PUBLICATION RÉSULTATS AVEC RECHARGE DU DASHBOARD ----------
             async function publishManual() {
                 const token = localStorage.getItem('auth_token');
                 const drawId = document.getElementById('draw-select').value;
@@ -995,10 +963,7 @@
                     const result = await res.json();
                     if (result.success) {
                         showMessage('publish-message', '✅ Résultats publiés - Nouveau bilan disponible', true);
-                        // Recharger le tableau de bord si on est sur l'onglet dashboard
-                        if (document.getElementById('tab-dashboard').classList.contains('active')) {
-                            loadDashboard();
-                        }
+                        if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
                     } else {
                         showMessage('publish-message', '❌ Erreur', false);
                     }
@@ -1018,19 +983,14 @@
                 loadDraws();
             }
 
-            // ---------- BOULES & LIMITES ----------
+            // ---------- BOULES & LIMITES (inchangé) ----------
             async function loadDrawsForSelects() {
                 const token = localStorage.getItem('auth_token');
                 const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const draws = await res.json();
-
-                // Sélecteur pour les limites (avec option globale)
-                let limitOpts = '<option value="">Sélectionnez un tirage</option>';
-                limitOpts += '<option value="0">🌍 Tous les tirages (limite globale)</option>';
+                let limitOpts = '<option value="">Sélectionnez un tirage</option><option value="0">🌍 Tous les tirages (limite globale)</option>';
                 draws.forEach(d => { limitOpts += `<option value="${d.id}">${d.name}</option>`; });
                 document.getElementById('limit-draw').innerHTML = limitOpts;
-
-                // Sélecteur pour le blocage par tirage (sans option globale)
                 let blockOpts = '<option value="">Sélectionnez un tirage</option>';
                 draws.forEach(d => { blockOpts += `<option value="${d.id}">${d.name}</option>`; });
                 document.getElementById('block-draw-select').innerHTML = blockOpts;
@@ -1038,9 +998,7 @@
 
             async function loadBlockedNumbers() {
                 const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const data = await res.json();
                 let html = '<strong>Numéros bloqués globalement:</strong> ';
                 html += (data.blockedNumbers || []).join(', ') || 'aucun';
@@ -1114,36 +1072,28 @@
 
             async function fetchGlobalBlockedNumbers() {
                 const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const data = await res.json();
                 return (data.blockedNumbers || []).map(num => ({ type: 'global', number: num }));
             }
 
             async function fetchPerDrawBlockedNumbers() {
                 const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-numbers-per-draw`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await fetch(`${API_URL}/api/owner/blocked-numbers-per-draw`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!res.ok) return [];
                 return await res.json();
             }
 
             async function fetchNumberLimits() {
                 const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/number-limits`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await fetch(`${API_URL}/api/owner/number-limits`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!res.ok) return [];
                 return await res.json();
             }
 
             async function fetchBlockedDraws() {
                 const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-draws`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await fetch(`${API_URL}/api/owner/blocked-draws`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!res.ok) return [];
                 return await res.json();
             }
@@ -1182,7 +1132,6 @@
             async function loadAllRestrictions() {
                 const container = document.getElementById('restrictions-list');
                 container.innerHTML = '<p>Chargement des restrictions...</p>';
-
                 try {
                     const [globalBlocked, perDrawBlocked, limits, blockedDraws] = await Promise.all([
                         fetchGlobalBlockedNumbers(),
@@ -1190,54 +1139,23 @@
                         fetchNumberLimits(),
                         fetchBlockedDraws()
                     ]);
-
                     if (globalBlocked.length === 0 && perDrawBlocked.length === 0 && limits.length === 0 && blockedDraws.length === 0) {
                         container.innerHTML = '<p class="badge-success" style="padding:10px;">✅ Aucune restriction active</p>';
                         return;
                     }
-
-                    let html = '<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
-
+                    let html = '能<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
                     blockedDraws.forEach(item => {
-                        html += `<tr style="background:rgba(255,77,77,0.1);">
-                            <td>⏸️ Tirage bloqué</td>
-                            <td>${item.drawName}</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td>
-                        </tr>`;
+                        html += `<tr style="background:rgba(255,77,77,0.1);"><td>⏸️ Tirage bloqué</td><td>${item.drawName}</td><td>—</td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td></tr>`;
                     });
-
                     globalBlocked.forEach(item => {
-                        html += `<tr style="background:rgba(255,77,77,0.1);">
-                            <td>🚫 Blocage global</td>
-                            <td>Tous</td>
-                            <td><strong>${item.number}</strong></td>
-                            <td>—</td>
-                            <td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockNumberGlobalWithValue('${item.number}')">Débloquer</button></td>
-                        </tr>`;
+                        html += `<tr style="background:rgba(255,77,77,0.1);"><td>🚫 Blocage global</td><td>Tous</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockNumberGlobalWithValue('${item.number}')">Débloquer</button></td></tr>`;
                     });
-
                     perDrawBlocked.forEach(item => {
-                        html += `<tr style="background:rgba(255,170,0,0.1);">
-                            <td>🔒 Blocage spécifique</td>
-                            <td>${item.draw_name || item.drawId}</td>
-                            <td><strong>${item.number}</strong></td>
-                            <td>—</td>
-                            <td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockPerDraw('${item.draw_id}', '${item.number}')">Débloquer</button></td>
-                        </tr>`;
+                        html += `<tr style="background:rgba(255,170,0,0.1);"><td>🔒 Blocage spécifique</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockPerDraw('${item.draw_id}', '${item.number}')">Débloquer</button></td></tr>`;
                     });
-
                     limits.forEach(item => {
-                        html += `<tr>
-                            <td>💰 Limite de mise</td>
-                            <td>${item.draw_name || item.drawId}</td>
-                            <td><strong>${item.number}</strong></td>
-                            <td>${parseFloat(item.limit_amount).toLocaleString()} G</td>
-                            <td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${item.draw_id}', '${item.number}')">Supprimer</button></td>
-                        </tr>`;
+                        html += `<tr><td>💰 Limite de mise</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>${parseFloat(item.limit_amount).toLocaleString()} G</td><td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${item.draw_id}', '${item.number}')">Supprimer</button></td></tr>`;
                     });
-
                     html += '</tbody></table>';
                     container.innerHTML = html;
                 } catch (e) {
@@ -1257,7 +1175,7 @@
                 loadBlockedNumbers();
             }
 
-            // ---------- RAPPORTS ----------
+            // ---------- RAPPORTS STANDARDS (inchangé) ----------
             async function loadSupervisorsAndAgents() {
                 const token = localStorage.getItem('auth_token');
                 const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -1265,7 +1183,6 @@
                 let supOpts = '<option value="all">Tous superviseurs</option>';
                 supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
                 document.getElementById('report-supervisor').innerHTML = supOpts;
-
                 const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const agents = await agentRes.json();
                 let agentOpts = '<option value="all">Tous agents</option>';
@@ -1298,10 +1215,7 @@
                     toDate: document.getElementById('report-to').value,
                     gainLoss: document.getElementById('report-gainloss').value
                 });
-
-                const res = await fetch(`${API_URL}/api/owner/reports?${params}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await fetch(`${API_URL}/api/owner/reports?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const report = await res.json();
                 displayReport(report);
             }
@@ -1316,42 +1230,24 @@
                 html += `<div class="stat-card"><div style="font-size:2rem;">${s.gain_count}</div><div>Agents en gain</div></div>`;
                 html += `<div class="stat-card"><div style="font-size:2rem;">${s.loss_count}</div><div>Agents en perte</div></div>`;
                 html += `</div>`;
-
                 if (report.detail && report.detail.length > 0) {
-                    html += `<h3>Détail</h3><div class="list-container">`;
-                    html += `<table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
+                    html += `<h3>Détail</h3><div class="list-container"><table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
                     report.detail.forEach(d => {
                         const result = parseFloat(d.result || d.wins - d.bets);
-                        html += `<tr>
-                            <td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td>
-                            <td>${d.tickets}</td>
-                            <td>${parseFloat(d.bets).toLocaleString()} G</td>
-                            <td>${parseFloat(d.wins).toLocaleString()} G</td>
-                            <td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td>
-                        </tr>`;
+                        html += `<tr><td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td><td>${d.tickets}</td><td>${parseFloat(d.bets).toLocaleString()} G</td><td>${parseFloat(d.wins).toLocaleString()} G</td><td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td></tr>`;
                     });
                     html += `</tbody></table></div>`;
                 }
                 document.getElementById('report-result').innerHTML = html;
-
                 const ctx = document.getElementById('reportChart').getContext('2d');
                 if (chartInstance) chartInstance.destroy();
                 chartInstance = new Chart(ctx, {
                     type: 'bar',
                     data: {
                         labels: ['Mises', 'Gains', 'Résultat net'],
-                        datasets: [{
-                            label: 'Montants (G)',
-                            data: [parseFloat(s.total_bets), parseFloat(s.total_wins), parseFloat(s.net_result)],
-                            backgroundColor: ['#00d4ff', '#00f190', '#ad00f1']
-                        }]
+                        datasets: [{ label: 'Montants (G)', data: [parseFloat(s.total_bets), parseFloat(s.total_wins), parseFloat(s.net_result)], backgroundColor: ['#00d4ff', '#00f190', '#ad00f1'] }]
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } } },
-                        plugins: { legend: { labels: { color: 'white' } } }
-                    }
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } } }, plugins: { legend: { labels: { color: 'white' } } } }
                 });
                 document.getElementById('report-chart-container').style.display = 'block';
             }
@@ -1364,42 +1260,60 @@
                 w.print();
             }
 
-            // ---------- RAPPORT DÉTAILLÉ DES AGENTS (NOUVEAU) ----------
-            async function loadDetailedAgentReport() {
+            // ---------- RAPPORT DÉTAILLÉ PAR SUPERVISEUR ----------
+            function toggleDetailCustomDates() {
+                const period = document.getElementById('detail-period-select').value;
+                const customDiv = document.getElementById('detail-custom-dates');
+                if (customDiv) customDiv.style.display = period === 'custom' ? 'flex' : 'none';
+            }
+
+            async function loadDetailedReport() {
                 const container = document.getElementById('detailed-report-container');
-                const btn = document.getElementById('detailed-report-btn');
+                const btn = document.getElementById('detail-report-btn');
                 const printBtn = document.getElementById('print-detailed-btn');
-                
                 container.innerHTML = '<p><i class="fas fa-spinner fa-pulse"></i> Chargement des données...</p>';
                 btn.disabled = true;
-                
                 const token = localStorage.getItem('auth_token');
                 if (!token) {
                     container.innerHTML = '<p class="loss">❌ Session expirée, veuillez vous reconnecter.</p>';
                     btn.disabled = false;
                     return;
                 }
-                
-                try {
-                    // Récupérer la liste des agents (avec leur commission)
-                    const agentsRes = await fetch(`${API_URL}/api/owner/agents`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (!agentsRes.ok) throw new Error('Impossible de récupérer les agents');
-                    const agents = await agentsRes.json();
-                    
-                    if (agents.length === 0) {
-                        container.innerHTML = '<p>Aucun agent trouvé.</p>';
+
+                // Déterminer les dates
+                let fromDate, toDate;
+                const period = document.getElementById('detail-period-select').value;
+                const today = new Date();
+                if (period === 'custom') {
+                    fromDate = document.getElementById('detail-from').value;
+                    toDate = document.getElementById('detail-to').value;
+                    if (!fromDate || !toDate) {
+                        container.innerHTML = '<p class="loss">❌ Veuillez sélectionner une période personnalisée.</p>';
                         btn.disabled = false;
                         return;
                     }
-                    
-                    // Période large (depuis 2020-01-01 jusqu'à aujourd'hui)
-                    const today = new Date();
-                    const fromDate = '2020-01-01';
-                    const toDate = today.toISOString().split('T')[0];
-                    
-                    const statsPromises = agents.map(async (agent) => {
+                } else {
+                    // 15days ou 30days
+                    const days = period === '15days' ? 15 : 30;
+                    toDate = today.toISOString().split('T')[0];
+                    const from = new Date(today);
+                    from.setDate(from.getDate() - days);
+                    fromDate = from.toISOString().split('T')[0];
+                }
+
+                try {
+                    // 1. Récupérer la liste des superviseurs
+                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!supRes.ok) throw new Error('Impossible de récupérer les superviseurs');
+                    const supervisors = await supRes.json();
+
+                    // 2. Récupérer la liste des agents
+                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!agentRes.ok) throw new Error('Impossible de récupérer les agents');
+                    const agents = await agentRes.json();
+
+                    // 3. Pour chaque agent, récupérer ses stats sur la période
+                    const agentStatsPromises = agents.map(async (agent) => {
                         const params = new URLSearchParams({
                             agentId: agent.id,
                             period: 'custom',
@@ -1407,9 +1321,7 @@
                             toDate: toDate
                         });
                         try {
-                            const res = await fetch(`${API_URL}/api/owner/reports?${params}`, {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            });
+                            const res = await fetch(`${API_URL}/api/owner/reports?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
                             if (!res.ok) throw new Error(`Erreur pour ${agent.name}`);
                             const data = await res.json();
                             const summary = data.summary || { total_tickets: 0, total_bets: 0, total_wins: 0 };
@@ -1430,81 +1342,182 @@
                             };
                         }
                     });
-                    
-                    const results = await Promise.all(statsPromises);
-                    
-                    // Construire le tableau HTML
-                    let html = `
-                        <div style="margin-bottom:20px;">
-                            <strong>Période :</strong> depuis le ${fromDate} jusqu'au ${toDate}<br>
-                            <strong>Nombre d'agents :</strong> ${agents.length}
-                        </div>
-                        <div style="overflow-x:auto;">
-                            <table style="width:100%; border-collapse:collapse;">
-                                <thead style="background:rgba(255,255,255,0.1);">
-                                    <tr>
-                                        <th style="padding:10px; text-align:left;">Agent</th>
-                                        <th style="padding:10px; text-align:right;">Tickets</th>
-                                        <th style="padding:10px; text-align:right;">Vente (G)</th>
-                                        <th style="padding:10px; text-align:right;">A payé (G)</th>
-                                        <th style="padding:10px; text-align:right;">%Agent (G)</th>
-                                        <th style="padding:10px; text-align:right;">Balance sans %agent (G)</th>
-                                        <th style="padding:10px; text-align:right;">Balance avec %agent (G)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-                    
-                    let totalBets = 0, totalWins = 0, totalComm = 0, totalNetNoComm = 0, totalNetWithComm = 0;
-                    
-                    results.forEach(item => {
-                        const agent = item.agent;
-                        const ventes = item.total_bets || 0;
-                        const paye = item.total_wins || 0;
+                    const agentStats = await Promise.all(agentStatsPromises);
+
+                    // 4. Organiser par superviseur
+                    const supervisorsMap = new Map();
+                    supervisors.forEach(sup => {
+                        supervisorsMap.set(sup.id, {
+                            id: sup.id,
+                            name: sup.name,
+                            agents: [],
+                            totals: { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 }
+                        });
+                    });
+                    const freeAgents = [];
+
+                    agentStats.forEach(stat => {
+                        const agent = stat.agent;
+                        const ventes = stat.total_bets;
+                        const paye = stat.total_wins;
                         const commissionPercent = agent.commission_percentage || 0;
                         const montantCommission = ventes * (commissionPercent / 100);
                         const balanceSans = ventes - paye;
                         const balanceAvec = balanceSans - montantCommission;
-                        
-                        totalBets += ventes;
-                        totalWins += paye;
-                        totalComm += montantCommission;
-                        totalNetNoComm += balanceSans;
-                        totalNetWithComm += balanceAvec;
-                        
-                        html += `
-                            <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                                <td style="padding:10px;">${escapeHtml(agent.name)}</td>
-                                <td style="padding:10px; text-align:right;">${item.total_tickets.toLocaleString()}</td>
-                                <td style="padding:10px; text-align:right;">${ventes.toLocaleString()} G</td>
-                                <td style="padding:10px; text-align:right;">${paye.toLocaleString()} G</td>
-                                <td style="padding:10px; text-align:right;">${montantCommission.toLocaleString()} G</td>
-                                <td style="padding:10px; text-align:right; ${balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${balanceSans.toLocaleString()} G</td>
-                                <td style="padding:10px; text-align:right; ${balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${balanceAvec.toLocaleString()} G</td>
-                            </tr>
-                        `;
+                        const agentData = {
+                            name: agent.name,
+                            tickets: stat.total_tickets,
+                            ventes,
+                            paye,
+                            commission: montantCommission,
+                            balanceSans,
+                            balanceAvec
+                        };
+                        if (agent.supervisor_id && supervisorsMap.has(agent.supervisor_id)) {
+                            const sup = supervisorsMap.get(agent.supervisor_id);
+                            sup.agents.push(agentData);
+                            sup.totals.tickets += stat.total_tickets;
+                            sup.totals.bets += ventes;
+                            sup.totals.wins += paye;
+                            sup.totals.commission += montantCommission;
+                            sup.totals.netNoComm += balanceSans;
+                            sup.totals.netWithComm += balanceAvec;
+                        } else {
+                            freeAgents.push(agentData);
+                        }
                     });
-                    
-                    // Ligne de total
-                    html += `
-                                    <tr style="background:rgba(255,255,255,0.05); font-weight:bold; border-top:2px solid white;">
-                                        <td style="padding:10px;">TOTAUX</td>
-                                        <td style="padding:10px; text-align:right;">—</td>
-                                        <td style="padding:10px; text-align:right;">${totalBets.toLocaleString()} G</td>
-                                        <td style="padding:10px; text-align:right;">${totalWins.toLocaleString()} G</td>
-                                        <td style="padding:10px; text-align:right;">${totalComm.toLocaleString()} G</td>
-                                        <td style="padding:10px; text-align:right; ${totalNetNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${totalNetNoComm.toLocaleString()} G</td>
-                                        <td style="padding:10px; text-align:right; ${totalNetWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${totalNetWithComm.toLocaleString()} G</td>
+
+                    // 5. Construire le HTML
+                    let html = `
+                        <div style="margin-bottom:20px;">
+                            <strong>Période :</strong> du ${fromDate} au ${toDate}<br>
+                            <strong>Superviseurs :</strong> ${supervisors.length} &nbsp;|&nbsp;
+                            <strong>Agents avec superviseur :</strong> ${agentStats.filter(a => a.agent.supervisor_id).length} &nbsp;|&nbsp;
+                            <strong>Agents libres :</strong> ${freeAgents.length}
+                        </div>
+                    `;
+
+                    // Totaux généraux
+                    let grandTotals = { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 };
+
+                    // Affichage par superviseur
+                    for (const sup of supervisorsMap.values()) {
+                        if (sup.agents.length === 0) continue;
+                        grandTotals.tickets += sup.totals.tickets;
+                        grandTotals.bets += sup.totals.bets;
+                        grandTotals.wins += sup.totals.wins;
+                        grandTotals.commission += sup.totals.commission;
+                        grandTotals.netNoComm += sup.totals.netNoComm;
+                        grandTotals.netWithComm += sup.totals.netWithComm;
+
+                        html += `<div class="report-section">
+                            <h3>👑 ${escapeHtml(sup.name)}</h3>
+                            <div style="overflow-x:auto;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                        sup.agents.forEach(agent => {
+                            html += `<tr>
+                                <td>${escapeHtml(agent.name)}</td>
+                                <td style="text-align:right;">${agent.tickets.toLocaleString()}</td>
+                                <td style="text-align:right;">${agent.ventes.toLocaleString()} G</td>
+                                <td style="text-align:right;">${agent.paye.toLocaleString()} G</td>
+                                <td style="text-align:right;">${agent.commission.toLocaleString()} G</td>
+                                <td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td>
+                                <td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td>
+                            </tr>`;
+                        });
+                        html += `<tr class="subtotal-row">
+                            <td><strong>Sous-total superviseur</strong></td>
+                            <td style="text-align:right;"><strong>${sup.totals.tickets.toLocaleString()}</strong></td>
+                            <td style="text-align:right;"><strong>${sup.totals.bets.toLocaleString()} G</strong></td>
+                            <td style="text-align:right;"><strong>${sup.totals.wins.toLocaleString()} G</strong></td>
+                            <td style="text-align:right;"><strong>${sup.totals.commission.toLocaleString()} G</strong></td>
+                            <td style="text-align:right; ${sup.totals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netNoComm.toLocaleString()} G</strong></td>
+                            <td style="text-align:right; ${sup.totals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netWithComm.toLocaleString()} G</strong></td>
+                        </tr>`;
+                        html += `</tbody></table></div></div>`;
+                    }
+
+                    // Agents libres
+                    if (freeAgents.length > 0) {
+                        let freeTotals = { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 };
+                        freeAgents.forEach(agent => {
+                            freeTotals.tickets += agent.tickets;
+                            freeTotals.bets += agent.ventes;
+                            freeTotals.wins += agent.paye;
+                            freeTotals.commission += agent.commission;
+                            freeTotals.netNoComm += agent.balanceSans;
+                            freeTotals.netWithComm += agent.balanceAvec;
+                        });
+                        grandTotals.tickets += freeTotals.tickets;
+                        grandTotals.bets += freeTotals.bets;
+                        grandTotals.wins += freeTotals.wins;
+                        grandTotals.commission += freeTotals.commission;
+                        grandTotals.netNoComm += freeTotals.netNoComm;
+                        grandTotals.netWithComm += freeTotals.netWithComm;
+
+                        html += `<div class="report-section free-agents-section">
+                            <h3>🔓 Agents libres (sans superviseur)</h3>
+                            <div style="overflow-x:auto;">
+                                <table>
+                                    <thead>
+                                        <tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr>
+                                    </thead>
+                                    <tbody>`;
+                        freeAgents.forEach(agent => {
+                            html += `<tr>
+                                <td>${escapeHtml(agent.name)}</td>
+                                <td style="text-align:right;">${agent.tickets.toLocaleString()}</td>
+                                <td style="text-align:right;">${agent.ventes.toLocaleString()} G</td>
+                                <td style="text-align:right;">${agent.paye.toLocaleString()} G</td>
+                                <td style="text-align:right;">${agent.commission.toLocaleString()} G</td>
+                                <td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td>
+                                <td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td>
+                            </tr>`;
+                        });
+                        html += `<tr class="subtotal-row">
+                            <td><strong>Sous-total agents libres</strong></td>
+                            <td style="text-align:right;"><strong>${freeTotals.tickets.toLocaleString()}</strong></td>
+                            <td style="text-align:right;"><strong>${freeTotals.bets.toLocaleString()} G</strong></td>
+                            <td style="text-align:right;"><strong>${freeTotals.wins.toLocaleString()} G</strong></td>
+                            <td style="text-align:right;"><strong>${freeTotals.commission.toLocaleString()} G</strong></td>
+                            <td style="text-align:right; ${freeTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netNoComm.toLocaleString()} G</strong></td>
+                            <td style="text-align:right; ${freeTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netWithComm.toLocaleString()} G</strong></td>
+                        </tr>`;
+                        html += `</tbody></table></div></div>`;
+                    }
+
+                    // Total général
+                    html += `<div class="report-section" style="border:2px solid #00d4ff;">
+                        <h3>📊 TOTAL GÉNÉRAL</h3>
+                        <div style="overflow-x:auto;">
+                            <table>
+                                <thead>
+                                    <tr><th></th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="font-weight:bold; background:rgba(0,212,255,0.1);">
+                                        <td>Total</td>
+                                        <td style="text-align:right;">${grandTotals.tickets.toLocaleString()}</td>
+                                        <td style="text-align:right;">${grandTotals.bets.toLocaleString()} G</td>
+                                        <td style="text-align:right;">${grandTotals.wins.toLocaleString()} G</td>
+                                        <td style="text-align:right;">${grandTotals.commission.toLocaleString()} G</td>
+                                        <td style="text-align:right; ${grandTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netNoComm.toLocaleString()} G</td>
+                                        <td style="text-align:right; ${grandTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netWithComm.toLocaleString()} G</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
-                    `;
-                    
+                    </div>`;
+
                     container.innerHTML = html;
-                    lastDetailedReportHTML = container.innerHTML; // Stocker pour impression
+                    lastDetailedReportHTML = container.innerHTML;
                     printBtn.style.display = 'inline-block';
-                    
                 } catch (error) {
                     console.error('Erreur lors du chargement du rapport détaillé:', error);
                     container.innerHTML = `<p class="loss">❌ Erreur: ${error.message}</p>`;
@@ -1528,84 +1541,36 @@
                     alert('Veuillez d\'abord générer le rapport.');
                     return;
                 }
-                
-                // Créer une fenêtre d'impression avec style pour format 8.5×11
                 const printWindow = window.open('', '_blank', 'width=1100,height=800');
                 printWindow.document.write(`
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>Rapport détaillé des agents - LOTATO PRO</title>
+                        <title>Rapport détaillé par superviseur - LOTATO PRO</title>
                         <meta charset="UTF-8">
                         <style>
-                            @page {
-                                size: letter;
-                                margin: 1.5cm;
-                            }
-                            body {
-                                font-family: 'Inter', 'Segoe UI', sans-serif;
-                                background: white;
-                                color: black;
-                                padding: 20px;
-                                margin: 0;
-                            }
-                            h1 {
-                                font-size: 20px;
-                                margin-bottom: 5px;
-                                color: #333;
-                            }
-                            .header {
-                                margin-bottom: 20px;
-                                border-bottom: 2px solid #ccc;
-                                padding-bottom: 10px;
-                            }
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                font-size: 11px;
-                                margin-top: 15px;
-                            }
-                            th, td {
-                                border: 1px solid #ddd;
-                                padding: 6px 8px;
-                                text-align: right;
-                            }
-                            th {
-                                background-color: #f2f2f2;
-                                font-weight: bold;
-                                text-align: center;
-                            }
-                            td:first-child, th:first-child {
-                                text-align: left;
-                            }
-                            tr.total-row {
-                                background-color: #f9f9f9;
-                                font-weight: bold;
-                                border-top: 2px solid #aaa;
-                            }
-                            .footer {
-                                margin-top: 30px;
-                                font-size: 10px;
-                                text-align: center;
-                                color: #666;
-                            }
-                            @media print {
-                                body { margin: 0; padding: 0; }
-                                .no-print { display: none; }
-                            }
+                            @page { size: letter; margin: 1.5cm; }
+                            body { font-family: 'Inter', 'Segoe UI', sans-serif; background: white; color: black; padding: 20px; margin: 0; }
+                            h1 { font-size: 20px; margin-bottom: 5px; color: #333; }
+                            .header { margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+                            .report-section { margin-bottom: 20px; border: 1px solid #ccc; border-radius: 8px; overflow: hidden; }
+                            .report-section h3 { background: #f2f2f2; padding: 8px 12px; margin: 0; font-size: 16px; }
+                            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 0; }
+                            th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: right; }
+                            th:first-child, td:first-child { text-align: left; }
+                            th { background-color: #f2f2f2; font-weight: bold; text-align: center; }
+                            .subtotal-row { background-color: #f9f9f9; font-weight: bold; }
+                            .footer { margin-top: 30px; font-size: 10px; text-align: center; color: #666; }
+                            @media print { body { margin: 0; padding: 0; } .no-print { display: none; } }
                         </style>
                     </head>
                     <body>
                         <div class="header">
-                            <h1>LOTATO PRO - Rapport détaillé des agents</h1>
+                            <h1>LOTATO PRO - Rapport détaillé par superviseur</h1>
                             <p>Généré le ${new Date().toLocaleString()}</p>
                         </div>
-                        <div>
-                            ${lastDetailedReportHTML}
-                        </div>
-                        <div class="footer">
-                            Rapport généré automatiquement. Tous les montants sont en Gourdes (G).
-                        </div>
+                        <div>${lastDetailedReportHTML}</div>
+                        <div class="footer">Rapport généré automatiquement. Tous les montants sont en Gourdes (G).</div>
                         <div class="no-print" style="text-align:center; margin-top:20px;">
                             <button onclick="window.print();" style="padding:8px 20px;">Imprimer</button>
                             <button onclick="window.close();" style="padding:8px 20px;">Fermer</button>
@@ -1617,19 +1582,15 @@
                 printWindow.focus();
             }
 
-            // ---------- TICKETS ----------
+            // ---------- TICKETS (inchangé) ----------
             let currentTicketPage = 0;
-            let currentTicketFilters = {};
-
             async function loadTickets(reset = true) {
                 if (reset) {
                     currentTicketPage = 0;
                     document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>';
                 }
-
                 const token = localStorage.getItem('auth_token');
                 const params = new URLSearchParams();
-
                 const supervisor = document.getElementById('ticket-filter-supervisor').value;
                 const agent = document.getElementById('ticket-filter-agent').value;
                 const draw = document.getElementById('ticket-filter-draw').value;
@@ -1638,7 +1599,6 @@
                 const to = document.getElementById('ticket-filter-to').value;
                 const gain = document.getElementById('ticket-filter-gain').value;
                 const paid = document.getElementById('ticket-filter-paid').value;
-
                 if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
                 if (agent && agent !== 'all') params.append('agentId', agent);
                 if (draw && draw !== 'all') params.append('drawId', draw);
@@ -1647,29 +1607,15 @@
                 if (to) params.append('toDate', to);
                 if (gain && gain !== 'all') params.append('gain', gain);
                 if (paid && paid !== 'all') params.append('paid', paid);
-
                 params.append('page', currentTicketPage);
                 params.append('limit', 20);
-
                 try {
-                    const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
                     if (!res.ok) throw new Error('Erreur chargement tickets');
                     const data = await res.json();
-
-                    if (reset) {
-                        displayTickets(data.tickets);
-                    } else {
-                        appendTickets(data.tickets);
-                    }
-
-                    const loadMoreBtn = document.getElementById('tickets-load-more');
-                    if (data.hasMore) {
-                        loadMoreBtn.style.display = 'block';
-                    } else {
-                        loadMoreBtn.style.display = 'none';
-                    }
+                    if (reset) displayTickets(data.tickets);
+                    else appendTickets(data.tickets);
+                    document.getElementById('tickets-load-more').style.display = data.hasMore ? 'block' : 'none';
                 } catch (e) {
                     document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>';
                     console.error(e);
@@ -1678,29 +1624,13 @@
 
             function displayTickets(tickets) {
                 const container = document.getElementById('tickets-list-container');
-                if (!tickets || tickets.length === 0) {
-                    container.innerHTML = '<p>Aucun ticket trouvé</p>';
-                    return;
-                }
-
-                let html = '<table><thead><tr><th>ID</th><th>Agent</th><th>Tirage</th><th>Date</th><th>Montant</th><th>Gain</th><th>Payé</th><th>Actions</th></tr></thead><tbody>';
+                if (!tickets || tickets.length === 0) { container.innerHTML = '<p>Aucun ticket trouvé</p>'; return; }
+                let html = '能<table><thead><tr><th>ID</th><th>Agent</th><th>Tirage</th><th>Date</th><th>Montant</th><th>Gain</th><th>Payé</th><th>Actions</th></tr></thead><tbody>';
                 tickets.forEach(t => {
                     const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
                     const gainClass = t.win_amount > 0 ? 'profit' : '';
                     const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
-                    html += `<tr>
-                        <td>${t.ticket_id || t.id}</td>
-                        <td>${t.agent_name || t.agent_id}</td>
-                        <td>${t.draw_name || t.draw_id}</td>
-                        <td>${new Date(t.date).toLocaleString()}</td>
-                        <td>${parseFloat(t.total_amount).toLocaleString()} G</td>
-                        <td class="${gainClass}">${gainDisplay}</td>
-                        <td>${paidStatus}</td>
-                        <td>
-                            <button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button>
-                            <button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button>
-                        </td>
-                    </tr>`;
+                    html += `<tr><td>${t.ticket_id || t.id}</td><td>${t.agent_name || t.agent_id}</td><td>${t.draw_name || t.draw_id}</td><td>${new Date(t.date).toLocaleString()}</td><td>${parseFloat(t.total_amount).toLocaleString()} G</td><td class="${gainClass}">${gainDisplay}</td><td>${paidStatus}</td><td><button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button><button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
                 });
                 html += '</tbody></table>';
                 container.innerHTML = html;
@@ -1709,47 +1639,25 @@
             function appendTickets(tickets) {
                 const container = document.getElementById('tickets-list-container');
                 const table = container.querySelector('table');
-                if (!table) {
-                    displayTickets(tickets);
-                    return;
-                }
+                if (!table) { displayTickets(tickets); return; }
                 const tbody = table.querySelector('tbody');
                 tickets.forEach(t => {
                     const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
                     const gainClass = t.win_amount > 0 ? 'profit' : '';
                     const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
                     const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${t.ticket_id || t.id}</td>
-                        <td>${t.agent_name || t.agent_id}</td>
-                        <td>${t.draw_name || t.draw_id}</td>
-                        <td>${new Date(t.date).toLocaleString()}</td>
-                        <td>${parseFloat(t.total_amount).toLocaleString()} G</td>
-                        <td class="${gainClass}">${gainDisplay}</td>
-                        <td>${paidStatus}</td>
-                        <td>
-                            <button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button>
-                            <button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button>
-                        </td>
-                    `;
+                    row.innerHTML = `<td>${t.ticket_id || t.id}</td><td>${t.agent_name || t.agent_id}</td><td>${t.draw_name || t.draw_id}</td><td>${new Date(t.date).toLocaleString()}</td><td>${parseFloat(t.total_amount).toLocaleString()} G</td><td class="${gainClass}">${gainDisplay}</td><td>${paidStatus}</td><td><button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button><button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button></td>`;
                     tbody.appendChild(row);
                 });
             }
 
-            function loadMoreTickets() {
-                currentTicketPage++;
-                loadTickets(false);
-            }
-
+            function loadMoreTickets() { currentTicketPage++; loadTickets(false); }
             async function viewTicketDetails(ticketId) {
                 const token = localStorage.getItem('auth_token');
                 try {
-                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, { headers: { 'Authorization': `Bearer ${token}` } });
                     if (!res.ok) throw new Error('Erreur chargement détails');
                     const ticket = await res.json();
-
                     let betsHtml = '<h4>Pari(s)</h4><table><thead><tr><th>Numéro</th><th>Jeu</th><th>Montant</th><th>Gain estimé</th></tr></thead><tbody>';
                     if (ticket.bets && Array.isArray(ticket.bets)) {
                         ticket.bets.forEach(bet => {
@@ -1761,56 +1669,22 @@
                         });
                     }
                     betsHtml += '</tbody></table>';
-
-                    const html = `
-                        <p><strong>Ticket ID:</strong> ${ticket.ticket_id || ticket.id}</p>
-                        <p><strong>Agent:</strong> ${ticket.agent_name} (ID: ${ticket.agent_id})</p>
-                        <p><strong>Tirage:</strong> ${ticket.draw_name}</p>
-                        <p><strong>Date:</strong> ${new Date(ticket.date).toLocaleString()}</p>
-                        <p><strong>Total misé:</strong> ${parseFloat(ticket.total_amount).toLocaleString()} G</p>
-                        <p><strong>Gain total:</strong> <span class="${ticket.win_amount > 0 ? 'profit' : ''}">${parseFloat(ticket.win_amount).toLocaleString()} G</span></p>
-                        <p><strong>Payé:</strong> ${ticket.paid ? 'Oui' : 'Non'}</p>
-                        ${betsHtml}
-                    `;
+                    const html = `<p><strong>Ticket ID:</strong> ${ticket.ticket_id || ticket.id}</p><p><strong>Agent:</strong> ${ticket.agent_name} (ID: ${ticket.agent_id})</p><p><strong>Tirage:</strong> ${ticket.draw_name}</p><p><strong>Date:</strong> ${new Date(ticket.date).toLocaleString()}</p><p><strong>Total misé:</strong> ${parseFloat(ticket.total_amount).toLocaleString()} G</p><p><strong>Gain total:</strong> <span class="${ticket.win_amount > 0 ? 'profit' : ''}">${parseFloat(ticket.win_amount).toLocaleString()} G</span></p><p><strong>Payé:</strong> ${ticket.paid ? 'Oui' : 'Non'}</p>${betsHtml}`;
                     document.getElementById('modal-ticket-content').innerHTML = html;
                     document.getElementById('modal-ticket-id').innerText = ticket.ticket_id || ticket.id;
                     document.getElementById('ticket-details-modal').style.display = 'flex';
-                } catch (e) {
-                    alert('Erreur lors du chargement des détails');
-                    console.error(e);
-                }
+                } catch (e) { alert('Erreur lors du chargement des détails'); console.error(e); }
             }
-
-            function closeTicketModal() {
-                document.getElementById('ticket-details-modal').style.display = 'none';
-            }
-
-            function confirmDeleteTicket(ticketId) {
-                if (confirm('Êtes-vous sûr de vouloir supprimer ce ticket définitivement ?')) {
-                    deleteTicket(ticketId);
-                }
-            }
-
+            function closeTicketModal() { document.getElementById('ticket-details-modal').style.display = 'none'; }
+            function confirmDeleteTicket(ticketId) { if (confirm('Êtes-vous sûr de vouloir supprimer ce ticket définitivement ?')) deleteTicket(ticketId); }
             async function deleteTicket(ticketId) {
                 const token = localStorage.getItem('auth_token');
                 try {
-                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
                     const result = await res.json();
-                    if (result.success) {
-                        alert('Ticket supprimé avec succès');
-                        loadTickets();
-                    } else {
-                        alert('Erreur: ' + (result.error || 'Suppression échouée'));
-                    }
-                } catch (e) {
-                    alert('Erreur réseau');
-                    console.error(e);
-                }
+                    if (result.success) { alert('Ticket supprimé avec succès'); loadTickets(); } else alert('Erreur: ' + (result.error || 'Suppression échouée'));
+                } catch (e) { alert('Erreur réseau'); console.error(e); }
             }
-
             async function loadTicketFilters() {
                 const token = localStorage.getItem('auth_token');
                 try {
@@ -1819,28 +1693,22 @@
                     let supOpts = '<option value="all">Tous superviseurs</option>';
                     supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
                     document.getElementById('ticket-filter-supervisor').innerHTML = supOpts;
-
                     const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
                     const agents = await agentRes.json();
                     let agentOpts = '<option value="all">Tous agents</option>';
                     agents.forEach(a => agentOpts += `<option value="${a.id}">${a.name}</option>`);
                     document.getElementById('ticket-filter-agent').innerHTML = agentOpts;
-
                     const drawRes = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
                     const draws = await drawRes.json();
                     let drawOpts = '<option value="all">Tous tirages</option>';
                     draws.forEach(d => drawOpts += `<option value="${d.id}">${d.name}</option>`);
                     document.getElementById('ticket-filter-draw').innerHTML = drawOpts;
-                } catch (e) {
-                    console.error('Erreur chargement filtres:', e);
-                }
+                } catch (e) { console.error('Erreur chargement filtres:', e); }
             }
-
             function toggleTicketCustomDates() {
                 const period = document.getElementById('ticket-filter-period').value;
                 document.getElementById('ticket-custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
             }
-
             function resetTicketFilters() {
                 document.getElementById('ticket-filter-supervisor').value = 'all';
                 document.getElementById('ticket-filter-agent').value = 'all';
@@ -1854,13 +1722,11 @@
                 loadTickets();
             }
 
-            // ---------- CONFIGURATION ----------
+            // ---------- CONFIGURATION (inchangé) ----------
             async function loadSettings() {
                 const token = localStorage.getItem('auth_token');
                 try {
-                    const res = await fetch(`${API_URL}/api/owner/settings`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await fetch(`${API_URL}/api/owner/settings`, { headers: { 'Authorization': `Bearer ${token}` } });
                     if (res.ok) {
                         const data = await res.json();
                         document.getElementById('config-name').value = data.name || '';
@@ -1873,7 +1739,6 @@
                             document.getElementById('header-logo').style.display = 'none';
                         }
                         document.getElementById('header-title').innerText = data.name ? data.name + ' · Propriétaire' : 'LOTATO PRO · Propriétaire';
-                        
                         if (data.multipliers) {
                             document.getElementById('multiplier-lot1').value = data.multipliers.lot1 || 60;
                             document.getElementById('multiplier-lot2').value = data.multipliers.lot2 || 20;
@@ -1883,7 +1748,6 @@
                             document.getElementById('multiplier-lotto5').value = data.multipliers.lotto5 || 25000;
                             document.getElementById('multiplier-mariage').value = data.multipliers.mariage || 500;
                         }
-
                         if (data.limits) {
                             document.getElementById('limit-lotto3').value = data.limits.lotto3 || 0;
                             document.getElementById('limit-lotto4').value = data.limits.lotto4 || 0;
@@ -1891,9 +1755,7 @@
                             document.getElementById('limit-mariage').value = data.limits.mariage || 0;
                         }
                     }
-                } catch (e) {
-                    console.error('Erreur chargement settings', e);
-                }
+                } catch (e) { console.error('Erreur chargement settings', e); }
             }
 
             async function saveSettings() {
@@ -1902,7 +1764,6 @@
                 const slogan = document.getElementById('config-slogan').value;
                 const logoUrl = document.getElementById('config-logo-url').value;
                 const logoFile = document.getElementById('config-logo-file').files[0];
-                
                 const multipliers = {
                     lot1: parseInt(document.getElementById('multiplier-lot1').value) || 60,
                     lot2: parseInt(document.getElementById('multiplier-lot2').value) || 20,
@@ -1912,18 +1773,14 @@
                     lotto5: parseInt(document.getElementById('multiplier-lotto5').value) || 25000,
                     mariage: parseInt(document.getElementById('multiplier-mariage').value) || 500
                 };
-
                 const limits = {
                     lotto3: parseInt(document.getElementById('limit-lotto3').value) || 0,
                     lotto4: parseInt(document.getElementById('limit-lotto4').value) || 0,
                     lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0,
                     mariage: parseInt(document.getElementById('limit-mariage').value) || 0
                 };
-
-                let body;
-                let headers = { 'Authorization': `Bearer ${token}` };
+                let body, headers = { 'Authorization': `Bearer ${token}` };
                 let url = `${API_URL}/api/owner/settings`;
-
                 if (logoFile) {
                     const formData = new FormData();
                     formData.append('name', name);
@@ -1936,44 +1793,24 @@
                     headers['Content-Type'] = 'application/json';
                     body = JSON.stringify({ name, slogan, logoUrl, multipliers, limits });
                 }
-
                 try {
-                    const res = await fetch(url, {
-                        method: 'POST',
-                        headers,
-                        body
-                    });
-                    if (res.ok) {
-                        showMessage('settings-message', '✅ Paramètres enregistrés', true);
-                        loadSettings();
-                    } else {
-                        showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
-                    }
-                } catch (e) {
-                    showMessage('settings-message', '❌ Erreur réseau', false);
-                }
+                    const res = await fetch(url, { method: 'POST', headers, body });
+                    if (res.ok) { showMessage('settings-message', '✅ Paramètres enregistrés', true); loadSettings(); }
+                    else showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
+                } catch (e) { showMessage('settings-message', '❌ Erreur réseau', false); }
             }
 
             document.getElementById('config-logo-file').addEventListener('change', function(e) {
                 const file = e.target.files[0];
                 if (file) {
                     const reader = new FileReader();
-                    reader.onload = function(ev) {
-                        document.getElementById('logo-preview').innerHTML = `<img src="${ev.target.result}" style="max-height:60px;">`;
-                    };
+                    reader.onload = function(ev) { document.getElementById('logo-preview').innerHTML = `<img src="${ev.target.result}" style="max-height:60px;">`; };
                     reader.readAsDataURL(file);
-                } else {
-                    document.getElementById('logo-preview').innerHTML = '';
-                }
+                } else { document.getElementById('logo-preview').innerHTML = ''; }
             });
 
-            // ---------- DÉCONNEXION ----------
-            function logout() {
-                localStorage.clear();
-                window.location.href = 'index.html';
-            }
+            function logout() { localStorage.clear(); window.location.href = 'index.html'; }
 
-            // ---------- CHARGEMENT INITIAL ----------
             window.onload = function() {
                 loadDashboard();
                 loadUsersLists();
@@ -1986,13 +1823,13 @@
                 loadSettings();
                 toggleSupervisorField();
                 toggleCustomDates();
+                toggleDetailCustomDates();
             };
         </script>
     </div>
     <script>
-        // === AJOUT DU BLOCAGE LOTTO3 DANS owner.html ===
+        // === AJOUT DU BLOCAGE LOTTO3 ===
         (function() {
-            // 1. Créer la section HTML dans l'onglet "Boules & Limites"
             const numbersTab = document.getElementById('tab-numbers');
             if (numbersTab && !document.getElementById('blocked-lotto3-list')) {
                 const lotto3BlockSection = document.createElement('div');
@@ -2011,158 +1848,86 @@
                 numbersTab.appendChild(lotto3BlockSection);
             }
 
-            // 2. Fonctions de chargement, blocage et déblocage
             window.loadBlockedLotto3 = async function() {
                 const token = localStorage.getItem('auth_token');
                 try {
-                    const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, { headers: { 'Authorization': `Bearer ${token}` } });
                     if (!res.ok) throw new Error('Erreur chargement');
                     const data = await res.json();
                     let html = '<strong>Numéros Lotto3 bloqués globalement:</strong> ';
                     html += (data.blockedNumbers || []).join(', ') || 'aucun';
                     const container = document.getElementById('blocked-lotto3-list');
                     if (container) container.innerHTML = html;
-                } catch (e) {
-                    console.error(e);
-                    const container = document.getElementById('blocked-lotto3-list');
-                    if (container) container.innerHTML = '<p class="loss">Erreur de chargement</p>';
-                }
+                } catch (e) { console.error(e); const container = document.getElementById('blocked-lotto3-list'); if (container) container.innerHTML = '<p class="loss">Erreur de chargement</p>'; }
             };
-
             window.blockLotto3Number = async function() {
                 const token = localStorage.getItem('auth_token');
                 const num = document.getElementById('block-lotto3-number')?.value.trim();
-                if (!num || num.length !== 3 || !/^\d+$/.test(num)) {
-                    alert('Veuillez entrer un numéro à 3 chiffres');
-                    return;
-                }
+                if (!num || num.length !== 3 || !/^\d+$/.test(num)) { alert('Veuillez entrer un numéro à 3 chiffres'); return; }
                 try {
-                    const res = await fetch(`${window.API_URL || ''}/api/owner/block-lotto3`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ number: num })
-                    });
+                    const res = await fetch(`${window.API_URL || ''}/api/owner/block-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number: num }) });
                     const result = await res.json();
-                    if (result.success) {
-                        alert('Numéro Lotto3 bloqué');
-                        window.loadBlockedLotto3();
-                        if (window.loadAllRestrictions) window.loadAllRestrictions();
-                    } else {
-                        alert('Erreur: ' + (result.error || ''));
-                    }
-                } catch (e) {
-                    alert('Erreur réseau');
-                }
+                    if (result.success) { alert('Numéro Lotto3 bloqué'); window.loadBlockedLotto3(); if (window.loadAllRestrictions) window.loadAllRestrictions(); }
+                    else alert('Erreur: ' + (result.error || ''));
+                } catch (e) { alert('Erreur réseau'); }
             };
-
             window.unblockLotto3Number = async function() {
                 const token = localStorage.getItem('auth_token');
                 const num = document.getElementById('block-lotto3-number')?.value.trim();
                 if (!num) return;
                 try {
-                    const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ number: num })
-                    });
+                    const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number: num }) });
                     const result = await res.json();
-                    if (result.success) {
-                        alert('Numéro Lotto3 débloqué');
-                        window.loadBlockedLotto3();
-                        if (window.loadAllRestrictions) window.loadAllRestrictions();
-                    } else {
-                        alert('Erreur: ' + (result.error || ''));
-                    }
-                } catch (e) {
-                    alert('Erreur réseau');
-                }
+                    if (result.success) { alert('Numéro Lotto3 débloqué'); window.loadBlockedLotto3(); if (window.loadAllRestrictions) window.loadAllRestrictions(); }
+                    else alert('Erreur: ' + (result.error || ''));
+                } catch (e) { alert('Erreur réseau'); }
             };
-
-            // 3. Patcher switchTab pour charger les Lotto3 bloqués quand l'onglet numbers est affiché
             const originalSwitchTab = window.switchTab;
             if (originalSwitchTab) {
                 window.switchTab = function(tabId) {
                     originalSwitchTab(tabId);
-                    if (tabId === 'numbers') {
-                        window.loadBlockedLotto3();
-                    }
+                    if (tabId === 'numbers') window.loadBlockedLotto3();
                 };
             }
-
-            // 4. Patcher loadAllRestrictions pour afficher les Lotto3 bloqués dans la liste des restrictions
             const originalLoadAllRestrictions = window.loadAllRestrictions;
             if (originalLoadAllRestrictions) {
                 window.loadAllRestrictions = async function() {
                     await originalLoadAllRestrictions();
                     try {
                         const token = localStorage.getItem('auth_token');
-                        const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
+                        const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, { headers: { 'Authorization': `Bearer ${token}` } });
                         if (!res.ok) return;
                         const data = await res.json();
                         const blockedLotto3 = data.blockedNumbers || [];
                         if (blockedLotto3.length === 0) return;
-
                         const container = document.getElementById('restrictions-list');
                         if (!container) return;
                         let tableHtml = container.innerHTML;
-                        if (!tableHtml.includes('<tbody>')) {
-                            tableHtml = '<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>' + tableHtml + '</tbody></table>';
-                        }
+                        if (!tableHtml.includes('<tbody>')) tableHtml = '能<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>' + tableHtml + '</tbody></table>';
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(tableHtml, 'text/html');
                         let tbody = doc.querySelector('tbody');
-                        if (!tbody) {
-                            tbody = doc.createElement('tbody');
-                            doc.body.appendChild(tbody);
-                        }
+                        if (!tbody) { tbody = doc.createElement('tbody'); doc.body.appendChild(tbody); }
                         blockedLotto3.forEach(num => {
                             const row = doc.createElement('tr');
                             row.style.background = 'rgba(255,170,0,0.1)';
-                            row.innerHTML = `
-                                <td>🎲 Lotto3 bloqué globalement</td>
-                                <td>Tous</td>
-                                <td><strong>${num}</strong></td>
-                                <td>—</td>
-                                <td><button class="btn-primary" style="padding:4px 8px;" onclick="window.unblockLotto3NumberWithValue('${num}')">Débloquer</button></td>
-                            `;
+                            row.innerHTML = `<td>🎲 Lotto3 bloqué globalement</td><td>Tous</td><td><strong>${num}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="window.unblockLotto3NumberWithValue('${num}')">Débloquer</button></td>`;
                             tbody.appendChild(row);
                         });
                         container.innerHTML = doc.body.innerHTML;
-                    } catch (e) {
-                        console.error('Erreur intégration Lotto3 dans restrictions', e);
-                    }
+                    } catch (e) { console.error('Erreur intégration Lotto3 dans restrictions', e); }
                 };
-
-                // Fonction utilitaire pour débloquer un Lotto3 spécifique depuis la liste des restrictions
                 window.unblockLotto3NumberWithValue = async function(number) {
                     const token = localStorage.getItem('auth_token');
                     try {
-                        const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ number })
-                        });
+                        const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number }) });
                         const result = await res.json();
-                        if (result.success) {
-                            window.loadAllRestrictions();
-                            window.loadBlockedLotto3();
-                        } else {
-                            alert('Erreur: ' + (result.error || ''));
-                        }
-                    } catch (e) {
-                        alert('Erreur réseau');
-                    }
+                        if (result.success) { window.loadAllRestrictions(); window.loadBlockedLotto3(); }
+                        else alert('Erreur: ' + (result.error || ''));
+                    } catch (e) { alert('Erreur réseau'); }
                 };
             }
-
-            // 5. Charger immédiatement si l'onglet numbers est déjà actif
-            if (document.getElementById('tab-numbers')?.classList.contains('active')) {
-                window.loadBlockedLotto3();
-            }
+            if (document.getElementById('tab-numbers')?.classList.contains('active')) window.loadBlockedLotto3();
         })();
     </script>
 </body>
