@@ -1568,18 +1568,6 @@ app.get('/api/owner/quota', authenticate, requireRole('owner'), async (req, res)
     res.json({ quota, used });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
-app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id; // non utilisé ici car les tirages sont communs
-  try {
-    const result = await pool.query(
-      'SELECT id as drawId, name as drawName FROM draws WHERE active = false'
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
 
 // ==================== Routes superadmin (inchangées) ====================
 // ... (les routes superadmin sont identiques à la version précédente, mais adaptées car draws est commun)
