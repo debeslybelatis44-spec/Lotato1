@@ -209,11 +209,24 @@
         <div id="tab-numbers" class="tab-content">
             <!-- SECTION LIMITES GLOBALES (NOUVELLE) -->
             <div class="section-title"><i class="fas fa-globe"></i> Limites globales (tous tirages)</div>
+            <div class="form-grid" style="grid-template-columns: 1fr 1fr auto;">
+                <div class="form-group">
+                    <label>Numéro à 2 chiffres (00-99)</label>
+                    <input type="text" id="global-limit-number" maxlength="2" placeholder="48">
+                </div>
+                <div class="form-group">
+                    <label>Montant maximum (G)</label>
+                    <input type="number" id="global-limit-amount" placeholder="100" step="1">
+                </div>
+                <div style="display:flex; align-items:end;">
+                    <button class="btn-primary" onclick="addGlobalLimit()"><i class="fas fa-plus"></i> Ajouter / Modifier</button>
+                </div>
+            </div>
             <div id="global-limits-list" class="list-container" style="margin-bottom:20px;">
                 <p>Chargement...</p>
             </div>
 
-            <!-- SECTION BLOCAGES GLOBAUX (inchangée) -->
+            <!-- SECTION BLOCAGES GLOBAUX -->
             <div class="section-title"><i class="fas fa-ban"></i> Bloquer une boule (tous tirages)</div>
             <div class="form-grid">
                 <div class="form-group"><label>Numéro à bloquer (00-99)</label><input type="text" id="block-number" maxlength="2" placeholder="82"></div>
@@ -222,7 +235,7 @@
             </div>
             <div id="blocked-numbers-list" class="list-container" style="max-height:150px;"></div>
 
-            <!-- SECTION BLOCAGES PAR TIRAGE (inchangée) -->
+            <!-- SECTION BLOCAGES PAR TIRAGE -->
             <div class="section-title"><i class="fas fa-ban"></i> Bloquer une boule pour un tirage spécifique</div>
             <div class="form-grid">
                 <div class="form-group"><label>Tirage</label><select id="block-draw-select"></select></div>
@@ -231,8 +244,8 @@
                 <button class="btn-primary" onclick="unblockNumberDraw()">Débloquer</button>
             </div>
 
-            <!-- SECTION LIMITES PAR TIRAGE (inchangée) -->
-            <div class="section-title"><i class="fas fa-chart-line"></i> Limiter une boule (montant max)</div>
+            <!-- SECTION LIMITES PAR TIRAGE -->
+            <div class="section-title"><i class="fas fa-chart-line"></i> Limiter une boule (montant max) pour un tirage spécifique</div>
             <div class="form-grid">
                 <div class="form-group"><label>Tirage</label><select id="limit-draw"></select></div>
                 <div class="form-group"><label>Numéro</label><input type="text" id="limit-number" maxlength="2" placeholder="48"></div>
@@ -246,7 +259,7 @@
                 <p>Chargement...</p>
             </div>
 
-            <!-- SECTION LOTTO3 (inchangée) -->
+            <!-- SECTION LOTTO3 -->
             <div class="section-title"><i class="fas fa-ban"></i> Bloquer un numéro Lotto3 (3 chiffres)</div>
             <div class="form-grid">
                 <div class="form-group"><label>Numéro Lotto3 (000-999)</label><input type="text" id="block-lotto3-number" maxlength="3" placeholder="123"></div>
@@ -492,7 +505,7 @@
             let agentsHtml = '';
             if (data.agents_gain_loss.length === 0) agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
             else {
-                agentsHtml = '能<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
+                agentsHtml = '<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
                 data.agents_gain_loss.forEach(a => {
                     const netResult = parseFloat(a.total_bets) - parseFloat(a.total_wins);
                     const netClass = netResult >= 0 ? 'profit' : 'loss';
@@ -696,62 +709,89 @@
         loadAllRestrictions();
     }
 
-    // === FONCTIONS POUR LES LIMITES GLOBALES (NOUVELLES) ===
-   // === NOUVELLES FONCTIONS POUR LIMITES GLOBALES (indépendantes) ===
-async function loadGlobalLimits() {
-    const token = localStorage.getItem('auth_token');
-    const container = document.getElementById('global-limits-list');
-    if (!container) return;
-    container.innerHTML = '<p>Chargement des limites globales...</p>';
-    try {
-        const res = await fetch(`${API_URL}/api/owner/global-limits`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Erreur chargement');
-        const limits = await res.json();
-        if (limits.length === 0) {
-            container.innerHTML = '<p>Aucune limite globale définie.</p>';
+    // === NOUVELLES FONCTIONS POUR LIMITES GLOBALES ===
+    async function loadGlobalLimits() {
+        const token = localStorage.getItem('auth_token');
+        const container = document.getElementById('global-limits-list');
+        if (!container) return;
+        container.innerHTML = '<p>Chargement des limites globales...</p>';
+        try {
+            const res = await fetch(`${API_URL}/api/owner/global-limits`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Erreur chargement');
+            const limits = await res.json();
+            if (limits.length === 0) {
+                container.innerHTML = '<p>Aucune limite globale définie.</p>';
+                return;
+            }
+            let html = '<div class="table-responsive"><table><thead><tr><th>Numéro</th><th>Montant maximum (G)</th><th>Action</th></tr></thead><tbody>';
+            limits.forEach(limit => {
+                html += `
+                    <tr>
+                        <td><strong>${limit.number}</strong></td>
+                        <td>${parseFloat(limit.limit_amount).toLocaleString()} G</td>
+                        <td><button class="btn-danger" onclick="removeGlobalLimit('${limit.number}')">Supprimer</button></td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        } catch (e) {
+            console.error(e);
+            container.innerHTML = '<p class="loss">Erreur de chargement des limites globales</p>';
+        }
+    }
+
+    async function addGlobalLimit() {
+        const token = localStorage.getItem('auth_token');
+        const number = document.getElementById('global-limit-number').value;
+        const amount = parseFloat(document.getElementById('global-limit-amount').value);
+        if (!number || isNaN(amount) || amount <= 0) {
+            alert('Veuillez saisir un numéro à 2 chiffres et un montant valide (>0)');
             return;
         }
-        let html = '<div class="table-responsive"><table><thead><tr><th>Numéro</th><th>Montant maximum (G)</th><th>Action</th></tr></thead><tbody>';
-        limits.forEach(limit => {
-            html += `
-                <tr>
-                    <td><strong>${limit.number}</strong></td>
-                    <td>${parseFloat(limit.limit_amount).toLocaleString()} G</td>
-                    <td><button class="btn-danger" onclick="removeGlobalLimit('${limit.number}')">Supprimer</button></td>
-                </tr>
-            `;
-        });
-        html += '</tbody></table></div>';
-        container.innerHTML = html;
-    } catch (e) {
-        console.error(e);
-        container.innerHTML = '<p class="loss">Erreur de chargement des limites globales</p>';
-    }
-}
-
-async function removeGlobalLimit(number) {
-    const token = localStorage.getItem('auth_token');
-    if (!confirm(`Supprimer la limite globale pour le numéro ${number} ?`)) return;
-    try {
-        const res = await fetch(`${API_URL}/api/owner/global-limits/${number}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const result = await res.json();
-        if (result.success) {
-            alert('Limite globale supprimée');
-            loadGlobalLimits();   // Rafraîchir la liste
-            // Optionnel : rafraîchir aussi le tableau de bord ou la liste générale
-            if (typeof loadAllRestrictions === 'function') loadAllRestrictions();
-        } else {
-            alert('Erreur : ' + (result.error || ''));
+        const normalized = number.padStart(2, '0');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/global-limits`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number: normalized, limitAmount: amount })
+            });
+            const result = await res.json();
+            if (result.success) {
+                alert('Limite globale ajoutée / mise à jour');
+                loadGlobalLimits();
+                // Optionnel : rafraîchir aussi les autres restrictions
+                if (typeof loadAllRestrictions === 'function') loadAllRestrictions();
+            } else {
+                alert('Erreur : ' + (result.error || ''));
+            }
+        } catch (e) {
+            alert('Erreur réseau');
         }
-    } catch (e) {
-        alert('Erreur réseau');
     }
-}
+
+    async function removeGlobalLimit(number) {
+        const token = localStorage.getItem('auth_token');
+        if (!confirm(`Supprimer la limite globale pour le numéro ${number} ?`)) return;
+        try {
+            const res = await fetch(`${API_URL}/api/owner/global-limits/${number}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const result = await res.json();
+            if (result.success) {
+                alert('Limite globale supprimée');
+                loadGlobalLimits();
+                if (typeof loadAllRestrictions === 'function') loadAllRestrictions();
+            } else {
+                alert('Erreur : ' + (result.error || ''));
+            }
+        } catch (e) {
+            alert('Erreur réseau');
+        }
+    }
 
     // === FONCTIONS ROBUSTES POUR LES AUTRES RESTRICTIONS ===
     async function fetchGlobalBlockedNumbers() {
@@ -1352,6 +1392,14 @@ async function removeGlobalLimit(number) {
         toggleCustomDates();
         toggleDetailCustomDates();
 
+        // Ajout des fonctions globales pour les limites globales
+        window.addGlobalLimit = addGlobalLimit;
+        window.removeGlobalLimit = removeGlobalLimit;
+        window.unblockNumberGlobalWithValue = unblockNumberGlobalWithValue;
+        window.unblockPerDraw = unblockPerDraw;
+        window.removeLimit = removeLimit;
+        window.unblockDraw = unblockDraw;
+
         const numbersTab = document.getElementById('tab-numbers');
         if (numbersTab && !document.getElementById('blocked-lotto3-list')) {
             const lotto3BlockSection = document.createElement('div');
@@ -1362,12 +1410,6 @@ async function removeGlobalLimit(number) {
             window.unblockLotto3Number = unblockLotto3Number;
             loadBlockedLotto3();
         }
-
-        window.unblockNumberGlobalWithValue = unblockNumberGlobalWithValue;
-        window.unblockPerDraw = unblockPerDraw;
-        window.removeLimit = removeLimit;
-        window.unblockDraw = unblockDraw;
-        window.removeGlobalLimit = removeGlobalLimit; // pour le bouton
     };
     </script>
 </body>
