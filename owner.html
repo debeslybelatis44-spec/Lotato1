@@ -697,56 +697,61 @@
     }
 
     // === FONCTIONS POUR LES LIMITES GLOBALES (NOUVELLES) ===
-    async function loadGlobalLimits() {
-        const token = localStorage.getItem('auth_token');
-        const container = document.getElementById('global-limits-list');
-        container.innerHTML = '<p>Chargement des limites globales...</p>';
-        try {
-            const res = await fetch(`${API_URL}/api/owner/number-limits`, { headers: { 'Authorization': `Bearer ${token}` } });
-            if (!res.ok) throw new Error('Erreur chargement');
-            const limits = await res.json();
-            const globalLimits = limits.filter(l => l.draw_id === null || l.draw_id === undefined);
-            if (globalLimits.length === 0) {
-                container.innerHTML = '<p>Aucune limite globale définie.</p>';
-                return;
-            }
-            let html = '<div class="table-responsive"><table><thead><tr><th>Numéro</th><th>Montant maximum (G)</th><th>Action</th></tr></thead><tbody>';
-            globalLimits.forEach(limit => {
-                html += `<tr>
+   // === NOUVELLES FONCTIONS POUR LIMITES GLOBALES (indépendantes) ===
+async function loadGlobalLimits() {
+    const token = localStorage.getItem('auth_token');
+    const container = document.getElementById('global-limits-list');
+    if (!container) return;
+    container.innerHTML = '<p>Chargement des limites globales...</p>';
+    try {
+        const res = await fetch(`${API_URL}/api/owner/global-limits`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Erreur chargement');
+        const limits = await res.json();
+        if (limits.length === 0) {
+            container.innerHTML = '<p>Aucune limite globale définie.</p>';
+            return;
+        }
+        let html = '<div class="table-responsive"><table><thead><tr><th>Numéro</th><th>Montant maximum (G)</th><th>Action</th></tr></thead><tbody>';
+        limits.forEach(limit => {
+            html += `
+                <tr>
                     <td><strong>${limit.number}</strong></td>
                     <td>${parseFloat(limit.limit_amount).toLocaleString()} G</td>
                     <td><button class="btn-danger" onclick="removeGlobalLimit('${limit.number}')">Supprimer</button></td>
-                </tr>`;
-            });
-            html += '</tbody></table></div>';
-            container.innerHTML = html;
-        } catch (e) {
-            console.error(e);
-            container.innerHTML = '<p class="loss">Erreur de chargement des limites globales</p>';
-        }
+                </tr>
+            `;
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = '<p class="loss">Erreur de chargement des limites globales</p>';
     }
+}
 
-    async function removeGlobalLimit(number) {
-        const token = localStorage.getItem('auth_token');
-        if (!confirm(`Supprimer la limite globale pour le numéro ${number} ?`)) return;
-        try {
-            const res = await fetch(`${API_URL}/api/owner/remove-number-limit`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ drawId: '0', number: number })
-            });
-            const result = await res.json();
-            if (result.success) {
-                alert('Limite globale supprimée');
-                loadGlobalLimits();      // Rafraîchir la section
-                loadAllRestrictions();   // Rafraîchir l’autre liste
-            } else {
-                alert('Erreur : ' + (result.error || ''));
-            }
-        } catch (e) {
-            alert('Erreur réseau');
+async function removeGlobalLimit(number) {
+    const token = localStorage.getItem('auth_token');
+    if (!confirm(`Supprimer la limite globale pour le numéro ${number} ?`)) return;
+    try {
+        const res = await fetch(`${API_URL}/api/owner/global-limits/${number}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await res.json();
+        if (result.success) {
+            alert('Limite globale supprimée');
+            loadGlobalLimits();   // Rafraîchir la liste
+            // Optionnel : rafraîchir aussi le tableau de bord ou la liste générale
+            if (typeof loadAllRestrictions === 'function') loadAllRestrictions();
+        } else {
+            alert('Erreur : ' + (result.error || ''));
         }
+    } catch (e) {
+        alert('Erreur réseau');
     }
+}
 
     // === FONCTIONS ROBUSTES POUR LES AUTRES RESTRICTIONS ===
     async function fetchGlobalBlockedNumbers() {

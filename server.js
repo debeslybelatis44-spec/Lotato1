@@ -1579,6 +1579,77 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+// ==================== Gestion indépendante des limites globales ====================
+
+/**
+ * Récupère toutes les limites globales du propriétaire connecté.
+ * GET /api/owner/global-limits
+ */
+app.get('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  try {
+    const result = await pool.query(
+      'SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1 ORDER BY number',
+      [ownerId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('❌ Erreur récupération limites globales:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+/**
+ * Crée ou met à jour une limite globale.
+ * POST /api/owner/global-limits
+ * Body : { number: "XX", limitAmount: 100 }
+ */
+app.post('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { number, limitAmount } = req.body;
+  const normalized = number?.toString().padStart(2, '0');
+  if (!/^\d{2}$/.test(normalized)) {
+    return res.status(400).json({ error: 'Numéro invalide (2 chiffres requis)' });
+  }
+  if (typeof limitAmount !== 'number' || limitAmount <= 0) {
+    return res.status(400).json({ error: 'Montant limite invalide (doit être un nombre positif)' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO global_number_limits (owner_id, number, limit_amount)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (owner_id, number) DO UPDATE SET limit_amount = $3, updated_at = NOW()`,
+      [ownerId, normalized, limitAmount]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erreur création/modification limite globale:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+/**
+ * Supprime une limite globale.
+ * DELETE /api/owner/global-limits/:number
+ */
+app.delete('/api/owner/global-limits/:number', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { number } = req.params;
+  const normalized = number.padStart(2, '0');
+  try {
+    const result = await pool.query(
+      'DELETE FROM global_number_limits WHERE owner_id = $1 AND number = $2',
+      [ownerId, normalized]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Limite globale non trouvée' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erreur suppression limite globale:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ==================== Routes superadmin (inchangées) ====================
 // ... (les routes superadmin sont identiques à la version précédente, mais adaptées car draws est commun)
