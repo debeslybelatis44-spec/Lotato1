@@ -596,1339 +596,1246 @@
         </div>
 
         <script>
-            // ---------- CONFIGURATION ----------
-            const API_URL = ''; // Laissez vide si même origine
-            let chartInstance = null;
-            let lastDetailedReportHTML = ''; // Stockage pour impression
+    // ---------- CONFIGURATION ----------
+    const API_URL = ''; // Laissez vide si même origine
+    let chartInstance = null;
+    let lastDetailedReportHTML = '';
 
-            // ---------- AUTH : vérification du token et récupération du nom ----------
-            (async function() {
-                const token = localStorage.getItem('auth_token');
-                const role = localStorage.getItem('user_role');
-                if (!token || role !== 'owner') {
-                    window.location.href = 'index.html';
-                    return;
-                }
-                try {
-                    const res = await fetch(`${API_URL}/api/auth/verify`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (!res.ok) throw new Error('Token invalide');
-                    const data = await res.json();
-                    if (!data.valid) throw new Error('Token invalide');
-                    
-                    document.getElementById('owner-name').innerHTML = `<i class="fas fa-crown"></i> ${localStorage.getItem('user_name') || 'Propriétaire'}`;
-                    loadQuota();
-                    fetchOwnerMessages();
-                } catch (error) {
-                    console.error('Erreur de vérification token:', error);
-                    localStorage.removeItem('auth_token');
-                    localStorage.removeItem('user_role');
-                    localStorage.removeItem('user_name');
-                    localStorage.removeItem('owner_id');
-                    window.location.href = 'index.html';
-                }
-            })();
+    // ---------- AUTH : vérification du token et récupération du nom ----------
+    (async function() {
+        const token = localStorage.getItem('auth_token');
+        const role = localStorage.getItem('user_role');
+        if (!token || role !== 'owner') {
+            window.location.href = 'index.html';
+            return;
+        }
+        try {
+            const res = await fetch(`${API_URL}/api/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Token invalide');
+            const data = await res.json();
+            if (!data.valid) throw new Error('Token invalide');
+            
+            document.getElementById('owner-name').innerHTML = `<i class="fas fa-crown"></i> ${localStorage.getItem('user_name') || 'Propriétaire'}`;
+            loadQuota();
+            fetchOwnerMessages();
+        } catch (error) {
+            console.error('Erreur de vérification token:', error);
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_role');
+            localStorage.removeItem('user_name');
+            localStorage.removeItem('owner_id');
+            window.location.href = 'index.html';
+        }
+    })();
 
-            // ---------- CHARGEMENT DU QUOTA ----------
-            async function loadQuota() {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/quota`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        document.getElementById('quota-used').innerText = data.used;
-                        document.getElementById('quota-total').innerText = data.quota;
-                        const badge = document.getElementById('quota-badge');
-                        const used = data.used;
-                        const total = data.quota;
-                        if (used >= total) {
-                            badge.style.backgroundColor = 'rgba(255,77,77,0.2)';
-                        } else if (used >= total * 0.8) {
-                            badge.style.backgroundColor = 'rgba(255,193,7,0.2)';
-                        } else {
-                            badge.style.backgroundColor = 'rgba(0,241,144,0.2)';
-                        }
-                    }
-                } catch (e) {
-                    console.error('Erreur chargement quota', e);
-                }
-            }
-
-            // ---------- MESSAGES ----------
-            async function fetchOwnerMessages() {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/messages`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.message) {
-                            document.getElementById('owner-message-text').innerText = data.message;
-                            document.getElementById('owner-message-container').style.display = 'block';
-                            setTimeout(() => {
-                                document.getElementById('owner-message-container').style.display = 'none';
-                            }, 600000);
-                        }
-                    }
-                } catch (e) {
-                    console.error('Erreur récupération message', e);
-                }
-            }
-
-            // ---------- ONGLETS ----------
-            function switchTab(tabId) {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                document.querySelector(`.tab[onclick*="${tabId}"]`).classList.add('active');
-                document.getElementById(`tab-${tabId}`).classList.add('active');
-                
-                if (tabId === 'dashboard') loadDashboard();
-                if (tabId === 'users') loadUsersLists();
-                if (tabId === 'draws') loadDraws();
-                if (tabId === 'numbers') {
-                    loadBlockedNumbers();
-                    loadDrawsForSelects();
-                    loadAllRestrictions();
-                }
-                if (tabId === 'reports') {
-                    loadSupervisorsAndAgents();
-                    loadDrawsForReport();
-                }
-                if (tabId === 'tickets') {
-                    loadTicketFilters();
-                    loadTickets();
-                }
-                if (tabId === 'config') {
-                    loadSettings();
-                }
-            }
-
-            // ---------- UTILITAIRES ----------
-            function showMessage(elementId, message, isSuccess = true) {
-                const el = document.getElementById(elementId);
-                if (el) {
-                    el.style.display = 'block';
-                    el.className = isSuccess ? 'alert alert-success' : 'alert alert-danger';
-                    el.innerHTML = message;
-                    setTimeout(() => { el.style.display = 'none'; }, 5000);
-                }
-            }
-
-            // ---------- TABLEAU DE BORD (inchangé) ----------
-            async function loadDashboard() {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/dashboard`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (!res.ok) throw new Error(`Erreur ${res.status}`);
-                    const data = await res.json();
-
-                    document.getElementById('connected-sup-count').innerText = data.connected.supervisors_count;
-                    document.getElementById('connected-agent-count').innerText = data.connected.agents_count;
-                    
-                    let supList = '';
-                    data.connected.supervisors.forEach(s => supList += `<div>👤 ${s.name} (${s.username || s.email})</div>`);
-                    document.getElementById('connected-sup-list').innerHTML = supList || '<span style="opacity:0.7;">Aucun superviseur connecté</span>';
-                    
-                    let agentList = '';
-                    data.connected.agents.forEach(a => agentList += `<div>👤 ${a.name} (${a.username || a.email})</div>`);
-                    document.getElementById('connected-agent-list').innerHTML = agentList || '<span style="opacity:0.7;">Aucun agent connecté</span>';
-
-                    document.getElementById('sales-today').innerHTML = `${data.sales_today.toLocaleString()} G`;
-
-                    const reportRes = await fetch(`${API_URL}/api/owner/reports?period=today`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    
-                    if (reportRes.ok) {
-                        const reportData = await reportRes.json();
-                        const stats = reportData.summary || {};
-                        document.getElementById('total-tickets-today').innerHTML = (stats.total_tickets || 0).toLocaleString();
-                        document.getElementById('total-wins-today').innerHTML = `${(stats.total_wins || 0).toLocaleString()} G`;
-                        const netResult = stats.net_result || 0;
-                        const balanceEl = document.getElementById('balance-today');
-                        balanceEl.innerHTML = `${Math.abs(netResult).toLocaleString()} G`;
-                        const messageDiv = document.getElementById('daily-profit-message');
-                        if (netResult > 0) {
-                            balanceEl.style.color = '#00f190';
-                            messageDiv.style.backgroundColor = 'rgba(0, 241, 144, 0.2)';
-                            messageDiv.style.border = '1px solid #00f190';
-                            messageDiv.style.color = '#00f190';
-                            messageDiv.innerHTML = '✅ Nouveau résultat détecté ! Bénéfice aujourd\'hui.';
-                            messageDiv.style.display = 'block';
-                        } else if (netResult < 0) {
-                            balanceEl.style.color = '#ff4d4d';
-                            messageDiv.style.backgroundColor = 'rgba(255, 77, 77, 0.2)';
-                            messageDiv.style.border = '1px solid #ff4d4d';
-                            messageDiv.style.color = '#ff4d4d';
-                            messageDiv.innerHTML = '⚠️ Nouveau résultat détecté ! Perte aujourd\'hui.';
-                            messageDiv.style.display = 'block';
-                        } else {
-                            balanceEl.style.color = '#ffffff';
-                            messageDiv.style.display = 'none';
-                        }
-                    } else {
-                        document.getElementById('total-tickets-today').innerHTML = '0';
-                        document.getElementById('total-wins-today').innerHTML = '0 G';
-                        document.getElementById('balance-today').innerHTML = '0 G';
-                    }
-
-                    let limitsHtml = '';
-                    if (data.limits_progress.length === 0) {
-                        limitsHtml = '<p>Aucune limite définie</p>';
-                    } else {
-                        limitsHtml = '</td><thead>西峡<th>Tirage</th><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></thead><tbody>';
-                        data.limits_progress.forEach(l => {
-                            const percent = parseFloat(l.progress_percent).toFixed(1);
-                            let statusClass = '';
-                            if (percent >= 90) statusClass = 'badge-danger';
-                            else if (percent >= 70) statusClass = 'badge-warning';
-                            else statusClass = 'badge-success';
-                            limitsHtml += `<tr><td>${l.draw_name}</td><td>${l.number}</td><td>${parseFloat(l.limit_amount).toLocaleString()} G</td><td>${parseFloat(l.current_bets).toLocaleString()} G</td><td><span class="${statusClass}">${percent}%</span></td></tr>`;
-                        });
-                        limitsHtml += '</tbody> widetable';
-                    }
-                    document.getElementById('limits-progress-container').innerHTML = limitsHtml;
-
-                    let agentsHtml = '';
-                    if (data.agents_gain_loss.length === 0) {
-                        agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
-                    } else {
-                        agentsHtml = '能<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
-                        data.agents_gain_loss.forEach(a => {
-                            const netResult = parseFloat(a.total_bets) - parseFloat(a.total_wins);
-                            const netClass = netResult >= 0 ? 'profit' : 'loss';
-                            const statusIcon = netResult >= 0 ? '✅' : '❌';
-                            const statusText = netResult >= 0 ? 'Gagnant' : 'Perdant';
-                            agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
-                        });
-                        agentsHtml += '</tbody></table>';
-                    }
-                    document.getElementById('agents-gainloss-container').innerHTML = agentsHtml;
-
-                } catch (e) {
-                    console.error('Dashboard error:', e);
-                    showMessage('', 'Erreur chargement dashboard: ' + e.message, false);
-                }
-            }
-
-            // ---------- GESTION UTILISATEURS (inchangé) ----------
-            async function loadUsersLists() {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    const supervisors = await supRes.json();
-                    let supHtml = '';
-                    supervisors.forEach(s => {
-                        supHtml += `<div class="item-row"><span><strong>${s.name}</strong> (${s.email})</span><span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
-                    });
-                    document.getElementById('supervisors-list').innerHTML = supHtml || '<p>Aucun superviseur</p>';
-
-                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    const agents = await agentRes.json();
-                    let agentHtml = '';
-                    agents.forEach(a => {
-                        agentHtml += `<div class="item-row"><span><strong>${a.name}</strong> (${a.email})</span><span>Superviseur: ${a.supervisor_name || 'libre'}</span><span>Commission: ${a.commission_percentage || 0}%</span><span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
-                    });
-                    document.getElementById('agents-list').innerHTML = agentHtml || '<p>Aucun agent</p>';
-
-                    let supOpts = '<option value="">Aucun (libre)</option>';
-                    supervisors.forEach(s => { supOpts += `<option value="${s.id}">${s.name}</option>`; });
-                    document.getElementById('create-supervisor').innerHTML = supOpts;
-                    document.getElementById('change-supervisor-select').innerHTML = supOpts;
-
-                    let agentOpts = '<option value="">Choisir agent</option>';
-                    agents.forEach(a => { agentOpts += `<option value="${a.id}">${a.name}</option>`; });
-                    document.getElementById('change-agent-select').innerHTML = agentOpts;
-
-                } catch (e) {
-                    console.error(e);
-                    document.getElementById('user-load-error').style.display = 'block';
-                    document.getElementById('user-load-error').innerText = 'Erreur chargement des utilisateurs : ' + e.message;
-                }
-            }
-
-            function toggleSupervisorField() {
-                const role = document.getElementById('create-role').value;
-                document.getElementById('supervisor-field').style.display = role === 'agent' ? 'block' : 'none';
-            }
-
-            async function createUser() {
-                const token = localStorage.getItem('auth_token');
-                const data = {
-                    name: document.getElementById('create-fullname').value,
-                    cin: document.getElementById('create-cin').value,
-                    username: document.getElementById('create-username').value,
-                    password: document.getElementById('create-password').value,
-                    role: document.getElementById('create-role').value,
-                    supervisorId: document.getElementById('create-supervisor').value || null,
-                    zone: document.getElementById('create-zone').value,
-                    commissionPercentage: parseFloat(document.getElementById('create-commission').value) || 0
-                };
-                if (!data.name || !data.username || !data.password) {
-                    showMessage('user-create-message', 'Veuillez remplir tous les champs obligatoires', false);
-                    return;
-                }
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/create-user`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data)
-                    });
-                    const result = await res.json();
-                    if (result.success) {
-                        showMessage('user-create-message', '✅ Utilisateur créé avec succès', true);
-                        loadQuota();
-                        if (result.user) {
-                            const user = result.user;
-                            const details = `<p><strong>Nom :</strong> ${user.name}</p><p><strong>Identifiant :</strong> ${user.username}</p><p><strong>Rôle :</strong> ${user.role}</p><p><strong>CIN :</strong> ${user.cin || 'Non renseigné'}</p><p><strong>Zone :</strong> ${user.zone || 'Non renseignée'}</p><p><strong>Superviseur :</strong> ${user.supervisor_name || 'Aucun'}</p><p><strong>Commission :</strong> ${user.commission_percentage || 0}%</p>`;
-                            document.getElementById('created-user-details').innerHTML = details;
-                            document.getElementById('user-created-info').style.display = 'block';
-                        }
-                        loadUsersLists();
-                        document.getElementById('create-fullname').value = '';
-                        document.getElementById('create-cin').value = '';
-                        document.getElementById('create-username').value = '';
-                        document.getElementById('create-password').value = 'default123';
-                        document.getElementById('create-zone').value = '';
-                        document.getElementById('create-commission').value = '0';
-                    } else {
-                        showMessage('user-create-message', '❌ ' + (result.error || 'Erreur'), false);
-                    }
-                } catch (e) {
-                    showMessage('user-create-message', '❌ Erreur réseau', false);
-                }
-            }
-
-            async function toggleUserBlock(userId, type) {
-                const token = localStorage.getItem('auth_token');
-                await fetch(`${API_URL}/api/owner/block-user`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, type })
-                });
-                loadUsersLists();
-            }
-
-            async function changeSupervisor() {
-                const token = localStorage.getItem('auth_token');
-                const agentId = document.getElementById('change-agent-select').value;
-                const supervisorId = document.getElementById('change-supervisor-select').value;
-                if (!agentId) return;
-                await fetch(`${API_URL}/api/owner/change-supervisor`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ agentId, supervisorId: supervisorId || null })
-                });
-                loadUsersLists();
-            }
-
-            // ---------- TIRAGES (inchangé) ----------
-            async function loadDraws() {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    const draws = await res.json();
-                    let opts = '<option value="">Sélectionnez un tirage</option>';
-                    draws.forEach(d => { opts += `<option value="${d.id}">${d.name} (${d.time || ''})</option>`; });
-                    document.getElementById('draw-select').innerHTML = opts;
-                    document.getElementById('draw-block-select').innerHTML = opts;
-                } catch (e) { console.error(e); }
-            }
-
-            async function publishManual() {
-                const token = localStorage.getItem('auth_token');
-                const drawId = document.getElementById('draw-select').value;
-                const lotto3 = document.getElementById('draw-lotto3').value.padStart(3, '0');
-                const lot2 = document.getElementById('draw-lot2').value.padStart(2, '0');
-                const lot3 = document.getElementById('draw-lot3').value.padStart(2, '0');
-                if (!drawId || !lotto3 || !lot2 || !lot3) {
-                    showMessage('publish-message', 'Veuillez remplir tous les lots', false);
-                    return;
-                }
-                const premierLot = lotto3.slice(-2);
-                const numbers = [premierLot, lot2, lot3];
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/publish-results`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ drawId, numbers, lotto3 })
-                    });
-                    const result = await res.json();
-                    if (result.success) {
-                        showMessage('publish-message', '✅ Résultats publiés - Nouveau bilan disponible', true);
-                        if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
-                    } else {
-                        showMessage('publish-message', '❌ Erreur', false);
-                    }
-                } catch (e) { showMessage('publish-message', '❌ Erreur', false); }
-            }
-
-            async function toggleDrawBlock(block) {
-                const token = localStorage.getItem('auth_token');
-                const drawId = document.getElementById('draw-block-select').value;
-                if (!drawId) return;
-                await fetch(`${API_URL}/api/owner/block-draw`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drawId, block })
-                });
-                alert(block ? 'Tirage bloqué' : 'Tirage débloqué');
-                loadDraws();
-            }
-
-            // ---------- BOULES & LIMITES (inchangé) ----------
-            async function loadDrawsForSelects() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const draws = await res.json();
-                let limitOpts = '<option value="">Sélectionnez un tirage</option><option value="0">🌍 Tous les tirages (limite globale)</option>';
-                draws.forEach(d => { limitOpts += `<option value="${d.id}">${d.name}</option>`; });
-                document.getElementById('limit-draw').innerHTML = limitOpts;
-                let blockOpts = '<option value="">Sélectionnez un tirage</option>';
-                draws.forEach(d => { blockOpts += `<option value="${d.id}">${d.name}</option>`; });
-                document.getElementById('block-draw-select').innerHTML = blockOpts;
-            }
-
-            async function loadBlockedNumbers() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, { headers: { 'Authorization': `Bearer ${token}` } });
+    // ---------- CHARGEMENT DU QUOTA ----------
+    async function loadQuota() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/quota`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
                 const data = await res.json();
-                let html = '<strong>Numéros bloqués globalement:</strong> ';
-                html += (data.blockedNumbers || []).join(', ') || 'aucun';
-                document.getElementById('blocked-numbers-list').innerHTML = html;
-            }
-
-            async function blockNumberGlobal() {
-                const token = localStorage.getItem('auth_token');
-                const num = document.getElementById('block-number').value.padStart(2, '0');
-                if (!num) return;
-                await fetch(`${API_URL}/api/owner/block-number`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ number: num })
-                });
-                loadBlockedNumbers();
-                loadAllRestrictions();
-            }
-            async function unblockNumberGlobal() {
-                const token = localStorage.getItem('auth_token');
-                const num = document.getElementById('block-number').value.padStart(2, '0');
-                await fetch(`${API_URL}/api/owner/unblock-number`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ number: num })
-                });
-                loadBlockedNumbers();
-                loadAllRestrictions();
-            }
-
-            async function blockNumberDraw() {
-                const token = localStorage.getItem('auth_token');
-                const drawId = document.getElementById('block-draw-select').value;
-                const num = document.getElementById('block-number-draw').value.padStart(2, '0');
-                if (!drawId || !num) { alert('Choisissez un tirage et un numéro'); return; }
-                await fetch(`${API_URL}/api/owner/block-number-draw`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drawId, number: num })
-                });
-                alert('Numéro bloqué pour ce tirage');
-                loadAllRestrictions();
-            }
-            async function unblockNumberDraw() {
-                const token = localStorage.getItem('auth_token');
-                const drawId = document.getElementById('block-draw-select').value;
-                const num = document.getElementById('block-number-draw').value.padStart(2, '0');
-                await fetch(`${API_URL}/api/owner/unblock-number-draw`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drawId, number: num })
-                });
-                alert('Numéro débloqué pour ce tirage');
-                loadAllRestrictions();
-            }
-
-            async function setNumberLimit() {
-                const token = localStorage.getItem('auth_token');
-                const drawId = document.getElementById('limit-draw').value;
-                const number = document.getElementById('limit-number').value.padStart(2, '0');
-                const amount = parseFloat(document.getElementById('limit-amount').value);
-                if (!drawId || !number || !amount) { alert('Veuillez remplir tous les champs'); return; }
-                await fetch(`${API_URL}/api/owner/number-limit`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drawId, number, limitAmount: amount })
-                });
-                alert('Limite appliquée');
-                loadAllRestrictions();
-            }
-
-            async function fetchGlobalBlockedNumbers() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const data = await res.json();
-                return (data.blockedNumbers || []).map(num => ({ type: 'global', number: num }));
-            }
-
-            async function fetchPerDrawBlockedNumbers() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-numbers-per-draw`, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!res.ok) return [];
-                return await res.json();
-            }
-
-            async function fetchNumberLimits() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/number-limits`, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!res.ok) return [];
-                return await res.json();
-            }
-
-            async function fetchBlockedDraws() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/blocked-draws`, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!res.ok) return [];
-                return await res.json();
-            }
-
-            async function unblockPerDraw(drawId, number) {
-                const token = localStorage.getItem('auth_token');
-                await fetch(`${API_URL}/api/owner/unblock-number-draw`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drawId, number })
-                });
-                loadAllRestrictions();
-            }
-
-            async function removeLimit(drawId, number) {
-                const token = localStorage.getItem('auth_token');
-                await fetch(`${API_URL}/api/owner/remove-number-limit`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drawId, number })
-                });
-                loadAllRestrictions();
-            }
-
-            async function unblockDraw(drawId) {
-                const token = localStorage.getItem('auth_token');
-                await fetch(`${API_URL}/api/owner/block-draw`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drawId, block: false })
-                });
-                loadAllRestrictions();
-                loadDraws();
-            }
-
-            async function loadAllRestrictions() {
-                const container = document.getElementById('restrictions-list');
-                container.innerHTML = '<p>Chargement des restrictions...</p>';
-                try {
-                    const [globalBlocked, perDrawBlocked, limits, blockedDraws] = await Promise.all([
-                        fetchGlobalBlockedNumbers(),
-                        fetchPerDrawBlockedNumbers(),
-                        fetchNumberLimits(),
-                        fetchBlockedDraws()
-                    ]);
-                    if (globalBlocked.length === 0 && perDrawBlocked.length === 0 && limits.length === 0 && blockedDraws.length === 0) {
-                        container.innerHTML = '<p class="badge-success" style="padding:10px;">✅ Aucune restriction active</p>';
-                        return;
-                    }
-                    let html = '能<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
-                    blockedDraws.forEach(item => {
-                        html += `<tr style="background:rgba(255,77,77,0.1);"><td>⏸️ Tirage bloqué</td><td>${item.drawName}</td><td>—</td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td></tr>`;
-                    });
-                    globalBlocked.forEach(item => {
-                        html += `<tr style="background:rgba(255,77,77,0.1);"><td>🚫 Blocage global</td><td>Tous</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockNumberGlobalWithValue('${item.number}')">Débloquer</button></td></tr>`;
-                    });
-                    perDrawBlocked.forEach(item => {
-                        html += `<tr style="background:rgba(255,170,0,0.1);"><td>🔒 Blocage spécifique</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockPerDraw('${item.draw_id}', '${item.number}')">Débloquer</button></td></tr>`;
-                    });
-                    limits.forEach(item => {
-                        html += `<tr><td>💰 Limite de mise</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>${parseFloat(item.limit_amount).toLocaleString()} G</td><td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${item.draw_id}', '${item.number}')">Supprimer</button></td></tr>`;
-                    });
-                    html += '</tbody></table>';
-                    container.innerHTML = html;
-                } catch (e) {
-                    container.innerHTML = '<p class="loss">❌ Erreur lors du chargement des restrictions. Vérifiez les appels API.</p>';
-                    console.error(e);
+                document.getElementById('quota-used').innerText = data.used;
+                document.getElementById('quota-total').innerText = data.quota;
+                const badge = document.getElementById('quota-badge');
+                const used = data.used;
+                const total = data.quota;
+                if (used >= total) {
+                    badge.style.backgroundColor = 'rgba(255,77,77,0.2)';
+                } else if (used >= total * 0.8) {
+                    badge.style.backgroundColor = 'rgba(255,193,7,0.2)';
+                } else {
+                    badge.style.backgroundColor = 'rgba(0,241,144,0.2)';
                 }
             }
+        } catch (e) {
+            console.error('Erreur chargement quota', e);
+        }
+    }
 
-            async function unblockNumberGlobalWithValue(num) {
-                const token = localStorage.getItem('auth_token');
-                await fetch(`${API_URL}/api/owner/unblock-number`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ number: num })
+    // ---------- MESSAGES ----------
+    async function fetchOwnerMessages() {
+        const token = localStorage.getItem('auth_token');
+        if (!token) return;
+        try {
+            const res = await fetch(`${API_URL}/api/owner/messages`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.message) {
+                    document.getElementById('owner-message-text').innerText = data.message;
+                    document.getElementById('owner-message-container').style.display = 'block';
+                    setTimeout(() => {
+                        document.getElementById('owner-message-container').style.display = 'none';
+                    }, 600000);
+                }
+            }
+        } catch (e) {
+            console.error('Erreur récupération message', e);
+        }
+    }
+
+    // ---------- ONGLETS ----------
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelector(`.tab[onclick*="${tabId}"]`).classList.add('active');
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+        
+        if (tabId === 'dashboard') loadDashboard();
+        if (tabId === 'users') loadUsersLists();
+        if (tabId === 'draws') loadDraws();
+        if (tabId === 'numbers') {
+            loadBlockedNumbers();
+            loadDrawsForSelects();
+            loadAllRestrictions();
+            loadBlockedLotto3();   // Nouveau
+        }
+        if (tabId === 'reports') {
+            loadSupervisorsAndAgents();
+            loadDrawsForReport();
+        }
+        if (tabId === 'tickets') {
+            loadTicketFilters();
+            loadTickets();
+        }
+        if (tabId === 'config') {
+            loadSettings();
+        }
+    }
+
+    // ---------- UTILITAIRES ----------
+    function showMessage(elementId, message, isSuccess = true) {
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.style.display = 'block';
+            el.className = isSuccess ? 'alert alert-success' : 'alert alert-danger';
+            el.innerHTML = message;
+            setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+    }
+
+    // ---------- TABLEAU DE BORD ----------
+    async function loadDashboard() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/dashboard`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error(`Erreur ${res.status}`);
+            const data = await res.json();
+
+            document.getElementById('connected-sup-count').innerText = data.connected.supervisors_count;
+            document.getElementById('connected-agent-count').innerText = data.connected.agents_count;
+            
+            let supList = '';
+            data.connected.supervisors.forEach(s => supList += `<div>👤 ${s.name} (${s.username || s.email})</div>`);
+            document.getElementById('connected-sup-list').innerHTML = supList || '<span style="opacity:0.7;">Aucun superviseur connecté</span>';
+            
+            let agentList = '';
+            data.connected.agents.forEach(a => agentList += `<div>👤 ${a.name} (${a.username || a.email})</div>`);
+            document.getElementById('connected-agent-list').innerHTML = agentList || '<span style="opacity:0.7;">Aucun agent connecté</span>';
+
+            document.getElementById('sales-today').innerHTML = `${data.sales_today.toLocaleString()} G`;
+
+            const reportRes = await fetch(`${API_URL}/api/owner/reports?period=today`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (reportRes.ok) {
+                const reportData = await reportRes.json();
+                const stats = reportData.summary || {};
+                document.getElementById('total-tickets-today').innerHTML = (stats.total_tickets || 0).toLocaleString();
+                document.getElementById('total-wins-today').innerHTML = `${(stats.total_wins || 0).toLocaleString()} G`;
+                const netResult = stats.net_result || 0;
+                const balanceEl = document.getElementById('balance-today');
+                balanceEl.innerHTML = `${Math.abs(netResult).toLocaleString()} G`;
+                const messageDiv = document.getElementById('daily-profit-message');
+                if (netResult > 0) {
+                    balanceEl.style.color = '#00f190';
+                    messageDiv.style.backgroundColor = 'rgba(0, 241, 144, 0.2)';
+                    messageDiv.style.border = '1px solid #00f190';
+                    messageDiv.style.color = '#00f190';
+                    messageDiv.innerHTML = '✅ Nouveau résultat détecté ! Bénéfice aujourd\'hui.';
+                    messageDiv.style.display = 'block';
+                } else if (netResult < 0) {
+                    balanceEl.style.color = '#ff4d4d';
+                    messageDiv.style.backgroundColor = 'rgba(255, 77, 77, 0.2)';
+                    messageDiv.style.border = '1px solid #ff4d4d';
+                    messageDiv.style.color = '#ff4d4d';
+                    messageDiv.innerHTML = '⚠️ Nouveau résultat détecté ! Perte aujourd\'hui.';
+                    messageDiv.style.display = 'block';
+                } else {
+                    balanceEl.style.color = '#ffffff';
+                    messageDiv.style.display = 'none';
+                }
+            } else {
+                document.getElementById('total-tickets-today').innerHTML = '0';
+                document.getElementById('total-wins-today').innerHTML = '0 G';
+                document.getElementById('balance-today').innerHTML = '0 G';
+            }
+
+            let limitsHtml = '';
+            if (data.limits_progress.length === 0) {
+                limitsHtml = '<p>Aucune limite définie</p>';
+            } else {
+                limitsHtml = '<table><thead><tr><th>Tirage</th><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></tr></thead><tbody>';
+                data.limits_progress.forEach(l => {
+                    const percent = parseFloat(l.progress_percent).toFixed(1);
+                    let statusClass = '';
+                    if (percent >= 90) statusClass = 'badge-danger';
+                    else if (percent >= 70) statusClass = 'badge-warning';
+                    else statusClass = 'badge-success';
+                    limitsHtml += `<tr><td>${l.draw_name}</td><td>${l.number}</td><td>${parseFloat(l.limit_amount).toLocaleString()} G</td><td>${parseFloat(l.current_bets).toLocaleString()} G</td><td><span class="${statusClass}">${percent}%</span></td></tr>`;
                 });
-                loadAllRestrictions();
-                loadBlockedNumbers();
+                limitsHtml += '</tbody></table>';
             }
+            document.getElementById('limits-progress-container').innerHTML = limitsHtml;
 
-            // ---------- RAPPORTS STANDARDS (inchangé) ----------
-            async function loadSupervisorsAndAgents() {
-                const token = localStorage.getItem('auth_token');
-                const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const supervisors = await supRes.json();
-                let supOpts = '<option value="all">Tous superviseurs</option>';
-                supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
-                document.getElementById('report-supervisor').innerHTML = supOpts;
-                const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const agents = await agentRes.json();
-                let agentOpts = '<option value="all">Tous agents</option>';
-                agents.forEach(a => agentOpts += `<option value="${a.id}">${a.name}</option>`);
-                document.getElementById('report-agent').innerHTML = agentOpts;
+            let agentsHtml = '';
+            if (data.agents_gain_loss.length === 0) {
+                agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
+            } else {
+                agentsHtml = '<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
+                data.agents_gain_loss.forEach(a => {
+                    const netResult = parseFloat(a.total_bets) - parseFloat(a.total_wins);
+                    const netClass = netResult >= 0 ? 'profit' : 'loss';
+                    const statusIcon = netResult >= 0 ? '✅' : '❌';
+                    const statusText = netResult >= 0 ? 'Gagnant' : 'Perdant';
+                    agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
+                });
+                agentsHtml += '</tbody></table>';
             }
+            document.getElementById('agents-gainloss-container').innerHTML = agentsHtml;
 
-            async function loadDrawsForReport() {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const draws = await res.json();
-                let opts = '<option value="all">Tous les tirages</option>';
-                draws.forEach(d => opts += `<option value="${d.id}">${d.name}</option>`);
-                document.getElementById('report-draw').innerHTML = opts;
+        } catch (e) {
+            console.error('Dashboard error:', e);
+            showMessage('', 'Erreur chargement dashboard: ' + e.message, false);
+        }
+    }
+
+    // ---------- GESTION UTILISATEURS ----------
+    async function loadUsersLists() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const supervisors = await supRes.json();
+            let supHtml = '';
+            supervisors.forEach(s => {
+                supHtml += `<div class="item-row"><span><strong>${s.name}</strong> (${s.email})</span><span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
+            });
+            document.getElementById('supervisors-list').innerHTML = supHtml || '<p>Aucun superviseur</p>';
+
+            const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const agents = await agentRes.json();
+            let agentHtml = '';
+            agents.forEach(a => {
+                agentHtml += `<div class="item-row"><span><strong>${a.name}</strong> (${a.email})</span><span>Superviseur: ${a.supervisor_name || 'libre'}</span><span>Commission: ${a.commission_percentage || 0}%</span><span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
+            });
+            document.getElementById('agents-list').innerHTML = agentHtml || '<p>Aucun agent</p>';
+
+            let supOpts = '<option value="">Aucun (libre)</option>';
+            supervisors.forEach(s => { supOpts += `<option value="${s.id}">${s.name}</option>`; });
+            document.getElementById('create-supervisor').innerHTML = supOpts;
+            document.getElementById('change-supervisor-select').innerHTML = supOpts;
+
+            let agentOpts = '<option value="">Choisir agent</option>';
+            agents.forEach(a => { agentOpts += `<option value="${a.id}">${a.name}</option>`; });
+            document.getElementById('change-agent-select').innerHTML = agentOpts;
+
+        } catch (e) {
+            console.error(e);
+            document.getElementById('user-load-error').style.display = 'block';
+            document.getElementById('user-load-error').innerText = 'Erreur chargement des utilisateurs : ' + e.message;
+        }
+    }
+
+    function toggleSupervisorField() {
+        const role = document.getElementById('create-role').value;
+        document.getElementById('supervisor-field').style.display = role === 'agent' ? 'block' : 'none';
+    }
+
+    async function createUser() {
+        const token = localStorage.getItem('auth_token');
+        const data = {
+            name: document.getElementById('create-fullname').value,
+            cin: document.getElementById('create-cin').value,
+            username: document.getElementById('create-username').value,
+            password: document.getElementById('create-password').value,
+            role: document.getElementById('create-role').value,
+            supervisorId: document.getElementById('create-supervisor').value || null,
+            zone: document.getElementById('create-zone').value,
+            commissionPercentage: parseFloat(document.getElementById('create-commission').value) || 0
+        };
+        if (!data.name || !data.username || !data.password) {
+            showMessage('user-create-message', 'Veuillez remplir tous les champs obligatoires', false);
+            return;
+        }
+        try {
+            const res = await fetch(`${API_URL}/api/owner/create-user`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.success) {
+                showMessage('user-create-message', '✅ Utilisateur créé avec succès', true);
+                loadQuota();
+                if (result.user) {
+                    const user = result.user;
+                    const details = `<p><strong>Nom :</strong> ${user.name}</p><p><strong>Identifiant :</strong> ${user.username}</p><p><strong>Rôle :</strong> ${user.role}</p><p><strong>CIN :</strong> ${user.cin || 'Non renseigné'}</p><p><strong>Zone :</strong> ${user.zone || 'Non renseignée'}</p><p><strong>Superviseur :</strong> ${user.supervisor_name || 'Aucun'}</p><p><strong>Commission :</strong> ${user.commission_percentage || 0}%</p>`;
+                    document.getElementById('created-user-details').innerHTML = details;
+                    document.getElementById('user-created-info').style.display = 'block';
+                }
+                loadUsersLists();
+                document.getElementById('create-fullname').value = '';
+                document.getElementById('create-cin').value = '';
+                document.getElementById('create-username').value = '';
+                document.getElementById('create-password').value = 'default123';
+                document.getElementById('create-zone').value = '';
+                document.getElementById('create-commission').value = '0';
+            } else {
+                showMessage('user-create-message', '❌ ' + (result.error || 'Erreur'), false);
             }
+        } catch (e) {
+            showMessage('user-create-message', '❌ Erreur réseau', false);
+        }
+    }
 
-            function toggleCustomDates() {
-                const period = document.getElementById('report-period').value;
-                document.getElementById('custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
+    async function toggleUserBlock(userId, type) {
+        const token = localStorage.getItem('auth_token');
+        await fetch(`${API_URL}/api/owner/block-user`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, type })
+        });
+        loadUsersLists();
+    }
+
+    async function changeSupervisor() {
+        const token = localStorage.getItem('auth_token');
+        const agentId = document.getElementById('change-agent-select').value;
+        const supervisorId = document.getElementById('change-supervisor-select').value;
+        if (!agentId) return;
+        await fetch(`${API_URL}/api/owner/change-supervisor`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agentId, supervisorId: supervisorId || null })
+        });
+        loadUsersLists();
+    }
+
+    // ---------- TIRAGES ----------
+    async function loadDraws() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const draws = await res.json();
+            let opts = '<option value="">Sélectionnez un tirage</option>';
+            draws.forEach(d => { opts += `<option value="${d.id}">${d.name} (${d.time || ''})</option>`; });
+            document.getElementById('draw-select').innerHTML = opts;
+            document.getElementById('draw-block-select').innerHTML = opts;
+        } catch (e) { console.error(e); }
+    }
+
+    async function publishManual() {
+        const token = localStorage.getItem('auth_token');
+        const drawId = document.getElementById('draw-select').value;
+        const lotto3 = document.getElementById('draw-lotto3').value.padStart(3, '0');
+        const lot2 = document.getElementById('draw-lot2').value.padStart(2, '0');
+        const lot3 = document.getElementById('draw-lot3').value.padStart(2, '0');
+        if (!drawId || !lotto3 || !lot2 || !lot3) {
+            showMessage('publish-message', 'Veuillez remplir tous les lots', false);
+            return;
+        }
+        const premierLot = lotto3.slice(-2);
+        const numbers = [premierLot, lot2, lot3];
+        try {
+            const res = await fetch(`${API_URL}/api/owner/publish-results`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drawId, numbers, lotto3 })
+            });
+            const result = await res.json();
+            if (result.success) {
+                showMessage('publish-message', '✅ Résultats publiés - Nouveau bilan disponible', true);
+                if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
+            } else {
+                showMessage('publish-message', '❌ Erreur', false);
             }
+        } catch (e) { showMessage('publish-message', '❌ Erreur', false); }
+    }
 
-            async function generateReport() {
-                const token = localStorage.getItem('auth_token');
+    async function toggleDrawBlock(block) {
+        const token = localStorage.getItem('auth_token');
+        const drawId = document.getElementById('draw-block-select').value;
+        if (!drawId) return;
+        await fetch(`${API_URL}/api/owner/block-draw`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drawId, block })
+        });
+        alert(block ? 'Tirage bloqué' : 'Tirage débloqué');
+        loadDraws();
+    }
+
+    // ---------- BOULES & LIMITES (corrigé) ----------
+    async function loadDrawsForSelects() {
+        const token = localStorage.getItem('auth_token');
+        const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const draws = await res.json();
+        let limitOpts = '<option value="">Sélectionnez un tirage</option><option value="0">🌍 Tous les tirages (limite globale)</option>';
+        draws.forEach(d => { limitOpts += `<option value="${d.id}">${d.name}</option>`; });
+        document.getElementById('limit-draw').innerHTML = limitOpts;
+        let blockOpts = '<option value="">Sélectionnez un tirage</option>';
+        draws.forEach(d => { blockOpts += `<option value="${d.id}">${d.name}</option>`; });
+        document.getElementById('block-draw-select').innerHTML = blockOpts;
+    }
+
+    async function loadBlockedNumbers() {
+        const token = localStorage.getItem('auth_token');
+        const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        let html = '<strong>Numéros bloqués globalement:</strong> ';
+        html += (data.blockedNumbers || []).join(', ') || 'aucun';
+        document.getElementById('blocked-numbers-list').innerHTML = html;
+    }
+
+    async function blockNumberGlobal() {
+        const token = localStorage.getItem('auth_token');
+        const num = document.getElementById('block-number').value.padStart(2, '0');
+        if (!num) return;
+        await fetch(`${API_URL}/api/owner/block-number`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: num })
+        });
+        loadBlockedNumbers();
+        loadAllRestrictions();
+    }
+    async function unblockNumberGlobal() {
+        const token = localStorage.getItem('auth_token');
+        const num = document.getElementById('block-number').value.padStart(2, '0');
+        await fetch(`${API_URL}/api/owner/unblock-number`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: num })
+        });
+        loadBlockedNumbers();
+        loadAllRestrictions();
+    }
+
+    async function blockNumberDraw() {
+        const token = localStorage.getItem('auth_token');
+        const drawId = document.getElementById('block-draw-select').value;
+        const num = document.getElementById('block-number-draw').value.padStart(2, '0');
+        if (!drawId || !num) { alert('Choisissez un tirage et un numéro'); return; }
+        await fetch(`${API_URL}/api/owner/block-number-draw`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drawId, number: num })
+        });
+        alert('Numéro bloqué pour ce tirage');
+        loadAllRestrictions();
+    }
+    async function unblockNumberDraw() {
+        const token = localStorage.getItem('auth_token');
+        const drawId = document.getElementById('block-draw-select').value;
+        const num = document.getElementById('block-number-draw').value.padStart(2, '0');
+        await fetch(`${API_URL}/api/owner/unblock-number-draw`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drawId, number: num })
+        });
+        alert('Numéro débloqué pour ce tirage');
+        loadAllRestrictions();
+    }
+
+    async function setNumberLimit() {
+        const token = localStorage.getItem('auth_token');
+        const drawId = document.getElementById('limit-draw').value;
+        const number = document.getElementById('limit-number').value.padStart(2, '0');
+        const amount = parseFloat(document.getElementById('limit-amount').value);
+        if (!drawId || !number || !amount) { alert('Veuillez remplir tous les champs'); return; }
+        await fetch(`${API_URL}/api/owner/number-limit`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drawId, number, limitAmount: amount })
+        });
+        alert('Limite appliquée');
+        loadAllRestrictions();
+    }
+
+    // === FONCTIONS ROBUSTES POUR LA RÉCUPÉRATION DES RESTRICTIONS ===
+    async function fetchGlobalBlockedNumbers() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/blocked-numbers`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) return [];
+            const data = await res.json();
+            return (data.blockedNumbers || []).map(num => ({ type: 'global', number: num }));
+        } catch (e) {
+            console.error('fetchGlobalBlockedNumbers error', e);
+            return [];
+        }
+    }
+
+    async function fetchPerDrawBlockedNumbers() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/blocked-numbers-per-draw`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (e) {
+            console.error('fetchPerDrawBlockedNumbers error', e);
+            return [];
+        }
+    }
+
+    async function fetchNumberLimits() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/number-limits`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (e) {
+            console.error('fetchNumberLimits error', e);
+            return [];
+        }
+    }
+
+    async function fetchBlockedDraws() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/blocked-draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (e) {
+            console.error('fetchBlockedDraws error', e);
+            return [];
+        }
+    }
+
+    async function loadAllRestrictions() {
+        const container = document.getElementById('restrictions-list');
+        container.innerHTML = '<p>Chargement des restrictions...</p>';
+        try {
+            const [globalBlocked, perDrawBlocked, limits, blockedDraws] = await Promise.all([
+                fetchGlobalBlockedNumbers(),
+                fetchPerDrawBlockedNumbers(),
+                fetchNumberLimits(),
+                fetchBlockedDraws()
+            ]);
+            if (globalBlocked.length === 0 && perDrawBlocked.length === 0 && limits.length === 0 && blockedDraws.length === 0) {
+                container.innerHTML = '<p class="badge-success" style="padding:10px;">✅ Aucune restriction active</p>';
+                return;
+            }
+            let html = '<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
+            // Tirages bloqués
+            blockedDraws.forEach(item => {
+                html += `<tr style="background:rgba(255,77,77,0.1);"><td>⏸️ Tirage bloqué</td><td>${item.drawName}</td><td>—</td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td></tr>`;
+            });
+            // Blocages globaux
+            globalBlocked.forEach(item => {
+                html += `<tr style="background:rgba(255,77,77,0.1);"><td>🚫 Blocage global</td><td>Tous</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockNumberGlobalWithValue('${item.number}')">Débloquer</button></td></tr>`;
+            });
+            // Blocages par tirage
+            perDrawBlocked.forEach(item => {
+                html += `<tr style="background:rgba(255,170,0,0.1);"><td>🔒 Blocage spécifique</td><td>${item.draw_name || item.drawId}</td><td><strong>${item.number}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockPerDraw('${item.draw_id}', '${item.number}')">Débloquer</button></td></tr>`;
+            });
+            // Limites (globales et par tirage)
+            limits.forEach(item => {
+                // Gérer l'affichage du tirage pour les limites globales (draw_id null)
+                const drawDisplay = (item.draw_id === null || item.draw_id === undefined) ? '🌍 Tous les tirages' : (item.draw_name || item.draw_id);
+                html += `<tr style="background:rgba(0,212,255,0.05);"><td>💰 Limite de mise</td><td>${drawDisplay}</td><td><strong>${item.number}</strong></td><td>${parseFloat(item.limit_amount).toLocaleString()} G</td><td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${item.draw_id}', '${item.number}')">Supprimer</button></td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (e) {
+            container.innerHTML = '<p class="loss">❌ Erreur lors du chargement des restrictions. Vérifiez les appels API.</p>';
+            console.error(e);
+        }
+    }
+
+    async function unblockNumberGlobalWithValue(num) {
+        const token = localStorage.getItem('auth_token');
+        await fetch(`${API_URL}/api/owner/unblock-number`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: num })
+        });
+        loadAllRestrictions();
+        loadBlockedNumbers();
+    }
+
+    async function unblockPerDraw(drawId, number) {
+        const token = localStorage.getItem('auth_token');
+        await fetch(`${API_URL}/api/owner/unblock-number-draw`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drawId, number })
+        });
+        loadAllRestrictions();
+    }
+
+    async function removeLimit(drawId, number) {
+        const token = localStorage.getItem('auth_token');
+        await fetch(`${API_URL}/api/owner/remove-number-limit`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drawId, number })
+        });
+        loadAllRestrictions();
+    }
+
+    async function unblockDraw(drawId) {
+        const token = localStorage.getItem('auth_token');
+        await fetch(`${API_URL}/api/owner/block-draw`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drawId, block: false })
+        });
+        loadAllRestrictions();
+        loadDraws();
+    }
+
+    // === GESTION LOTTO3 BLOQUÉ (ajout) ===
+    async function loadBlockedLotto3() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/blocked-lotto3`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) throw new Error('Erreur chargement');
+            const data = await res.json();
+            let html = '<strong>Numéros Lotto3 bloqués globalement:</strong> ';
+            html += (data.blockedNumbers || []).join(', ') || 'aucun';
+            const container = document.getElementById('blocked-lotto3-list');
+            if (container) container.innerHTML = html;
+        } catch (e) { console.error(e); const container = document.getElementById('blocked-lotto3-list'); if (container) container.innerHTML = '<p class="loss">Erreur de chargement</p>'; }
+    }
+
+    async function blockLotto3Number() {
+        const token = localStorage.getItem('auth_token');
+        const num = document.getElementById('block-lotto3-number')?.value.trim();
+        if (!num || num.length !== 3 || !/^\d+$/.test(num)) { alert('Veuillez entrer un numéro à 3 chiffres'); return; }
+        try {
+            const res = await fetch(`${API_URL}/api/owner/block-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number: num }) });
+            const result = await res.json();
+            if (result.success) { alert('Numéro Lotto3 bloqué'); loadBlockedLotto3(); loadAllRestrictions(); }
+            else alert('Erreur: ' + (result.error || ''));
+        } catch (e) { alert('Erreur réseau'); }
+    }
+
+    async function unblockLotto3Number() {
+        const token = localStorage.getItem('auth_token');
+        const num = document.getElementById('block-lotto3-number')?.value.trim();
+        if (!num) return;
+        try {
+            const res = await fetch(`${API_URL}/api/owner/unblock-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number: num }) });
+            const result = await res.json();
+            if (result.success) { alert('Numéro Lotto3 débloqué'); loadBlockedLotto3(); loadAllRestrictions(); }
+            else alert('Erreur: ' + (result.error || ''));
+        } catch (e) { alert('Erreur réseau'); }
+    }
+
+    // ---------- RAPPORTS STANDARDS ----------
+    async function loadSupervisorsAndAgents() {
+        const token = localStorage.getItem('auth_token');
+        const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const supervisors = await supRes.json();
+        let supOpts = '<option value="all">Tous superviseurs</option>';
+        supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
+        document.getElementById('report-supervisor').innerHTML = supOpts;
+        const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const agents = await agentRes.json();
+        let agentOpts = '<option value="all">Tous agents</option>';
+        agents.forEach(a => agentOpts += `<option value="${a.id}">${a.name}</option>`);
+        document.getElementById('report-agent').innerHTML = agentOpts;
+    }
+
+    async function loadDrawsForReport() {
+        const token = localStorage.getItem('auth_token');
+        const res = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const draws = await res.json();
+        let opts = '<option value="all">Tous les tirages</option>';
+        draws.forEach(d => opts += `<option value="${d.id}">${d.name}</option>`);
+        document.getElementById('report-draw').innerHTML = opts;
+    }
+
+    function toggleCustomDates() {
+        const period = document.getElementById('report-period').value;
+        document.getElementById('custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
+    }
+
+    async function generateReport() {
+        const token = localStorage.getItem('auth_token');
+        const params = new URLSearchParams({
+            supervisorId: document.getElementById('report-supervisor').value,
+            agentId: document.getElementById('report-agent').value,
+            drawId: document.getElementById('report-draw').value,
+            period: document.getElementById('report-period').value,
+            fromDate: document.getElementById('report-from').value,
+            toDate: document.getElementById('report-to').value,
+            gainLoss: document.getElementById('report-gainloss').value
+        });
+        const res = await fetch(`${API_URL}/api/owner/reports?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const report = await res.json();
+        displayReport(report);
+    }
+
+    function displayReport(report) {
+        const s = report.summary;
+        let html = `<div class="stats-grid">`;
+        html += `<div class="stat-card"><div style="font-size:2rem;">${s.total_tickets}</div><div>Tickets</div></div>`;
+        html += `<div class="stat-card"><div style="font-size:2rem;">${parseFloat(s.total_bets).toLocaleString()} G</div><div>Pariés</div></div>`;
+        html += `<div class="stat-card"><div style="font-size:2rem;">${parseFloat(s.total_wins).toLocaleString()} G</div><div>Gains</div></div>`;
+        html += `<div class="stat-card"><div style="font-size:2rem;" class="${parseFloat(s.net_result) >= 0 ? 'profit' : 'loss'}">${parseFloat(s.net_result).toLocaleString()} G</div><div>Résultat net</div></div>`;
+        html += `<div class="stat-card"><div style="font-size:2rem;">${s.gain_count}</div><div>Agents en gain</div></div>`;
+        html += `<div class="stat-card"><div style="font-size:2rem;">${s.loss_count}</div><div>Agents en perte</div></div>`;
+        html += `</div>`;
+        if (report.detail && report.detail.length > 0) {
+            html += `<h3>Détail</h3><div class="list-container"><table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
+            report.detail.forEach(d => {
+                const result = parseFloat(d.result || d.wins - d.bets);
+                html += `<tr><td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td><td>${d.tickets}</td><td>${parseFloat(d.bets).toLocaleString()} G</td><td>${parseFloat(d.wins).toLocaleString()} G</td><td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td></tr>`;
+            });
+            html += `</tbody></table></div>`;
+        }
+        document.getElementById('report-result').innerHTML = html;
+        const ctx = document.getElementById('reportChart').getContext('2d');
+        if (chartInstance) chartInstance.destroy();
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Mises', 'Gains', 'Résultat net'],
+                datasets: [{ label: 'Montants (G)', data: [parseFloat(s.total_bets), parseFloat(s.total_wins), parseFloat(s.net_result)], backgroundColor: ['#00d4ff', '#00f190', '#ad00f1'] }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } } }, plugins: { legend: { labels: { color: 'white' } } } }
+        });
+        document.getElementById('report-chart-container').style.display = 'block';
+    }
+
+    function printReport() {
+        const content = document.getElementById('report-result').innerHTML;
+        const w = window.open('', '_blank');
+        w.document.write(`<html><head><title>Rapport LOTATO</title><style>body{font-family:Arial;padding:20px;background:#0a0b1e;color:#fff;}</style></head><body>${content}</body></html>`);
+        w.document.close();
+        w.print();
+    }
+
+    // ---------- RAPPORT DÉTAILLÉ PAR SUPERVISEUR ----------
+    function toggleDetailCustomDates() {
+        const period = document.getElementById('detail-period-select').value;
+        const customDiv = document.getElementById('detail-custom-dates');
+        if (customDiv) customDiv.style.display = period === 'custom' ? 'flex' : 'none';
+    }
+
+    async function loadDetailedReport() {
+        const container = document.getElementById('detailed-report-container');
+        const btn = document.getElementById('detail-report-btn');
+        const printBtn = document.getElementById('print-detailed-btn');
+        container.innerHTML = '<p><i class="fas fa-spinner fa-pulse"></i> Chargement des données...</p>';
+        btn.disabled = true;
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+            container.innerHTML = '<p class="loss">❌ Session expirée, veuillez vous reconnecter.</p>';
+            btn.disabled = false;
+            return;
+        }
+
+        let fromDate, toDate;
+        const period = document.getElementById('detail-period-select').value;
+        const today = new Date();
+        if (period === 'custom') {
+            fromDate = document.getElementById('detail-from').value;
+            toDate = document.getElementById('detail-to').value;
+            if (!fromDate || !toDate) {
+                container.innerHTML = '<p class="loss">❌ Veuillez sélectionner une période personnalisée.</p>';
+                btn.disabled = false;
+                return;
+            }
+        } else {
+            const days = period === '15days' ? 15 : 30;
+            toDate = today.toISOString().split('T')[0];
+            const from = new Date(today);
+            from.setDate(from.getDate() - days);
+            fromDate = from.toISOString().split('T')[0];
+        }
+
+        try {
+            const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!supRes.ok) throw new Error('Impossible de récupérer les superviseurs');
+            const supervisors = await supRes.json();
+
+            const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!agentRes.ok) throw new Error('Impossible de récupérer les agents');
+            const agents = await agentRes.json();
+
+            const agentStatsPromises = agents.map(async (agent) => {
                 const params = new URLSearchParams({
-                    supervisorId: document.getElementById('report-supervisor').value,
-                    agentId: document.getElementById('report-agent').value,
-                    drawId: document.getElementById('report-draw').value,
-                    period: document.getElementById('report-period').value,
-                    fromDate: document.getElementById('report-from').value,
-                    toDate: document.getElementById('report-to').value,
-                    gainLoss: document.getElementById('report-gainloss').value
+                    agentId: agent.id,
+                    period: 'custom',
+                    fromDate: fromDate,
+                    toDate: toDate
                 });
-                const res = await fetch(`${API_URL}/api/owner/reports?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const report = await res.json();
-                displayReport(report);
-            }
-
-            function displayReport(report) {
-                const s = report.summary;
-                let html = `<div class="stats-grid">`;
-                html += `<div class="stat-card"><div style="font-size:2rem;">${s.total_tickets}</div><div>Tickets</div></div>`;
-                html += `<div class="stat-card"><div style="font-size:2rem;">${parseFloat(s.total_bets).toLocaleString()} G</div><div>Pariés</div></div>`;
-                html += `<div class="stat-card"><div style="font-size:2rem;">${parseFloat(s.total_wins).toLocaleString()} G</div><div>Gains</div></div>`;
-                html += `<div class="stat-card"><div style="font-size:2rem;" class="${parseFloat(s.net_result) >= 0 ? 'profit' : 'loss'}">${parseFloat(s.net_result).toLocaleString()} G</div><div>Résultat net</div></div>`;
-                html += `<div class="stat-card"><div style="font-size:2rem;">${s.gain_count}</div><div>Agents en gain</div></div>`;
-                html += `<div class="stat-card"><div style="font-size:2rem;">${s.loss_count}</div><div>Agents en perte</div></div>`;
-                html += `</div>`;
-                if (report.detail && report.detail.length > 0) {
-                    html += `<h3>Détail</h3><div class="list-container"><table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
-                    report.detail.forEach(d => {
-                        const result = parseFloat(d.result || d.wins - d.bets);
-                        html += `<tr><td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td><td>${d.tickets}</td><td>${parseFloat(d.bets).toLocaleString()} G</td><td>${parseFloat(d.wins).toLocaleString()} G</td><td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td></tr>`;
-                    });
-                    html += `</tbody></table></div>`;
-                }
-                document.getElementById('report-result').innerHTML = html;
-                const ctx = document.getElementById('reportChart').getContext('2d');
-                if (chartInstance) chartInstance.destroy();
-                chartInstance = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Mises', 'Gains', 'Résultat net'],
-                        datasets: [{ label: 'Montants (G)', data: [parseFloat(s.total_bets), parseFloat(s.total_wins), parseFloat(s.net_result)], backgroundColor: ['#00d4ff', '#00f190', '#ad00f1'] }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } } }, plugins: { legend: { labels: { color: 'white' } } } }
-                });
-                document.getElementById('report-chart-container').style.display = 'block';
-            }
-
-            function printReport() {
-                const content = document.getElementById('report-result').innerHTML;
-                const w = window.open('', '_blank');
-                w.document.write(`<html><head><title>Rapport LOTATO</title><style>body{font-family:Arial;padding:20px;background:#0a0b1e;color:#fff;}</style></head><body>${content}</body></html>`);
-                w.document.close();
-                w.print();
-            }
-
-            // ---------- RAPPORT DÉTAILLÉ PAR SUPERVISEUR ----------
-            function toggleDetailCustomDates() {
-                const period = document.getElementById('detail-period-select').value;
-                const customDiv = document.getElementById('detail-custom-dates');
-                if (customDiv) customDiv.style.display = period === 'custom' ? 'flex' : 'none';
-            }
-
-            async function loadDetailedReport() {
-                const container = document.getElementById('detailed-report-container');
-                const btn = document.getElementById('detail-report-btn');
-                const printBtn = document.getElementById('print-detailed-btn');
-                container.innerHTML = '<p><i class="fas fa-spinner fa-pulse"></i> Chargement des données...</p>';
-                btn.disabled = true;
-                const token = localStorage.getItem('auth_token');
-                if (!token) {
-                    container.innerHTML = '<p class="loss">❌ Session expirée, veuillez vous reconnecter.</p>';
-                    btn.disabled = false;
-                    return;
-                }
-
-                // Déterminer les dates
-                let fromDate, toDate;
-                const period = document.getElementById('detail-period-select').value;
-                const today = new Date();
-                if (period === 'custom') {
-                    fromDate = document.getElementById('detail-from').value;
-                    toDate = document.getElementById('detail-to').value;
-                    if (!fromDate || !toDate) {
-                        container.innerHTML = '<p class="loss">❌ Veuillez sélectionner une période personnalisée.</p>';
-                        btn.disabled = false;
-                        return;
-                    }
-                } else {
-                    // 15days ou 30days
-                    const days = period === '15days' ? 15 : 30;
-                    toDate = today.toISOString().split('T')[0];
-                    const from = new Date(today);
-                    from.setDate(from.getDate() - days);
-                    fromDate = from.toISOString().split('T')[0];
-                }
-
                 try {
-                    // 1. Récupérer la liste des superviseurs
-                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    if (!supRes.ok) throw new Error('Impossible de récupérer les superviseurs');
-                    const supervisors = await supRes.json();
-
-                    // 2. Récupérer la liste des agents
-                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    if (!agentRes.ok) throw new Error('Impossible de récupérer les agents');
-                    const agents = await agentRes.json();
-
-                    // 3. Pour chaque agent, récupérer ses stats sur la période
-                    const agentStatsPromises = agents.map(async (agent) => {
-                        const params = new URLSearchParams({
-                            agentId: agent.id,
-                            period: 'custom',
-                            fromDate: fromDate,
-                            toDate: toDate
-                        });
-                        try {
-                            const res = await fetch(`${API_URL}/api/owner/reports?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                            if (!res.ok) throw new Error(`Erreur pour ${agent.name}`);
-                            const data = await res.json();
-                            const summary = data.summary || { total_tickets: 0, total_bets: 0, total_wins: 0 };
-                            return {
-                                agent,
-                                total_tickets: summary.total_tickets,
-                                total_bets: summary.total_bets,
-                                total_wins: summary.total_wins
-                            };
-                        } catch (err) {
-                            console.error(`Erreur pour agent ${agent.name}:`, err);
-                            return {
-                                agent,
-                                total_tickets: 0,
-                                total_bets: 0,
-                                total_wins: 0,
-                                error: true
-                            };
-                        }
-                    });
-                    const agentStats = await Promise.all(agentStatsPromises);
-
-                    // 4. Organiser par superviseur
-                    const supervisorsMap = new Map();
-                    supervisors.forEach(sup => {
-                        supervisorsMap.set(sup.id, {
-                            id: sup.id,
-                            name: sup.name,
-                            agents: [],
-                            totals: { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 }
-                        });
-                    });
-                    const freeAgents = [];
-
-                    agentStats.forEach(stat => {
-                        const agent = stat.agent;
-                        const ventes = stat.total_bets;
-                        const paye = stat.total_wins;
-                        const commissionPercent = agent.commission_percentage || 0;
-                        const montantCommission = ventes * (commissionPercent / 100);
-                        const balanceSans = ventes - paye;
-                        const balanceAvec = balanceSans - montantCommission;
-                        const agentData = {
-                            name: agent.name,
-                            tickets: stat.total_tickets,
-                            ventes,
-                            paye,
-                            commission: montantCommission,
-                            balanceSans,
-                            balanceAvec
-                        };
-                        if (agent.supervisor_id && supervisorsMap.has(agent.supervisor_id)) {
-                            const sup = supervisorsMap.get(agent.supervisor_id);
-                            sup.agents.push(agentData);
-                            sup.totals.tickets += stat.total_tickets;
-                            sup.totals.bets += ventes;
-                            sup.totals.wins += paye;
-                            sup.totals.commission += montantCommission;
-                            sup.totals.netNoComm += balanceSans;
-                            sup.totals.netWithComm += balanceAvec;
-                        } else {
-                            freeAgents.push(agentData);
-                        }
-                    });
-
-                    // 5. Construire le HTML
-                    let html = `
-                        <div style="margin-bottom:20px;">
-                            <strong>Période :</strong> du ${fromDate} au ${toDate}<br>
-                            <strong>Superviseurs :</strong> ${supervisors.length} &nbsp;|&nbsp;
-                            <strong>Agents avec superviseur :</strong> ${agentStats.filter(a => a.agent.supervisor_id).length} &nbsp;|&nbsp;
-                            <strong>Agents libres :</strong> ${freeAgents.length}
-                        </div>
-                    `;
-
-                    // Totaux généraux
-                    let grandTotals = { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 };
-
-                    // Affichage par superviseur
-                    for (const sup of supervisorsMap.values()) {
-                        if (sup.agents.length === 0) continue;
-                        grandTotals.tickets += sup.totals.tickets;
-                        grandTotals.bets += sup.totals.bets;
-                        grandTotals.wins += sup.totals.wins;
-                        grandTotals.commission += sup.totals.commission;
-                        grandTotals.netNoComm += sup.totals.netNoComm;
-                        grandTotals.netWithComm += sup.totals.netWithComm;
-
-                        html += `<div class="report-section">
-                            <h3>👑 ${escapeHtml(sup.name)}</h3>
-                            <div style="overflow-x:auto;">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>`;
-                        sup.agents.forEach(agent => {
-                            html += `<tr>
-                                <td>${escapeHtml(agent.name)}</td>
-                                <td style="text-align:right;">${agent.tickets.toLocaleString()}</td>
-                                <td style="text-align:right;">${agent.ventes.toLocaleString()} G</td>
-                                <td style="text-align:right;">${agent.paye.toLocaleString()} G</td>
-                                <td style="text-align:right;">${agent.commission.toLocaleString()} G</td>
-                                <td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td>
-                                <td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td>
-                            </tr>`;
-                        });
-                        html += `<tr class="subtotal-row">
-                            <td><strong>Sous-total superviseur</strong></td>
-                            <td style="text-align:right;"><strong>${sup.totals.tickets.toLocaleString()}</strong></td>
-                            <td style="text-align:right;"><strong>${sup.totals.bets.toLocaleString()} G</strong></td>
-                            <td style="text-align:right;"><strong>${sup.totals.wins.toLocaleString()} G</strong></td>
-                            <td style="text-align:right;"><strong>${sup.totals.commission.toLocaleString()} G</strong></td>
-                            <td style="text-align:right; ${sup.totals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netNoComm.toLocaleString()} G</strong></td>
-                            <td style="text-align:right; ${sup.totals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netWithComm.toLocaleString()} G</strong></td>
-                        </tr>`;
-                        html += `</tbody></table></div></div>`;
-                    }
-
-                    // Agents libres
-                    if (freeAgents.length > 0) {
-                        let freeTotals = { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 };
-                        freeAgents.forEach(agent => {
-                            freeTotals.tickets += agent.tickets;
-                            freeTotals.bets += agent.ventes;
-                            freeTotals.wins += agent.paye;
-                            freeTotals.commission += agent.commission;
-                            freeTotals.netNoComm += agent.balanceSans;
-                            freeTotals.netWithComm += agent.balanceAvec;
-                        });
-                        grandTotals.tickets += freeTotals.tickets;
-                        grandTotals.bets += freeTotals.bets;
-                        grandTotals.wins += freeTotals.wins;
-                        grandTotals.commission += freeTotals.commission;
-                        grandTotals.netNoComm += freeTotals.netNoComm;
-                        grandTotals.netWithComm += freeTotals.netWithComm;
-
-                        html += `<div class="report-section free-agents-section">
-                            <h3>🔓 Agents libres (sans superviseur)</h3>
-                            <div style="overflow-x:auto;">
-                                <table>
-                                    <thead>
-                                        <tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr>
-                                    </thead>
-                                    <tbody>`;
-                        freeAgents.forEach(agent => {
-                            html += `<tr>
-                                <td>${escapeHtml(agent.name)}</td>
-                                <td style="text-align:right;">${agent.tickets.toLocaleString()}</td>
-                                <td style="text-align:right;">${agent.ventes.toLocaleString()} G</td>
-                                <td style="text-align:right;">${agent.paye.toLocaleString()} G</td>
-                                <td style="text-align:right;">${agent.commission.toLocaleString()} G</td>
-                                <td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td>
-                                <td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td>
-                            </tr>`;
-                        });
-                        html += `<tr class="subtotal-row">
-                            <td><strong>Sous-total agents libres</strong></td>
-                            <td style="text-align:right;"><strong>${freeTotals.tickets.toLocaleString()}</strong></td>
-                            <td style="text-align:right;"><strong>${freeTotals.bets.toLocaleString()} G</strong></td>
-                            <td style="text-align:right;"><strong>${freeTotals.wins.toLocaleString()} G</strong></td>
-                            <td style="text-align:right;"><strong>${freeTotals.commission.toLocaleString()} G</strong></td>
-                            <td style="text-align:right; ${freeTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netNoComm.toLocaleString()} G</strong></td>
-                            <td style="text-align:right; ${freeTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netWithComm.toLocaleString()} G</strong></td>
-                        </tr>`;
-                        html += `</tbody></table></div></div>`;
-                    }
-
-                    // Total général
-                    html += `<div class="report-section" style="border:2px solid #00d4ff;">
-                        <h3>📊 TOTAL GÉNÉRAL</h3>
-                        <div style="overflow-x:auto;">
-                            <table>
-                                <thead>
-                                    <tr><th></th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr style="font-weight:bold; background:rgba(0,212,255,0.1);">
-                                        <td>Total</td>
-                                        <td style="text-align:right;">${grandTotals.tickets.toLocaleString()}</td>
-                                        <td style="text-align:right;">${grandTotals.bets.toLocaleString()} G</td>
-                                        <td style="text-align:right;">${grandTotals.wins.toLocaleString()} G</td>
-                                        <td style="text-align:right;">${grandTotals.commission.toLocaleString()} G</td>
-                                        <td style="text-align:right; ${grandTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netNoComm.toLocaleString()} G</td>
-                                        <td style="text-align:right; ${grandTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netWithComm.toLocaleString()} G</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>`;
-
-                    container.innerHTML = html;
-                    lastDetailedReportHTML = container.innerHTML;
-                    printBtn.style.display = 'inline-block';
-                } catch (error) {
-                    console.error('Erreur lors du chargement du rapport détaillé:', error);
-                    container.innerHTML = `<p class="loss">❌ Erreur: ${error.message}</p>`;
-                } finally {
-                    btn.disabled = false;
-                }
-            }
-
-            function escapeHtml(text) {
-                if (!text) return '';
-                return text.replace(/[&<>]/g, function(m) {
-                    if (m === '&') return '&amp;';
-                    if (m === '<') return '&lt;';
-                    if (m === '>') return '&gt;';
-                    return m;
-                });
-            }
-
-            function printDetailedReport() {
-                if (!lastDetailedReportHTML) {
-                    alert('Veuillez d\'abord générer le rapport.');
-                    return;
-                }
-                const printWindow = window.open('', '_blank', 'width=1100,height=800');
-                printWindow.document.write(`
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>Rapport détaillé par superviseur - LOTATO PRO</title>
-                        <meta charset="UTF-8">
-                        <style>
-                            @page { size: letter; margin: 1.5cm; }
-                            body { font-family: 'Inter', 'Segoe UI', sans-serif; background: white; color: black; padding: 20px; margin: 0; }
-                            h1 { font-size: 20px; margin-bottom: 5px; color: #333; }
-                            .header { margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
-                            .report-section { margin-bottom: 20px; border: 1px solid #ccc; border-radius: 8px; overflow: hidden; }
-                            .report-section h3 { background: #f2f2f2; padding: 8px 12px; margin: 0; font-size: 16px; }
-                            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 0; }
-                            th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: right; }
-                            th:first-child, td:first-child { text-align: left; }
-                            th { background-color: #f2f2f2; font-weight: bold; text-align: center; }
-                            .subtotal-row { background-color: #f9f9f9; font-weight: bold; }
-                            .footer { margin-top: 30px; font-size: 10px; text-align: center; color: #666; }
-                            @media print { body { margin: 0; padding: 0; } .no-print { display: none; } }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="header">
-                            <h1>LOTATO PRO - Rapport détaillé par superviseur</h1>
-                            <p>Généré le ${new Date().toLocaleString()}</p>
-                        </div>
-                        <div>${lastDetailedReportHTML}</div>
-                        <div class="footer">Rapport généré automatiquement. Tous les montants sont en Gourdes (G).</div>
-                        <div class="no-print" style="text-align:center; margin-top:20px;">
-                            <button onclick="window.print();" style="padding:8px 20px;">Imprimer</button>
-                            <button onclick="window.close();" style="padding:8px 20px;">Fermer</button>
-                        </div>
-                    </body>
-                    </html>
-                `);
-                printWindow.document.close();
-                printWindow.focus();
-            }
-
-            // ---------- TICKETS (inchangé) ----------
-            let currentTicketPage = 0;
-            async function loadTickets(reset = true) {
-                if (reset) {
-                    currentTicketPage = 0;
-                    document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>';
-                }
-                const token = localStorage.getItem('auth_token');
-                const params = new URLSearchParams();
-                const supervisor = document.getElementById('ticket-filter-supervisor').value;
-                const agent = document.getElementById('ticket-filter-agent').value;
-                const draw = document.getElementById('ticket-filter-draw').value;
-                const period = document.getElementById('ticket-filter-period').value;
-                const from = document.getElementById('ticket-filter-from').value;
-                const to = document.getElementById('ticket-filter-to').value;
-                const gain = document.getElementById('ticket-filter-gain').value;
-                const paid = document.getElementById('ticket-filter-paid').value;
-                if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
-                if (agent && agent !== 'all') params.append('agentId', agent);
-                if (draw && draw !== 'all') params.append('drawId', draw);
-                if (period) params.append('period', period);
-                if (from) params.append('fromDate', from);
-                if (to) params.append('toDate', to);
-                if (gain && gain !== 'all') params.append('gain', gain);
-                if (paid && paid !== 'all') params.append('paid', paid);
-                params.append('page', currentTicketPage);
-                params.append('limit', 20);
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    if (!res.ok) throw new Error('Erreur chargement tickets');
+                    const res = await fetch(`${API_URL}/api/owner/reports?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!res.ok) throw new Error(`Erreur pour ${agent.name}`);
                     const data = await res.json();
-                    if (reset) displayTickets(data.tickets);
-                    else appendTickets(data.tickets);
-                    document.getElementById('tickets-load-more').style.display = data.hasMore ? 'block' : 'none';
-                } catch (e) {
-                    document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>';
-                    console.error(e);
+                    const summary = data.summary || { total_tickets: 0, total_bets: 0, total_wins: 0 };
+                    return {
+                        agent,
+                        total_tickets: summary.total_tickets,
+                        total_bets: summary.total_bets,
+                        total_wins: summary.total_wins
+                    };
+                } catch (err) {
+                    console.error(`Erreur pour agent ${agent.name}:`, err);
+                    return {
+                        agent,
+                        total_tickets: 0,
+                        total_bets: 0,
+                        total_wins: 0,
+                        error: true
+                    };
                 }
-            }
+            });
+            const agentStats = await Promise.all(agentStatsPromises);
 
-            function displayTickets(tickets) {
-                const container = document.getElementById('tickets-list-container');
-                if (!tickets || tickets.length === 0) { container.innerHTML = '<p>Aucun ticket trouvé</p>'; return; }
-                let html = '能<table><thead><tr><th>ID</th><th>Agent</th><th>Tirage</th><th>Date</th><th>Montant</th><th>Gain</th><th>Payé</th><th>Actions</th></tr></thead><tbody>';
-                tickets.forEach(t => {
-                    const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
-                    const gainClass = t.win_amount > 0 ? 'profit' : '';
-                    const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
-                    html += `<tr><td>${t.ticket_id || t.id}</td><td>${t.agent_name || t.agent_id}</td><td>${t.draw_name || t.draw_id}</td><td>${new Date(t.date).toLocaleString()}</td><td>${parseFloat(t.total_amount).toLocaleString()} G</td><td class="${gainClass}">${gainDisplay}</td><td>${paidStatus}</td><td><button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button><button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
+            const supervisorsMap = new Map();
+            supervisors.forEach(sup => {
+                supervisorsMap.set(sup.id, {
+                    id: sup.id,
+                    name: sup.name,
+                    agents: [],
+                    totals: { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 }
                 });
-                html += '</tbody></table>';
-                container.innerHTML = html;
-            }
+            });
+            const freeAgents = [];
 
-            function appendTickets(tickets) {
-                const container = document.getElementById('tickets-list-container');
-                const table = container.querySelector('table');
-                if (!table) { displayTickets(tickets); return; }
-                const tbody = table.querySelector('tbody');
-                tickets.forEach(t => {
-                    const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
-                    const gainClass = t.win_amount > 0 ? 'profit' : '';
-                    const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
-                    const row = document.createElement('tr');
-                    row.innerHTML = `<td>${t.ticket_id || t.id}</td><td>${t.agent_name || t.agent_id}</td><td>${t.draw_name || t.draw_id}</td><td>${new Date(t.date).toLocaleString()}</td><td>${parseFloat(t.total_amount).toLocaleString()} G</td><td class="${gainClass}">${gainDisplay}</td><td>${paidStatus}</td><td><button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button><button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button></td>`;
-                    tbody.appendChild(row);
-                });
-            }
-
-            function loadMoreTickets() { currentTicketPage++; loadTickets(false); }
-            async function viewTicketDetails(ticketId) {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    if (!res.ok) throw new Error('Erreur chargement détails');
-                    const ticket = await res.json();
-                    let betsHtml = '<h4>Pari(s)</h4><table><thead><tr><th>Numéro</th><th>Jeu</th><th>Montant</th><th>Gain estimé</th></tr></thead><tbody>';
-                    if (ticket.bets && Array.isArray(ticket.bets)) {
-                        ticket.bets.forEach(bet => {
-                            const game = bet.game || bet.specialType || 'N/A';
-                            const number = bet.cleanNumber || bet.number || '';
-                            const amount = parseFloat(bet.amount || 0).toLocaleString();
-                            const win = bet.winAmount || 0;
-                            betsHtml += `<tr><td>${number}</td><td>${game}</td><td>${amount} G</td><td>${win > 0 ? win + ' G' : '-'}</td></tr>`;
-                        });
-                    }
-                    betsHtml += '</tbody></table>';
-                    const html = `<p><strong>Ticket ID:</strong> ${ticket.ticket_id || ticket.id}</p><p><strong>Agent:</strong> ${ticket.agent_name} (ID: ${ticket.agent_id})</p><p><strong>Tirage:</strong> ${ticket.draw_name}</p><p><strong>Date:</strong> ${new Date(ticket.date).toLocaleString()}</p><p><strong>Total misé:</strong> ${parseFloat(ticket.total_amount).toLocaleString()} G</p><p><strong>Gain total:</strong> <span class="${ticket.win_amount > 0 ? 'profit' : ''}">${parseFloat(ticket.win_amount).toLocaleString()} G</span></p><p><strong>Payé:</strong> ${ticket.paid ? 'Oui' : 'Non'}</p>${betsHtml}`;
-                    document.getElementById('modal-ticket-content').innerHTML = html;
-                    document.getElementById('modal-ticket-id').innerText = ticket.ticket_id || ticket.id;
-                    document.getElementById('ticket-details-modal').style.display = 'flex';
-                } catch (e) { alert('Erreur lors du chargement des détails'); console.error(e); }
-            }
-            function closeTicketModal() { document.getElementById('ticket-details-modal').style.display = 'none'; }
-            function confirmDeleteTicket(ticketId) { if (confirm('Êtes-vous sûr de vouloir supprimer ce ticket définitivement ?')) deleteTicket(ticketId); }
-            async function deleteTicket(ticketId) {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-                    const result = await res.json();
-                    if (result.success) { alert('Ticket supprimé avec succès'); loadTickets(); } else alert('Erreur: ' + (result.error || 'Suppression échouée'));
-                } catch (e) { alert('Erreur réseau'); console.error(e); }
-            }
-            async function loadTicketFilters() {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    const supervisors = await supRes.json();
-                    let supOpts = '<option value="all">Tous superviseurs</option>';
-                    supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
-                    document.getElementById('ticket-filter-supervisor').innerHTML = supOpts;
-                    const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    const agents = await agentRes.json();
-                    let agentOpts = '<option value="all">Tous agents</option>';
-                    agents.forEach(a => agentOpts += `<option value="${a.id}">${a.name}</option>`);
-                    document.getElementById('ticket-filter-agent').innerHTML = agentOpts;
-                    const drawRes = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    const draws = await drawRes.json();
-                    let drawOpts = '<option value="all">Tous tirages</option>';
-                    draws.forEach(d => drawOpts += `<option value="${d.id}">${d.name}</option>`);
-                    document.getElementById('ticket-filter-draw').innerHTML = drawOpts;
-                } catch (e) { console.error('Erreur chargement filtres:', e); }
-            }
-            function toggleTicketCustomDates() {
-                const period = document.getElementById('ticket-filter-period').value;
-                document.getElementById('ticket-custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
-            }
-            function resetTicketFilters() {
-                document.getElementById('ticket-filter-supervisor').value = 'all';
-                document.getElementById('ticket-filter-agent').value = 'all';
-                document.getElementById('ticket-filter-draw').value = 'all';
-                document.getElementById('ticket-filter-period').value = 'today';
-                document.getElementById('ticket-filter-from').value = '';
-                document.getElementById('ticket-filter-to').value = '';
-                document.getElementById('ticket-filter-gain').value = 'all';
-                document.getElementById('ticket-filter-paid').value = 'all';
-                toggleTicketCustomDates();
-                loadTickets();
-            }
-
-            // ---------- CONFIGURATION (inchangé) ----------
-            async function loadSettings() {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch(`${API_URL}/api/owner/settings`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    if (res.ok) {
-                        const data = await res.json();
-                        document.getElementById('config-name').value = data.name || '';
-                        document.getElementById('config-slogan').value = data.slogan || '';
-                        document.getElementById('config-logo-url').value = data.logoUrl || '';
-                        if (data.logoUrl) {
-                            document.getElementById('header-logo').src = data.logoUrl;
-                            document.getElementById('header-logo').style.display = 'inline';
-                        } else {
-                            document.getElementById('header-logo').style.display = 'none';
-                        }
-                        document.getElementById('header-title').innerText = data.name ? data.name + ' · Propriétaire' : 'LOTATO PRO · Propriétaire';
-                        if (data.multipliers) {
-                            document.getElementById('multiplier-lot1').value = data.multipliers.lot1 || 60;
-                            document.getElementById('multiplier-lot2').value = data.multipliers.lot2 || 20;
-                            document.getElementById('multiplier-lot3').value = data.multipliers.lot3 || 10;
-                            document.getElementById('multiplier-lotto3').value = data.multipliers.lotto3 || 500;
-                            document.getElementById('multiplier-lotto4').value = data.multipliers.lotto4 || 5000;
-                            document.getElementById('multiplier-lotto5').value = data.multipliers.lotto5 || 25000;
-                            document.getElementById('multiplier-mariage').value = data.multipliers.mariage || 500;
-                        }
-                        if (data.limits) {
-                            document.getElementById('limit-lotto3').value = data.limits.lotto3 || 0;
-                            document.getElementById('limit-lotto4').value = data.limits.lotto4 || 0;
-                            document.getElementById('limit-lotto5').value = data.limits.lotto5 || 0;
-                            document.getElementById('limit-mariage').value = data.limits.mariage || 0;
-                        }
-                    }
-                } catch (e) { console.error('Erreur chargement settings', e); }
-            }
-
-            async function saveSettings() {
-                const token = localStorage.getItem('auth_token');
-                const name = document.getElementById('config-name').value;
-                const slogan = document.getElementById('config-slogan').value;
-                const logoUrl = document.getElementById('config-logo-url').value;
-                const logoFile = document.getElementById('config-logo-file').files[0];
-                const multipliers = {
-                    lot1: parseInt(document.getElementById('multiplier-lot1').value) || 60,
-                    lot2: parseInt(document.getElementById('multiplier-lot2').value) || 20,
-                    lot3: parseInt(document.getElementById('multiplier-lot3').value) || 10,
-                    lotto3: parseInt(document.getElementById('multiplier-lotto3').value) || 500,
-                    lotto4: parseInt(document.getElementById('multiplier-lotto4').value) || 5000,
-                    lotto5: parseInt(document.getElementById('multiplier-lotto5').value) || 25000,
-                    mariage: parseInt(document.getElementById('multiplier-mariage').value) || 500
+            agentStats.forEach(stat => {
+                const agent = stat.agent;
+                const ventes = stat.total_bets;
+                const paye = stat.total_wins;
+                const commissionPercent = agent.commission_percentage || 0;
+                const montantCommission = ventes * (commissionPercent / 100);
+                const balanceSans = ventes - paye;
+                const balanceAvec = balanceSans - montantCommission;
+                const agentData = {
+                    name: agent.name,
+                    tickets: stat.total_tickets,
+                    ventes,
+                    paye,
+                    commission: montantCommission,
+                    balanceSans,
+                    balanceAvec
                 };
-                const limits = {
-                    lotto3: parseInt(document.getElementById('limit-lotto3').value) || 0,
-                    lotto4: parseInt(document.getElementById('limit-lotto4').value) || 0,
-                    lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0,
-                    mariage: parseInt(document.getElementById('limit-mariage').value) || 0
-                };
-                let body, headers = { 'Authorization': `Bearer ${token}` };
-                let url = `${API_URL}/api/owner/settings`;
-                if (logoFile) {
-                    const formData = new FormData();
-                    formData.append('name', name);
-                    formData.append('slogan', slogan);
-                    formData.append('logo', logoFile);
-                    formData.append('multipliers', JSON.stringify(multipliers));
-                    formData.append('limits', JSON.stringify(limits));
-                    body = formData;
+                if (agent.supervisor_id && supervisorsMap.has(agent.supervisor_id)) {
+                    const sup = supervisorsMap.get(agent.supervisor_id);
+                    sup.agents.push(agentData);
+                    sup.totals.tickets += stat.total_tickets;
+                    sup.totals.bets += ventes;
+                    sup.totals.wins += paye;
+                    sup.totals.commission += montantCommission;
+                    sup.totals.netNoComm += balanceSans;
+                    sup.totals.netWithComm += balanceAvec;
                 } else {
-                    headers['Content-Type'] = 'application/json';
-                    body = JSON.stringify({ name, slogan, logoUrl, multipliers, limits });
+                    freeAgents.push(agentData);
                 }
-                try {
-                    const res = await fetch(url, { method: 'POST', headers, body });
-                    if (res.ok) { showMessage('settings-message', '✅ Paramètres enregistrés', true); loadSettings(); }
-                    else showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
-                } catch (e) { showMessage('settings-message', '❌ Erreur réseau', false); }
-            }
-
-            document.getElementById('config-logo-file').addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(ev) { document.getElementById('logo-preview').innerHTML = `<img src="${ev.target.result}" style="max-height:60px;">`; };
-                    reader.readAsDataURL(file);
-                } else { document.getElementById('logo-preview').innerHTML = ''; }
             });
 
-            function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+            let html = `<div style="margin-bottom:20px;"><strong>Période :</strong> du ${fromDate} au ${toDate}<br><strong>Superviseurs :</strong> ${supervisors.length} &nbsp;|&nbsp;<strong>Agents avec superviseur :</strong> ${agentStats.filter(a => a.agent.supervisor_id).length} &nbsp;|&nbsp;<strong>Agents libres :</strong> ${freeAgents.length}</div>`;
 
-            window.onload = function() {
-                loadDashboard();
-                loadUsersLists();
-                loadDraws();
-                loadBlockedNumbers();
-                loadDrawsForSelects();
-                loadSupervisorsAndAgents();
-                loadDrawsForReport();
-                loadTicketFilters();
-                loadSettings();
-                toggleSupervisorField();
-                toggleCustomDates();
-                toggleDetailCustomDates();
-            };
-        </script>
-    </div>
-    <script>
-        // === AJOUT DU BLOCAGE LOTTO3 ===
-        (function() {
-            const numbersTab = document.getElementById('tab-numbers');
-            if (numbersTab && !document.getElementById('blocked-lotto3-list')) {
-                const lotto3BlockSection = document.createElement('div');
-                lotto3BlockSection.innerHTML = `
-                    <div class="section-title"><i class="fas fa-ban"></i> Bloquer un numéro Lotto3 (3 chiffres)</div>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Numéro Lotto3 (000-999)</label>
-                            <input type="text" id="block-lotto3-number" maxlength="3" placeholder="123">
-                        </div>
-                        <button class="btn-danger" onclick="window.blockLotto3Number()">Bloquer lotto3</button>
-                        <button class="btn-primary" onclick="window.unblockLotto3Number()">Débloquer lotto3</button>
+            let grandTotals = { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 };
+
+            for (const sup of supervisorsMap.values()) {
+                if (sup.agents.length === 0) continue;
+                grandTotals.tickets += sup.totals.tickets;
+                grandTotals.bets += sup.totals.bets;
+                grandTotals.wins += sup.totals.wins;
+                grandTotals.commission += sup.totals.commission;
+                grandTotals.netNoComm += sup.totals.netNoComm;
+                grandTotals.netWithComm += sup.totals.netWithComm;
+
+                html += `<div class="report-section"><h3>👑 ${escapeHtml(sup.name)}</h3><div style="overflow-x:auto;"><table><thead><tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody>`;
+                sup.agents.forEach(agent => {
+                    html += `<tr><td>${escapeHtml(agent.name)}</td><td style="text-align:right;">${agent.tickets.toLocaleString()}</td><td style="text-align:right;">${agent.ventes.toLocaleString()} G</td><td style="text-align:right;">${agent.paye.toLocaleString()} G</td><td style="text-align:right;">${agent.commission.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td></tr>`;
+                });
+                html += `<tr class="subtotal-row"><td><strong>Sous-total superviseur</strong></td><td style="text-align:right;"><strong>${sup.totals.tickets.toLocaleString()}</strong></td><td style="text-align:right;"><strong>${sup.totals.bets.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${sup.totals.wins.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${sup.totals.commission.toLocaleString()} G</strong></td><td style="text-align:right; ${sup.totals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netNoComm.toLocaleString()} G</strong></td><td style="text-align:right; ${sup.totals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netWithComm.toLocaleString()} G</strong></td></tr>`;
+                html += `</tbody></table></div></div>`;
+            }
+
+            if (freeAgents.length > 0) {
+                let freeTotals = { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 };
+                freeAgents.forEach(agent => {
+                    freeTotals.tickets += agent.tickets;
+                    freeTotals.bets += agent.ventes;
+                    freeTotals.wins += agent.paye;
+                    freeTotals.commission += agent.commission;
+                    freeTotals.netNoComm += agent.balanceSans;
+                    freeTotals.netWithComm += agent.balanceAvec;
+                });
+                grandTotals.tickets += freeTotals.tickets;
+                grandTotals.bets += freeTotals.bets;
+                grandTotals.wins += freeTotals.wins;
+                grandTotals.commission += freeTotals.commission;
+                grandTotals.netNoComm += freeTotals.netNoComm;
+                grandTotals.netWithComm += freeTotals.netWithComm;
+
+                html += `<div class="report-section free-agents-section"><h3>🔓 Agents libres (sans superviseur)</h3><div style="overflow-x:auto;"><table><thead><tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody>`;
+                freeAgents.forEach(agent => {
+                    html += `<tr><td>${escapeHtml(agent.name)}</td><td style="text-align:right;">${agent.tickets.toLocaleString()}</td><td style="text-align:right;">${agent.ventes.toLocaleString()} G</td><td style="text-align:right;">${agent.paye.toLocaleString()} G</td><td style="text-align:right;">${agent.commission.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td></tr>`;
+                });
+                html += `<tr class="subtotal-row"><td><strong>Sous-total agents libres</strong></td><td style="text-align:right;"><strong>${freeTotals.tickets.toLocaleString()}</strong></td><td style="text-align:right;"><strong>${freeTotals.bets.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${freeTotals.wins.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${freeTotals.commission.toLocaleString()} G</strong></td><td style="text-align:right; ${freeTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netNoComm.toLocaleString()} G</strong></td><td style="text-align:right; ${freeTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netWithComm.toLocaleString()} G</strong></td></tr>`;
+                html += `</tbody></table></div></div>`;
+            }
+
+            html += `<div class="report-section" style="border:2px solid #00d4ff;"><h3>📊 TOTAL GÉNÉRAL</h3><div style="overflow-x:auto;"><table><thead><tr><th></th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody><tr style="font-weight:bold; background:rgba(0,212,255,0.1);"><td>Total</td><td style="text-align:right;">${grandTotals.tickets.toLocaleString()}</td><td style="text-align:right;">${grandTotals.bets.toLocaleString()} G</td><td style="text-align:right;">${grandTotals.wins.toLocaleString()} G</td><td style="text-align:right;">${grandTotals.commission.toLocaleString()} G</td><td style="text-align:right; ${grandTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netNoComm.toLocaleString()} G</td><td style="text-align:right; ${grandTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netWithComm.toLocaleString()} G</td></tr></tbody></table></div></div>`;
+
+            container.innerHTML = html;
+            lastDetailedReportHTML = container.innerHTML;
+            printBtn.style.display = 'inline-block';
+        } catch (error) {
+            console.error('Erreur lors du chargement du rapport détaillé:', error);
+            container.innerHTML = `<p class="loss">❌ Erreur: ${error.message}</p>`;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function printDetailedReport() {
+        if (!lastDetailedReportHTML) {
+            alert('Veuillez d\'abord générer le rapport.');
+            return;
+        }
+        const printWindow = window.open('', '_blank', 'width=1100,height=800');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Rapport détaillé par superviseur - LOTATO PRO</title>
+                <meta charset="UTF-8">
+                <style>
+                    @page { size: letter; margin: 1.5cm; }
+                    body { font-family: 'Inter', 'Segoe UI', sans-serif; background: white; color: black; padding: 20px; margin: 0; }
+                    h1 { font-size: 20px; margin-bottom: 5px; color: #333; }
+                    .header { margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+                    .report-section { margin-bottom: 20px; border: 1px solid #ccc; border-radius: 8px; overflow: hidden; }
+                    .report-section h3 { background: #f2f2f2; padding: 8px 12px; margin: 0; font-size: 16px; }
+                    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 0; }
+                    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: right; }
+                    th:first-child, td:first-child { text-align: left; }
+                    th { background-color: #f2f2f2; font-weight: bold; text-align: center; }
+                    .subtotal-row { background-color: #f9f9f9; font-weight: bold; }
+                    .footer { margin-top: 30px; font-size: 10px; text-align: center; color: #666; }
+                    @media print { body { margin: 0; padding: 0; } .no-print { display: none; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>LOTATO PRO - Rapport détaillé par superviseur</h1>
+                    <p>Généré le ${new Date().toLocaleString()}</p>
+                </div>
+                <div>${lastDetailedReportHTML}</div>
+                <div class="footer">Rapport généré automatiquement. Tous les montants sont en Gourdes (G).</div>
+                <div class="no-print" style="text-align:center; margin-top:20px;">
+                    <button onclick="window.print();" style="padding:8px 20px;">Imprimer</button>
+                    <button onclick="window.close();" style="padding:8px 20px;">Fermer</button>
+                </div>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+    }
+
+    // ---------- TICKETS ----------
+    let currentTicketPage = 0;
+    async function loadTickets(reset = true) {
+        if (reset) {
+            currentTicketPage = 0;
+            document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>';
+        }
+        const token = localStorage.getItem('auth_token');
+        const params = new URLSearchParams();
+        const supervisor = document.getElementById('ticket-filter-supervisor').value;
+        const agent = document.getElementById('ticket-filter-agent').value;
+        const draw = document.getElementById('ticket-filter-draw').value;
+        const period = document.getElementById('ticket-filter-period').value;
+        const from = document.getElementById('ticket-filter-from').value;
+        const to = document.getElementById('ticket-filter-to').value;
+        const gain = document.getElementById('ticket-filter-gain').value;
+        const paid = document.getElementById('ticket-filter-paid').value;
+        if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
+        if (agent && agent !== 'all') params.append('agentId', agent);
+        if (draw && draw !== 'all') params.append('drawId', draw);
+        if (period) params.append('period', period);
+        if (from) params.append('fromDate', from);
+        if (to) params.append('toDate', to);
+        if (gain && gain !== 'all') params.append('gain', gain);
+        if (paid && paid !== 'all') params.append('paid', paid);
+        params.append('page', currentTicketPage);
+        params.append('limit', 20);
+        try {
+            const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) throw new Error('Erreur chargement tickets');
+            const data = await res.json();
+            if (reset) displayTickets(data.tickets);
+            else appendTickets(data.tickets);
+            document.getElementById('tickets-load-more').style.display = data.hasMore ? 'block' : 'none';
+        } catch (e) {
+            document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>';
+            console.error(e);
+        }
+    }
+
+    function displayTickets(tickets) {
+        const container = document.getElementById('tickets-list-container');
+        if (!tickets || tickets.length === 0) { container.innerHTML = '<p>Aucun ticket trouvé</p>'; return; }
+        let html = '<table><thead><tr><th>ID</th><th>Agent</th><th>Tirage</th><th>Date</th><th>Montant</th><th>Gain</th><th>Payé</th><th>Actions</th></tr></thead><tbody>';
+        tickets.forEach(t => {
+            const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
+            const gainClass = t.win_amount > 0 ? 'profit' : '';
+            const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
+            html += `<tr><td>${t.ticket_id || t.id}</td><td>${t.agent_name || t.agent_id}</td><td>${t.draw_name || t.draw_id}</td><td>${new Date(t.date).toLocaleString()}</td><td>${parseFloat(t.total_amount).toLocaleString()} G</td><td class="${gainClass}">${gainDisplay}</td><td>${paidStatus}</td><td><button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button><button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function appendTickets(tickets) {
+        const container = document.getElementById('tickets-list-container');
+        const table = container.querySelector('table');
+        if (!table) { displayTickets(tickets); return; }
+        const tbody = table.querySelector('tbody');
+        tickets.forEach(t => {
+            const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
+            const gainClass = t.win_amount > 0 ? 'profit' : '';
+            const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${t.ticket_id || t.id}</td><td>${t.agent_name || t.agent_id}</td><td>${t.draw_name || t.draw_id}</td><td>${new Date(t.date).toLocaleString()}</td><td>${parseFloat(t.total_amount).toLocaleString()} G</td><td class="${gainClass}">${gainDisplay}</td><td>${paidStatus}</td><td><button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button><button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button></td>`;
+            tbody.appendChild(row);
+        });
+    }
+
+    function loadMoreTickets() { currentTicketPage++; loadTickets(false); }
+    async function viewTicketDetails(ticketId) {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) throw new Error('Erreur chargement détails');
+            const ticket = await res.json();
+            let betsHtml = '<h4>Pari(s)</h4><table><thead><tr><th>Numéro</th><th>Jeu</th><th>Montant</th><th>Gain estimé</th></tr></thead><tbody>';
+            if (ticket.bets && Array.isArray(ticket.bets)) {
+                ticket.bets.forEach(bet => {
+                    const game = bet.game || bet.specialType || 'N/A';
+                    const number = bet.cleanNumber || bet.number || '';
+                    const amount = parseFloat(bet.amount || 0).toLocaleString();
+                    const win = bet.winAmount || 0;
+                    betsHtml += `<tr><td>${number}</td><td>${game}</td><td>${amount} G</td><td>${win > 0 ? win + ' G' : '-'}</td></tr>`;
+                });
+            }
+            betsHtml += '</tbody></table>';
+            const html = `<p><strong>Ticket ID:</strong> ${ticket.ticket_id || ticket.id}</p><p><strong>Agent:</strong> ${ticket.agent_name} (ID: ${ticket.agent_id})</p><p><strong>Tirage:</strong> ${ticket.draw_name}</p><p><strong>Date:</strong> ${new Date(ticket.date).toLocaleString()}</p><p><strong>Total misé:</strong> ${parseFloat(ticket.total_amount).toLocaleString()} G</p><p><strong>Gain total:</strong> <span class="${ticket.win_amount > 0 ? 'profit' : ''}">${parseFloat(ticket.win_amount).toLocaleString()} G</span></p><p><strong>Payé:</strong> ${ticket.paid ? 'Oui' : 'Non'}</p>${betsHtml}`;
+            document.getElementById('modal-ticket-content').innerHTML = html;
+            document.getElementById('modal-ticket-id').innerText = ticket.ticket_id || ticket.id;
+            document.getElementById('ticket-details-modal').style.display = 'flex';
+        } catch (e) { alert('Erreur lors du chargement des détails'); console.error(e); }
+    }
+    function closeTicketModal() { document.getElementById('ticket-details-modal').style.display = 'none'; }
+    function confirmDeleteTicket(ticketId) { if (confirm('Êtes-vous sûr de vouloir supprimer ce ticket définitivement ?')) deleteTicket(ticketId); }
+    async function deleteTicket(ticketId) {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await res.json();
+            if (result.success) { alert('Ticket supprimé avec succès'); loadTickets(); } else alert('Erreur: ' + (result.error || 'Suppression échouée'));
+        } catch (e) { alert('Erreur réseau'); console.error(e); }
+    }
+    async function loadTicketFilters() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const supRes = await fetch(`${API_URL}/api/owner/supervisors`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const supervisors = await supRes.json();
+            let supOpts = '<option value="all">Tous superviseurs</option>';
+            supervisors.forEach(s => supOpts += `<option value="${s.id}">${s.name}</option>`);
+            document.getElementById('ticket-filter-supervisor').innerHTML = supOpts;
+            const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const agents = await agentRes.json();
+            let agentOpts = '<option value="all">Tous agents</option>';
+            agents.forEach(a => agentOpts += `<option value="${a.id}">${a.name}</option>`);
+            document.getElementById('ticket-filter-agent').innerHTML = agentOpts;
+            const drawRes = await fetch(`${API_URL}/api/owner/draws`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const draws = await drawRes.json();
+            let drawOpts = '<option value="all">Tous tirages</option>';
+            draws.forEach(d => drawOpts += `<option value="${d.id}">${d.name}</option>`);
+            document.getElementById('ticket-filter-draw').innerHTML = drawOpts;
+        } catch (e) { console.error('Erreur chargement filtres:', e); }
+    }
+    function toggleTicketCustomDates() {
+        const period = document.getElementById('ticket-filter-period').value;
+        document.getElementById('ticket-custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
+    }
+    function resetTicketFilters() {
+        document.getElementById('ticket-filter-supervisor').value = 'all';
+        document.getElementById('ticket-filter-agent').value = 'all';
+        document.getElementById('ticket-filter-draw').value = 'all';
+        document.getElementById('ticket-filter-period').value = 'today';
+        document.getElementById('ticket-filter-from').value = '';
+        document.getElementById('ticket-filter-to').value = '';
+        document.getElementById('ticket-filter-gain').value = 'all';
+        document.getElementById('ticket-filter-paid').value = 'all';
+        toggleTicketCustomDates();
+        loadTickets();
+    }
+
+    // ---------- CONFIGURATION ----------
+    async function loadSettings() {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/settings`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('config-name').value = data.name || '';
+                document.getElementById('config-slogan').value = data.slogan || '';
+                document.getElementById('config-logo-url').value = data.logoUrl || '';
+                if (data.logoUrl) {
+                    document.getElementById('header-logo').src = data.logoUrl;
+                    document.getElementById('header-logo').style.display = 'inline';
+                } else {
+                    document.getElementById('header-logo').style.display = 'none';
+                }
+                document.getElementById('header-title').innerText = data.name ? data.name + ' · Propriétaire' : 'LOTATO PRO · Propriétaire';
+                if (data.multipliers) {
+                    document.getElementById('multiplier-lot1').value = data.multipliers.lot1 || 60;
+                    document.getElementById('multiplier-lot2').value = data.multipliers.lot2 || 20;
+                    document.getElementById('multiplier-lot3').value = data.multipliers.lot3 || 10;
+                    document.getElementById('multiplier-lotto3').value = data.multipliers.lotto3 || 500;
+                    document.getElementById('multiplier-lotto4').value = data.multipliers.lotto4 || 5000;
+                    document.getElementById('multiplier-lotto5').value = data.multipliers.lotto5 || 25000;
+                    document.getElementById('multiplier-mariage').value = data.multipliers.mariage || 500;
+                }
+                if (data.limits) {
+                    document.getElementById('limit-lotto3').value = data.limits.lotto3 || 0;
+                    document.getElementById('limit-lotto4').value = data.limits.lotto4 || 0;
+                    document.getElementById('limit-lotto5').value = data.limits.lotto5 || 0;
+                    document.getElementById('limit-mariage').value = data.limits.mariage || 0;
+                }
+            }
+        } catch (e) { console.error('Erreur chargement settings', e); }
+    }
+
+    async function saveSettings() {
+        const token = localStorage.getItem('auth_token');
+        const name = document.getElementById('config-name').value;
+        const slogan = document.getElementById('config-slogan').value;
+        const logoUrl = document.getElementById('config-logo-url').value;
+        const logoFile = document.getElementById('config-logo-file').files[0];
+        const multipliers = {
+            lot1: parseInt(document.getElementById('multiplier-lot1').value) || 60,
+            lot2: parseInt(document.getElementById('multiplier-lot2').value) || 20,
+            lot3: parseInt(document.getElementById('multiplier-lot3').value) || 10,
+            lotto3: parseInt(document.getElementById('multiplier-lotto3').value) || 500,
+            lotto4: parseInt(document.getElementById('multiplier-lotto4').value) || 5000,
+            lotto5: parseInt(document.getElementById('multiplier-lotto5').value) || 25000,
+            mariage: parseInt(document.getElementById('multiplier-mariage').value) || 500
+        };
+        const limits = {
+            lotto3: parseInt(document.getElementById('limit-lotto3').value) || 0,
+            lotto4: parseInt(document.getElementById('limit-lotto4').value) || 0,
+            lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0,
+            mariage: parseInt(document.getElementById('limit-mariage').value) || 0
+        };
+        let body, headers = { 'Authorization': `Bearer ${token}` };
+        let url = `${API_URL}/api/owner/settings`;
+        if (logoFile) {
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('slogan', slogan);
+            formData.append('logo', logoFile);
+            formData.append('multipliers', JSON.stringify(multipliers));
+            formData.append('limits', JSON.stringify(limits));
+            body = formData;
+        } else {
+            headers['Content-Type'] = 'application/json';
+            body = JSON.stringify({ name, slogan, logoUrl, multipliers, limits });
+        }
+        try {
+            const res = await fetch(url, { method: 'POST', headers, body });
+            if (res.ok) { showMessage('settings-message', '✅ Paramètres enregistrés', true); loadSettings(); }
+            else showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
+        } catch (e) { showMessage('settings-message', '❌ Erreur réseau', false); }
+    }
+
+    document.getElementById('config-logo-file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(ev) { document.getElementById('logo-preview').innerHTML = `<img src="${ev.target.result}" style="max-height:60px;">`; };
+            reader.readAsDataURL(file);
+        } else { document.getElementById('logo-preview').innerHTML = ''; }
+    });
+
+    function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+
+    // --- Initialisation ---
+    window.onload = function() {
+        loadDashboard();
+        loadUsersLists();
+        loadDraws();
+        loadBlockedNumbers();
+        loadDrawsForSelects();
+        loadSupervisorsAndAgents();
+        loadDrawsForReport();
+        loadTicketFilters();
+        loadSettings();
+        toggleSupervisorField();
+        toggleCustomDates();
+        toggleDetailCustomDates();
+
+        // Ajout des éléments Lotto3 manquants (s'ils n'existent pas)
+        const numbersTab = document.getElementById('tab-numbers');
+        if (numbersTab && !document.getElementById('blocked-lotto3-list')) {
+            const lotto3BlockSection = document.createElement('div');
+            lotto3BlockSection.innerHTML = `
+                <div class="section-title"><i class="fas fa-ban"></i> Bloquer un numéro Lotto3 (3 chiffres)</div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Numéro Lotto3 (000-999)</label>
+                        <input type="text" id="block-lotto3-number" maxlength="3" placeholder="123">
                     </div>
-                    <div id="blocked-lotto3-list" class="list-container" style="max-height:150px;"></div>
-                `;
-                numbersTab.appendChild(lotto3BlockSection);
-            }
+                    <button class="btn-danger" onclick="blockLotto3Number()">Bloquer lotto3</button>
+                    <button class="btn-primary" onclick="unblockLotto3Number()">Débloquer lotto3</button>
+                </div>
+                <div id="blocked-lotto3-list" class="list-container" style="max-height:150px;"></div>
+            `;
+            numbersTab.appendChild(lotto3BlockSection);
+            window.loadBlockedLotto3 = loadBlockedLotto3;
+            window.blockLotto3Number = blockLotto3Number;
+            window.unblockLotto3Number = unblockLotto3Number;
+            loadBlockedLotto3();
+        }
 
-            window.loadBlockedLotto3 = async function() {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    if (!res.ok) throw new Error('Erreur chargement');
-                    const data = await res.json();
-                    let html = '<strong>Numéros Lotto3 bloqués globalement:</strong> ';
-                    html += (data.blockedNumbers || []).join(', ') || 'aucun';
-                    const container = document.getElementById('blocked-lotto3-list');
-                    if (container) container.innerHTML = html;
-                } catch (e) { console.error(e); const container = document.getElementById('blocked-lotto3-list'); if (container) container.innerHTML = '<p class="loss">Erreur de chargement</p>'; }
-            };
-            window.blockLotto3Number = async function() {
-                const token = localStorage.getItem('auth_token');
-                const num = document.getElementById('block-lotto3-number')?.value.trim();
-                if (!num || num.length !== 3 || !/^\d+$/.test(num)) { alert('Veuillez entrer un numéro à 3 chiffres'); return; }
-                try {
-                    const res = await fetch(`${window.API_URL || ''}/api/owner/block-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number: num }) });
-                    const result = await res.json();
-                    if (result.success) { alert('Numéro Lotto3 bloqué'); window.loadBlockedLotto3(); if (window.loadAllRestrictions) window.loadAllRestrictions(); }
-                    else alert('Erreur: ' + (result.error || ''));
-                } catch (e) { alert('Erreur réseau'); }
-            };
-            window.unblockLotto3Number = async function() {
-                const token = localStorage.getItem('auth_token');
-                const num = document.getElementById('block-lotto3-number')?.value.trim();
-                if (!num) return;
-                try {
-                    const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number: num }) });
-                    const result = await res.json();
-                    if (result.success) { alert('Numéro Lotto3 débloqué'); window.loadBlockedLotto3(); if (window.loadAllRestrictions) window.loadAllRestrictions(); }
-                    else alert('Erreur: ' + (result.error || ''));
-                } catch (e) { alert('Erreur réseau'); }
-            };
-            const originalSwitchTab = window.switchTab;
-            if (originalSwitchTab) {
-                window.switchTab = function(tabId) {
-                    originalSwitchTab(tabId);
-                    if (tabId === 'numbers') window.loadBlockedLotto3();
-                };
-            }
-            const originalLoadAllRestrictions = window.loadAllRestrictions;
-            if (originalLoadAllRestrictions) {
-                window.loadAllRestrictions = async function() {
-                    await originalLoadAllRestrictions();
-                    try {
-                        const token = localStorage.getItem('auth_token');
-                        const res = await fetch(`${window.API_URL || ''}/api/owner/blocked-lotto3`, { headers: { 'Authorization': `Bearer ${token}` } });
-                        if (!res.ok) return;
-                        const data = await res.json();
-                        const blockedLotto3 = data.blockedNumbers || [];
-                        if (blockedLotto3.length === 0) return;
-                        const container = document.getElementById('restrictions-list');
-                        if (!container) return;
-                        let tableHtml = container.innerHTML;
-                        if (!tableHtml.includes('<tbody>')) tableHtml = '能<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>' + tableHtml + '</tbody></table>';
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(tableHtml, 'text/html');
-                        let tbody = doc.querySelector('tbody');
-                        if (!tbody) { tbody = doc.createElement('tbody'); doc.body.appendChild(tbody); }
-                        blockedLotto3.forEach(num => {
-                            const row = doc.createElement('tr');
-                            row.style.background = 'rgba(255,170,0,0.1)';
-                            row.innerHTML = `<td>🎲 Lotto3 bloqué globalement</td><td>Tous</td><td><strong>${num}</strong></td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="window.unblockLotto3NumberWithValue('${num}')">Débloquer</button></td>`;
-                            tbody.appendChild(row);
-                        });
-                        container.innerHTML = doc.body.innerHTML;
-                    } catch (e) { console.error('Erreur intégration Lotto3 dans restrictions', e); }
-                };
-                window.unblockLotto3NumberWithValue = async function(number) {
-                    const token = localStorage.getItem('auth_token');
-                    try {
-                        const res = await fetch(`${window.API_URL || ''}/api/owner/unblock-lotto3`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ number }) });
-                        const result = await res.json();
-                        if (result.success) { window.loadAllRestrictions(); window.loadBlockedLotto3(); }
-                        else alert('Erreur: ' + (result.error || ''));
-                    } catch (e) { alert('Erreur réseau'); }
-                };
-            }
-            if (document.getElementById('tab-numbers')?.classList.contains('active')) window.loadBlockedLotto3();
-        })();
-    </script>
+        // Rendre les fonctions globales pour les appels onclick
+        window.unblockNumberGlobalWithValue = unblockNumberGlobalWithValue;
+        window.unblockPerDraw = unblockPerDraw;
+        window.removeLimit = removeLimit;
+        window.unblockDraw = unblockDraw;
+    };
+</script>
 </body>
 </html>
