@@ -145,16 +145,7 @@ async function ensureTables() {
   `);
 
   // === Tables de gestion des limites et blocages (par propriétaire) ===
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS global_number_limits (
-        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        number VARCHAR(2) NOT NULL,
-        limit_amount DECIMAL(10,2) NOT NULL,
-        updated_at TIMESTAMP DEFAULT NOW(),
-        PRIMARY KEY (owner_id, number)
-    )
-  `);
-
+  // Seules les limites par tirage sont conservées
   await pool.query(`
     CREATE TABLE IF NOT EXISTS draw_number_limits (
         owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -394,29 +385,6 @@ app.get('/api/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
   }
 });
 
-// Limites (globales et par tirage) fusionnées
-app.get('/api/number-limits', authenticate, async (req, res) => {
-  const ownerId = req.user.ownerId;
-  try {
-    const global = await pool.query(
-      'SELECT NULL as draw_id, number, limit_amount FROM global_number_limits WHERE owner_id = $1',
-      [ownerId]
-    );
-    const draw = await pool.query(
-      `SELECT l.draw_id, d.name as draw_name, l.number, l.limit_amount
-       FROM draw_number_limits l
-       LEFT JOIN draws d ON l.draw_id = d.id
-       WHERE l.owner_id = $1
-       ORDER BY draw_id, number`,
-      [ownerId]
-    );
-    res.json([...global.rows, ...draw.rows]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
 // ==================== Sauvegarde des tickets (avec vérification limites) ====================
 app.post('/api/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total } = req.body;
@@ -438,9 +406,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     const blockedLotto3 = await pool.query('SELECT number FROM blocked_lotto3_numbers WHERE owner_id = $1', [ownerId]);
     const blockedLotto3Set = new Set(blockedLotto3.rows.map(r => r.number));
 
-    // Limites (propres au propriétaire)
-    const globalLimitsRes = await pool.query('SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1', [ownerId]);
-    const globalLimitsMap = new Map(globalLimitsRes.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
+    // Limites par tirage (propres au propriétaire)
     const drawLimitsRes = await pool.query('SELECT number, limit_amount FROM draw_number_limits WHERE owner_id = $1 AND draw_id = $2', [ownerId, drawId]);
     const drawLimitsMap = new Map(drawLimitsRes.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
 
@@ -453,7 +419,6 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     }
 
     // Collecte des numéros avec limites
-    const numbersWithGlobalLimit = new Set();
     const numbersWithDrawLimit = new Set();
 
     for (const bet of bets) {
@@ -461,21 +426,8 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
         const rawNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
         const normalized = rawNumber.padStart(2, '0');
-        if (globalLimitsMap.has(normalized)) numbersWithGlobalLimit.add(normalized);
         if (drawLimitsMap.has(normalized)) numbersWithDrawLimit.add(normalized);
       }
-    }
-
-    // Totaux déjà mis aujourd'hui (global)
-    const globalTotalsMap = new Map();
-    if (numbersWithGlobalLimit.size > 0) {
-      const resTot = await pool.query(`
-        SELECT bet->>'cleanNumber' as number, SUM((bet->>'amount')::numeric) as total
-        FROM tickets, jsonb_array_elements(bets::jsonb) as bet
-        WHERE owner_id = $1 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = ANY($2)
-        GROUP BY bet->>'cleanNumber'
-      `, [ownerId, Array.from(numbersWithGlobalLimit)]);
-      for (const row of resTot.rows) globalTotalsMap.set(row.number, parseFloat(row.total) || 0);
     }
 
     // Totaux déjà mis aujourd'hui pour ce tirage
@@ -520,20 +472,10 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
           exceeded.push({ type: 'tirage', number: normalized, limit, already: current, requested: amount, remaining: limit - current });
         }
       }
-
-      // Vérification limite globale
-      if (globalLimitsMap.has(normalized) && !bet.free) {
-        const limit = globalLimitsMap.get(normalized);
-        const current = globalTotalsMap.get(normalized) || 0;
-        const amount = parseFloat(bet.amount) || 0;
-        if (current + amount > limit) {
-          exceeded.push({ type: 'global', number: normalized, limit, already: current, requested: amount, remaining: limit - current });
-        }
-      }
     }
 
     if (exceeded.length > 0) {
-      const message = exceeded.map(e => `Numéro ${e.number} (${e.type === 'global' ? 'limite globale' : 'limite tirage'}) : limite ${e.limit} G, déjà ${e.already} G, demande ${e.requested} G, reste ${e.remaining} G.`).join('\n');
+      const message = exceeded.map(e => `Numéro ${e.number} (limite tirage) : limite ${e.limit} G, déjà ${e.already} G, demande ${e.requested} G, reste ${e.remaining} G.`).join('\n');
       return res.status(403).json({ error: `Limite dépassée.\n${message}`, limitExceeded: exceeded });
     }
 
@@ -1209,11 +1151,10 @@ app.post('/api/owner/unblock-number-draw', authenticate, requireRole('owner'), a
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
-// Limites propriétaire
+// Limites par tirage (propriétaire)
 app.get('/api/owner/number-limits', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
-    const global = await pool.query('SELECT NULL as draw_id, NULL as draw_name, number, limit_amount FROM global_number_limits WHERE owner_id = $1', [ownerId]);
     const draw = await pool.query(
       `SELECT l.draw_id, d.name as draw_name, l.number, l.limit_amount
        FROM draw_number_limits l
@@ -1222,41 +1163,31 @@ app.get('/api/owner/number-limits', authenticate, requireRole('owner'), async (r
        ORDER BY l.draw_id, l.number`,
       [ownerId]
     );
-    res.json([...global.rows, ...draw.rows]);
+    res.json(draw.rows);
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
 app.post('/api/owner/number-limit', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
-  let { drawId, number, limitAmount } = req.body;
+  const { drawId, number, limitAmount } = req.body;
   const normalized = number.padStart(2, '0');
   if (!/^\d{2}$/.test(normalized)) return res.status(400).json({ error: 'Numéro invalide (2 chiffres requis)' });
+  if (!drawId) return res.status(400).json({ error: 'drawId requis' });
 
-  if (!drawId || drawId === '0' || drawId === 'global') {
-    await pool.query(
-      `INSERT INTO global_number_limits (owner_id, number, limit_amount) VALUES ($1, $2, $3)
-       ON CONFLICT (owner_id, number) DO UPDATE SET limit_amount = $3, updated_at = NOW()`,
-      [ownerId, normalized, limitAmount]
-    );
-  } else {
-    await pool.query(
-      `INSERT INTO draw_number_limits (owner_id, draw_id, number, limit_amount) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (owner_id, draw_id, number) DO UPDATE SET limit_amount = $4, updated_at = NOW()`,
-      [ownerId, drawId, normalized, limitAmount]
-    );
-  }
+  await pool.query(
+    `INSERT INTO draw_number_limits (owner_id, draw_id, number, limit_amount) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (owner_id, draw_id, number) DO UPDATE SET limit_amount = $4, updated_at = NOW()`,
+    [ownerId, drawId, normalized, limitAmount]
+  );
   res.json({ success: true });
 });
 
 app.post('/api/owner/remove-number-limit', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
-  let { drawId, number } = req.body;
+  const { drawId, number } = req.body;
   const normalized = number.padStart(2, '0');
-  if (!drawId || drawId === '0' || drawId === 'global') {
-    await pool.query('DELETE FROM global_number_limits WHERE owner_id = $1 AND number = $2', [ownerId, normalized]);
-  } else {
-    await pool.query('DELETE FROM draw_number_limits WHERE owner_id = $1 AND draw_id = $2 AND number = $3', [ownerId, drawId, normalized]);
-  }
+  if (!drawId) return res.status(400).json({ error: 'drawId requis' });
+  await pool.query('DELETE FROM draw_number_limits WHERE owner_id = $1 AND draw_id = $2 AND number = $3', [ownerId, drawId, normalized]);
   res.json({ success: true });
 });
 
@@ -1308,21 +1239,17 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
       [ownerId, 'agent']
     );
 
+    // Seules les limites par tirage sont affichées ici
     const limitsProgress = await pool.query(`
       SELECT 
-        COALESCE(d.name, '🌍 Global (tous tirages)') as draw_name,
+        d.name as draw_name,
         l.number,
         l.limit_amount,
         COALESCE(SUM((bet->>'amount')::numeric), 0) as current_bets,
         (COALESCE(SUM((bet->>'amount')::numeric), 0) / l.limit_amount * 100) as progress_percent
-      FROM (
-        SELECT owner_id, NULL as draw_id, number, limit_amount FROM global_number_limits
-        UNION ALL
-        SELECT owner_id, draw_id, number, limit_amount FROM draw_number_limits
-      ) l
+      FROM draw_number_limits l
       LEFT JOIN draws d ON l.draw_id = d.id
-      LEFT JOIN tickets t ON t.owner_id = l.owner_id AND DATE(t.date) = CURRENT_DATE
-        AND (l.draw_id IS NULL OR t.draw_id = l.draw_id)
+      LEFT JOIN tickets t ON t.owner_id = l.owner_id AND DATE(t.date) = CURRENT_DATE AND t.draw_id = l.draw_id
       LEFT JOIN LATERAL jsonb_array_elements(t.bets) AS bet ON (bet->>'cleanNumber') = l.number
       WHERE l.owner_id = $1
       GROUP BY d.name, l.number, l.limit_amount
@@ -1579,82 +1506,8 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-// ==================== Gestion indépendante des limites globales ====================
 
-/**
- * Récupère toutes les limites globales du propriétaire connecté.
- * GET /api/owner/global-limits
- */
-app.get('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
-  try {
-    const result = await pool.query(
-      'SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1 ORDER BY number',
-      [ownerId]
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error('❌ Erreur récupération limites globales:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-/**
- * Crée ou met à jour une limite globale.
- * POST /api/owner/global-limits
- * Body : { number: "XX", limitAmount: 100 }
- */
-app.post('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
-  const { number, limitAmount } = req.body;
-  const normalized = number?.toString().padStart(2, '0');
-  if (!/^\d{2}$/.test(normalized)) {
-    return res.status(400).json({ error: 'Numéro invalide (2 chiffres requis)' });
-  }
-  if (typeof limitAmount !== 'number' || limitAmount <= 0) {
-    return res.status(400).json({ error: 'Montant limite invalide (doit être un nombre positif)' });
-  }
-  try {
-    await pool.query(
-      `INSERT INTO global_number_limits (owner_id, number, limit_amount)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (owner_id, number) DO UPDATE SET limit_amount = $3, updated_at = NOW()`,
-      [ownerId, normalized, limitAmount]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error('❌ Erreur création/modification limite globale:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-/**
- * Supprime une limite globale.
- * DELETE /api/owner/global-limits/:number
- */
-app.delete('/api/owner/global-limits/:number', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
-  const { number } = req.params;
-  const normalized = number.padStart(2, '0');
-  try {
-    const result = await pool.query(
-      'DELETE FROM global_number_limits WHERE owner_id = $1 AND number = $2',
-      [ownerId, normalized]
-    );
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Limite globale non trouvée' });
-    }
-    res.json({ success: true });
-  } catch (err) {
-    console.error('❌ Erreur suppression limite globale:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// ==================== Routes superadmin (inchangées) ====================
-// ... (les routes superadmin sont identiques à la version précédente, mais adaptées car draws est commun)
-// Je les réinclus brièvement pour que le code soit complet. On peut les reprendre telles quelles.
-
+// ==================== Routes superadmin ====================
 app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
