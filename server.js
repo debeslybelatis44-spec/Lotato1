@@ -1650,34 +1650,62 @@ app.delete('/api/owner/global-limits/:number', authenticate, requireRole('owner'
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-// ==================== Limites globales ====================
-app.post('/api/number-limits/global', authenticate, async (req, res) => {
-  const ownerId = req.user.ownerId;
-  const { number, limitAmount } = req.body;
+// === Nouvelles routes pour la gestion des limites par le propriétaire ===
 
-  if (!number || limitAmount === undefined) {
-    return res.status(400).json({ error: 'Numéro et limite requis' });
-  }
-
-  const normalized = number.toString().padStart(2, '0');
-
+// Ajouter ou mettre à jour une limite globale
+app.post('/api/number-limits/global', authenticate, requireRole('owner'), async (req, res) => {
+  const { number, limit_amount } = req.body;
+  const ownerId = req.user.id;
   try {
     await pool.query(
-      `
-      INSERT INTO global_number_limits (owner_id, number, limit_amount)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (owner_id, number)
-      DO UPDATE SET limit_amount = EXCLUDED.limit_amount, updated_at = NOW()
-      `,
-      [ownerId, normalized, limitAmount]
+      `INSERT INTO global_number_limits (owner_id, number, limit_amount, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (owner_id, number) 
+       DO UPDATE SET limit_amount = EXCLUDED.limit_amount, updated_at = NOW()`,
+      [ownerId, number.padStart(2, '0'), limit_amount]
     );
-
-    res.json({ success: true });
+    res.json({ success: true, message: 'Limite globale mise à jour' });
   } catch (err) {
-    console.error('❌ Erreur limite globale:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de l\'enregistrement de la limite' });
   }
 });
+
+// Ajouter ou mettre à jour une limite par tirage
+app.post('/api/number-limits/draw', authenticate, requireRole('owner'), async (req, res) => {
+  const { drawId, number, limit_amount } = req.body;
+  const ownerId = req.user.id;
+  try {
+    await pool.query(
+      `INSERT INTO draw_number_limits (owner_id, draw_id, number, limit_amount, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (owner_id, draw_id, number) 
+       DO UPDATE SET limit_amount = EXCLUDED.limit_amount, updated_at = NOW()`,
+      [ownerId, drawId, number.padStart(2, '0'), limit_amount]
+    );
+    res.json({ success: true, message: 'Limite par tirage mise à jour' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de l\'enregistrement de la limite' });
+  }
+});
+
+// Supprimer une limite (Global ou Tirage)
+app.delete('/api/number-limits', authenticate, requireRole('owner'), async (req, res) => {
+  const { number, drawId } = req.body;
+  const ownerId = req.user.id;
+  try {
+    if (drawId) {
+      await pool.query('DELETE FROM draw_number_limits WHERE owner_id = $1 AND draw_id = $2 AND number = $3', [ownerId, drawId, number]);
+    } else {
+      await pool.query('DELETE FROM global_number_limits WHERE owner_id = $1 AND number = $2', [ownerId, number]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur suppression' });
+  }
+});
+
 
 // ==================== Routes superadmin (inchangées) ====================
 // ... (les routes superadmin sont identiques à la version précédente, mais adaptées car draws est commun)
