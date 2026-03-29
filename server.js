@@ -1604,105 +1604,46 @@ app.get('/api/owner/global-limits', authenticate, requireRole('owner'), async (r
  * POST /api/owner/global-limits
  * Body : { number: "XX", limitAmount: 100 }
  */
+// ============================================================
+// CORRECTIF : ENREGISTREMENT LIMITE GLOBALE (server.js)
+// ============================================================
+
 app.post('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
-  const { number, limitAmount } = req.body;
-  const normalized = number?.toString().padStart(2, '0');
+  
+  // Correction : On accepte 'limitAmount' OU 'limit_amount' pour éviter tout conflit avec le HTML
+  const { number } = req.body;
+  const limitAmount = req.body.limitAmount || req.body.limit_amount;
+
+  // 1. Validation stricte du numéro
+  const normalized = number?.toString().trim().padStart(2, '0');
   if (!/^\d{2}$/.test(normalized)) {
     return res.status(400).json({ error: 'Numéro invalide (2 chiffres requis)' });
   }
-  if (typeof limitAmount !== 'number' || limitAmount <= 0) {
-    return res.status(400).json({ error: 'Montant limite invalide (doit être un nombre positif)' });
-  }
-  try {
-    await pool.query(
-      `INSERT INTO global_number_limits (owner_id, number, limit_amount)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (owner_id, number) DO UPDATE SET limit_amount = $3, updated_at = NOW()`,
-      [ownerId, normalized, limitAmount]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error('❌ Erreur création/modification limite globale:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
 
-/**
- * Supprime une limite globale.
- * DELETE /api/owner/global-limits/:number
- */
-app.delete('/api/owner/global-limits/:number', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
-  const { number } = req.params;
-  const normalized = number.padStart(2, '0');
-  try {
-    const result = await pool.query(
-      'DELETE FROM global_number_limits WHERE owner_id = $1 AND number = $2',
-      [ownerId, normalized]
-    );
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Limite globale non trouvée' });
-    }
-    res.json({ success: true });
-  } catch (err) {
-    console.error('❌ Erreur suppression limite globale:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
+  // 2. Validation du montant (doit être un nombre)
+  const finalAmount = parseFloat(limitAmount);
+  if (isNaN(finalAmount) || finalAmount <= 0) {
+    return res.status(400).json({ error: 'Montant limite invalide' });
   }
-});
-// === Nouvelles routes pour la gestion des limites par le propriétaire ===
 
-// Ajouter ou mettre à jour une limite globale
-app.post('/api/number-limits/global', authenticate, requireRole('owner'), async (req, res) => {
-  const { number, limit_amount } = req.body;
-  const ownerId = req.user.id;
   try {
-    await pool.query(
-      `INSERT INTO global_number_limits (owner_id, number, limit_amount, updated_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (owner_id, number) 
-       DO UPDATE SET limit_amount = EXCLUDED.limit_amount, updated_at = NOW()`,
-      [ownerId, number.padStart(2, '0'), limit_amount]
-    );
-    res.json({ success: true, message: 'Limite globale mise à jour' });
+    // 3. Insertion avec ON CONFLICT pour gérer les mises à jour
+    const query = `
+      INSERT INTO global_number_limits (owner_id, number, limit_amount, updated_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (owner_id, number) 
+      DO UPDATE SET 
+        limit_amount = EXCLUDED.limit_amount, 
+        updated_at = NOW()
+    `;
+    
+    await pool.query(query, [ownerId, normalized, finalAmount]);
+    
+    res.json({ success: true, message: 'Limite enregistrée avec succès' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur lors de l\'enregistrement de la limite' });
-  }
-});
-
-// Ajouter ou mettre à jour une limite par tirage
-app.post('/api/number-limits/draw', authenticate, requireRole('owner'), async (req, res) => {
-  const { drawId, number, limit_amount } = req.body;
-  const ownerId = req.user.id;
-  try {
-    await pool.query(
-      `INSERT INTO draw_number_limits (owner_id, draw_id, number, limit_amount, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (owner_id, draw_id, number) 
-       DO UPDATE SET limit_amount = EXCLUDED.limit_amount, updated_at = NOW()`,
-      [ownerId, drawId, number.padStart(2, '0'), limit_amount]
-    );
-    res.json({ success: true, message: 'Limite par tirage mise à jour' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur lors de l\'enregistrement de la limite' });
-  }
-});
-
-// Supprimer une limite (Global ou Tirage)
-app.delete('/api/number-limits', authenticate, requireRole('owner'), async (req, res) => {
-  const { number, drawId } = req.body;
-  const ownerId = req.user.id;
-  try {
-    if (drawId) {
-      await pool.query('DELETE FROM draw_number_limits WHERE owner_id = $1 AND draw_id = $2 AND number = $3', [ownerId, drawId, number]);
-    } else {
-      await pool.query('DELETE FROM global_number_limits WHERE owner_id = $1 AND number = $2', [ownerId, number]);
-    }
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur suppression' });
+    console.error('❌ Erreur critique base de données:', err);
+    res.status(500).json({ error: 'Impossible d\'enregistrer la limite dans la base' });
   }
 });
 
