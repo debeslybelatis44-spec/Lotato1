@@ -5,238 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>LOTATO PRO - Terminal à boutons</title>
     <style>
-        * {
-            box-sizing: border-box;
-            user-select: none;
-        }
-
+        * { box-sizing: border-box; user-select: none; }
         body {
-            background: #000;
-            color: #0f0;
-            font-family: 'Courier New', monospace;
-            font-size: 24px;
-            margin: 0;
-            padding: 10px;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
+            background: #000; color: #0f0; font-family: 'Courier New', monospace;
+            font-size: 24px; margin: 0; padding: 10px; height: 100vh;
+            display: flex; flex-direction: column; overflow: hidden;
         }
-
-        .terminal {
-            max-width: 800px;
-            margin: 0 auto;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        /* Écran de connexion */
-        .login-screen {
-            background: #111;
-            border: 2px solid #0f0;
-            padding: 20px;
-            text-align: center;
-        }
-        .login-screen input {
-            width: 100%;
-            background: #000;
-            border: 2px solid #0f0;
-            color: #0f0;
-            font-size: 28px;
-            padding: 10px;
-            margin: 10px 0;
-            font-family: monospace;
-            text-align: center;
-        }
-        .login-screen button {
-            background: #222;
-            border: 2px solid #0f0;
-            color: #0f0;
-            font-size: 28px;
-            padding: 10px 20px;
-            cursor: pointer;
-            width: 100%;
-        }
-        .login-screen button:focus {
-            background: #0f0;
-            color: #000;
-            outline: none;
-        }
-
-        /* Application principale */
-        .main-app {
-            display: none;
-            flex-direction: column;
-            gap: 15px;
-            height: 100%;
-        }
-
-        .header {
-            border-bottom: 2px solid #0f0;
-            padding-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            font-size: 20px;
-        }
-
-        .draw-selector {
-            background: #111;
-            border: 2px solid #0f0;
-            padding: 10px;
-        }
-        .draw-list {
-            display: flex;
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            gap: 12px;
-            padding: 5px 0;
-        }
-        .draw-item {
-            background: #222;
-            padding: 8px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            white-space: nowrap;
-            border: 1px solid #0f0;
-            opacity: 0.7;
-            transition: all 0.1s;
-        }
-        .draw-item.active {
-            background: #0f0;
-            color: #000;
-            opacity: 1;
-            transform: scale(1.02);
-        }
-        .draw-item:focus {
-            outline: 3px solid #0f0;
-        }
-
-        .input-area {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            background: #111;
-            padding: 15px;
-            border: 2px solid #0f0;
-        }
-        .input-group {
-            flex: 1;
-            min-width: 150px;
-        }
-        .input-group label {
-            display: block;
-            font-size: 18px;
-            margin-bottom: 5px;
-        }
-        .input-group input {
-            width: 100%;
-            background: #000;
-            border: 2px solid #0f0;
-            color: #0f0;
-            font-size: 28px;
-            padding: 10px;
-            font-family: monospace;
-            text-align: center;
-        }
-        .input-group input:focus {
-            outline: none;
-            background: #0f0;
-            color: #000;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 15px;
-            margin-top: 10px;
-        }
-        button {
-            background: #222;
-            border: 2px solid #0f0;
-            color: #0f0;
-            font-size: 28px;
-            padding: 12px 20px;
-            font-family: monospace;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.05s linear;
-        }
-        button:focus {
-            background: #0f0;
-            color: #000;
-            outline: none;
-        }
-
-        .cart {
-            background: #111;
-            border: 2px solid #0f0;
-            padding: 10px;
-            flex: 1;
-            overflow-y: auto;
-            min-height: 150px;
-        }
-        .cart-header {
-            display: flex;
-            justify-content: space-between;
-            border-bottom: 1px solid #0f0;
-            padding-bottom: 5px;
-            margin-bottom: 8px;
-        }
-        .cart-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            border-bottom: 1px dotted #0f0;
-            font-size: 22px;
-        }
-        .cart-total {
-            text-align: right;
-            font-weight: bold;
-            margin-top: 10px;
-            padding-top: 8px;
-            border-top: 2px solid #0f0;
-            font-size: 28px;
-        }
-        .empty-msg {
-            text-align: center;
-            color: #888;
-            padding: 20px;
-        }
-
-        .error-msg, .info-msg {
-            background: #300;
-            color: #f88;
-            padding: 8px;
-            border-left: 5px solid #f00;
-            font-size: 20px;
-        }
-        .info-msg {
-            background: #030;
-            color: #8f8;
-            border-left-color: #0f0;
-        }
-
-        .game-hint {
-            font-size: 16px;
-            background: #111;
-            padding: 5px;
-            text-align: center;
-            border-top: 1px solid #0f0;
-        }
-
-        @media (max-width: 600px) {
-            body { font-size: 18px; }
-            button { font-size: 22px; padding: 8px 12px; }
-            .input-group input { font-size: 24px; }
-            .cart-item { font-size: 18px; }
-        }
+        .terminal { max-width: 800px; margin: 0 auto; width: 100%; height: 100%; display: flex; flex-direction: column; gap: 15px; }
+        .login-screen { background: #111; border: 2px solid #0f0; padding: 20px; text-align: center; }
+        .login-screen input { width: 100%; background: #000; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 10px; margin: 10px 0; font-family: monospace; text-align: center; }
+        .login-screen button { background: #222; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 10px 20px; cursor: pointer; width: 100%; }
+        .login-screen button:focus { background: #0f0; color: #000; outline: none; }
+        .main-app { display: none; flex-direction: column; gap: 15px; height: 100%; }
+        .header { border-bottom: 2px solid #0f0; padding-bottom: 8px; display: flex; justify-content: space-between; font-size: 20px; }
+        .draw-selector { background: #111; border: 2px solid #0f0; padding: 10px; }
+        .draw-list { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px; padding: 5px 0; }
+        .draw-item { background: #222; padding: 8px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; border: 1px solid #0f0; opacity: 0.7; transition: all 0.1s; }
+        .draw-item.active { background: #0f0; color: #000; opacity: 1; transform: scale(1.02); }
+        .draw-item:focus { outline: 3px solid #0f0; }
+        .input-area { display: flex; gap: 12px; flex-wrap: wrap; background: #111; padding: 15px; border: 2px solid #0f0; }
+        .input-group { flex: 1; min-width: 150px; }
+        .input-group label { display: block; font-size: 18px; margin-bottom: 5px; }
+        .input-group input { width: 100%; background: #000; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 10px; font-family: monospace; text-align: center; }
+        .input-group input:focus { outline: none; background: #0f0; color: #000; }
+        .action-buttons { display: flex; gap: 15px; margin-top: 10px; }
+        button { background: #222; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 12px 20px; font-family: monospace; font-weight: bold; cursor: pointer; transition: 0.05s linear; }
+        button:focus { background: #0f0; color: #000; outline: none; }
+        .cart { background: #111; border: 2px solid #0f0; padding: 10px; flex: 1; overflow-y: auto; min-height: 150px; }
+        .cart-header { display: flex; justify-content: space-between; border-bottom: 1px solid #0f0; padding-bottom: 5px; margin-bottom: 8px; }
+        .cart-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dotted #0f0; font-size: 22px; }
+        .cart-total { text-align: right; font-weight: bold; margin-top: 10px; padding-top: 8px; border-top: 2px solid #0f0; font-size: 28px; }
+        .empty-msg { text-align: center; color: #888; padding: 20px; }
+        .error-msg, .info-msg { background: #300; color: #f88; padding: 8px; border-left: 5px solid #f00; font-size: 20px; }
+        .info-msg { background: #030; color: #8f8; border-left-color: #0f0; }
+        .game-hint { font-size: 16px; background: #111; padding: 5px; text-align: center; border-top: 1px solid #0f0; }
+        @media (max-width: 600px) { body { font-size: 18px; } button { font-size: 22px; padding: 8px 12px; } .input-group input { font-size: 24px; } .cart-item { font-size: 18px; } }
     </style>
 </head>
 <body>
 <div class="terminal">
-    <!-- Écran de connexion -->
     <div id="login-screen" class="login-screen">
         <h2>KONEXION</h2>
         <input type="text" id="login-username" placeholder="Non itilizatè">
@@ -245,18 +52,15 @@
         <div id="login-message" style="margin-top: 10px; font-size: 18px;"></div>
     </div>
 
-    <!-- Interface principale -->
     <div id="main-app" class="main-app">
         <div class="header">
             <span class="logo" id="lottery-name">LOTATO PRO</span>
             <span class="clock" id="live-clock">--:--:--</span>
             <span id="agent-name" style="font-size: 18px;"></span>
         </div>
-
         <div class="draw-selector">
             <div class="draw-list" id="draws-list"></div>
         </div>
-
         <div class="input-area">
             <div class="input-group">
                 <label>NUMÉRO</label>
@@ -271,7 +75,6 @@
                 <button id="print-btn">VALIDER</button>
             </div>
         </div>
-
         <div class="cart">
             <div class="cart-header">
                 <span>PANYE</span>
@@ -279,10 +82,9 @@
             </div>
             <div id="cart-display" class="cart-items"></div>
             <div class="cart-total">
-                TOTAL: <span id="cart-total">0</span> Gdes
+                TOTAL: <span id="cart-total-display">0</span> Gdes
             </div>
         </div>
-
         <div id="message-area" style="font-size: 18px;"></div>
         <div class="game-hint">
             F1=Borlette | F2=Lotto3 | F3=Lotto4 | F4=Lotto5 | F5=Mariage | F6=AutoMariage | F7=BO | F8=GRAP
@@ -290,11 +92,9 @@
     </div>
 </div>
 
-<!-- Inclure les modules existants -->
 <script src="config.js"></script>
 <script src="gameEngine.js"></script>
 <script src="apiService.js"></script>
-<script src="cartManager.js"></script>
 
 <script>
     // ==================== VARIABLES GLOBALES ====================
@@ -302,14 +102,16 @@
     let agentId = null;
     let agentName = null;
 
-    // État local pour le terminal
     let draws = [];
     let selectedDraw = null;
     let globalBlocked = [];
     let drawBlocked = {};
     let numberLimits = {};
 
-    // Références DOM
+    // Panier local
+    let currentCart = [];
+
+    // DOM elements
     const loginScreen = document.getElementById('login-screen');
     const mainApp = document.getElementById('main-app');
     const drawListDiv = document.getElementById('draws-list');
@@ -320,7 +122,7 @@
     const messageArea = document.getElementById('message-area');
     const agentNameSpan = document.getElementById('agent-name');
 
-    // ==================== FONCTIONS UTILITAIRES ====================
+    // ==================== UTILITAIRES ====================
     function showMessage(msg, isError = false) {
         messageArea.innerHTML = `<div class="${isError ? 'error-msg' : 'info-msg'}">${msg}</div>`;
         setTimeout(() => { if (messageArea.firstChild) messageArea.innerHTML = ''; }, 4000);
@@ -341,7 +143,7 @@
         return resp.json();
     }
 
-    // ==================== CHARGEMENT DES DONNÉES APRÈS CONNEXION ====================
+    // ==================== CHARGEMENT DES DONNÉES ====================
     async function loadDraws() {
         try {
             const data = await fetchAPI('/draws');
@@ -352,7 +154,6 @@
         } catch (err) {
             console.error(err);
             showMessage("Erreur chargement tirages", true);
-            // Fallback
             draws = [{ id: 'tn_matin', name: 'Tunisia Matin' }, { id: 'tn_soir', name: 'Tunisia Soir' }];
             selectedDraw = draws[0];
             renderDrawList();
@@ -389,7 +190,6 @@
         try {
             const config = await fetchAPI('/lottery-settings');
             if (config) {
-                APP_STATE.lotteryConfig = config;
                 CONFIG.LOTTERY_NAME = config.name || 'LOTATO';
                 CONFIG.LOTTERY_LOGO = config.logo || config.logoUrl || '';
                 CONFIG.slogan = config.slogan || '';
@@ -398,7 +198,6 @@
         } catch(e) { console.warn(e); }
     }
 
-    // ==================== INTERFACE DESSIN ====================
     function renderDrawList() {
         if (!drawListDiv) return;
         drawListDiv.innerHTML = draws.map(draw => `
@@ -406,7 +205,6 @@
                 ${draw.name}
             </div>
         `).join('');
-        // Focus sur l'élément actif pour la navigation
         const activeDiv = drawListDiv.querySelector('.draw-item.active');
         if (activeDiv) activeDiv.focus();
     }
@@ -415,44 +213,328 @@
         const draw = draws.find(d => d.id == newDrawId);
         if (draw) {
             selectedDraw = draw;
-            APP_STATE.selectedDraw = draw.id;
             renderDrawList();
-            // Mettre à jour le titre du tirage pour cartManager (optionnel)
-            if (document.getElementById('current-draw-title')) {
-                document.getElementById('current-draw-title').innerText = draw.name;
-            }
             showMessage(`Tiraj chwazi: ${draw.name}`, false);
         }
     }
 
-    // ==================== GESTION CLAVIER ====================
+    // ==================== GESTION DU PANIER ====================
+    function renderCart() {
+        const container = document.getElementById('cart-display');
+        const totalSpan = document.getElementById('cart-total-display');
+        const itemsCountSpan = document.getElementById('items-count');
+
+        if (!container) return;
+        if (currentCart.length === 0) {
+            container.innerHTML = '<div class="empty-msg">Panye vid</div>';
+            totalSpan.innerText = '0';
+            itemsCountSpan.innerText = '0 jwèt';
+            return;
+        }
+
+        let total = 0;
+        let count = 0;
+        container.innerHTML = currentCart.map((item, idx) => {
+            total += item.amount;
+            count++;
+            const gameAbbr = getGameAbbreviation(item.game);
+            let displayNumber = item.number || item.cleanNumber;
+            if (item.game === 'auto_marriage' && displayNumber && displayNumber.includes('&')) {
+                displayNumber = displayNumber.replace('&', '*');
+            }
+            return `
+                <div class="cart-item">
+                    <span>${gameAbbr} ${displayNumber}</span>
+                    <span>${item.amount} G</span>
+                    <button onclick="removeBet(${idx})" style="background:none; border:none; color:#f00; font-size:20px;">✕</button>
+                </div>
+            `;
+        }).join('');
+
+        totalSpan.innerText = total.toLocaleString('fr-FR');
+        itemsCountSpan.innerText = count + ' jwèt';
+    }
+
+    function getGameAbbreviation(game) {
+        const map = {
+            'borlette': 'BOR', 'lotto3': 'LO3', 'lotto4': 'LO4', 'lotto5': 'LO5',
+            'mariage': 'MAR', 'auto_marriage': 'A-MAR', 'auto_lotto4': 'A-LO4',
+            'auto_lotto5': 'A-LO5', 'bo': 'BO', 'grap': 'GRAP'
+        };
+        return map[game] || game.toUpperCase();
+    }
+
+    function removeBet(index) {
+        currentCart.splice(index, 1);
+        renderCart();
+        showMessage("Mise retire", false);
+    }
+
+    // Vérifications de blocage et limites
+    function isNumberBlocked(number, drawId) {
+        if (globalBlocked.includes(number)) return true;
+        return (drawBlocked[drawId] || []).includes(number);
+    }
+
+    function checkNumberLimit(number, drawId, amountToAdd) {
+        const key = `${drawId}_${number}`;
+        const limit = numberLimits[key];
+        if (!limit) return { success: true };
+        const current = currentCart
+            .filter(b => b.drawId === drawId && b.cleanNumber === number)
+            .reduce((sum, b) => sum + b.amount, 0);
+        if (current + amountToAdd > limit) {
+            return { success: false, msg: `Limite ${number} atteinte: max ${limit} G, déjà ${current} G` };
+        }
+        return { success: true };
+    }
+
+    // Ajout d'une mise
+    function addBet() {
+        if (!selectedDraw) {
+            showMessage("Chwazi yon tiraj anvan", true);
+            return;
+        }
+        const rawNum = numInput.value.trim();
+        const amount = parseFloat(amtInput.value);
+        if (isNaN(amount) || amount <= 0) {
+            showMessage("Montan pa valab", true);
+            return;
+        }
+
+        const game = window.currentGame || 'borlette'; // défini par les touches F1-F8
+
+        // Pour les jeux spéciaux qui ne nécessitent pas de numéro
+        if (game === 'bo' || game === 'grap' || game === 'auto_marriage' || game === 'auto_lotto4' || game === 'auto_lotto5') {
+            // Génération automatique
+            let autoBets = [];
+            if (game === 'bo') autoBets = SpecialGames.generateBOBets(amount);
+            else if (game === 'grap') autoBets = SpecialGames.generateGRAPBets(amount);
+            else if (game === 'auto_marriage') autoBets = GameEngine.generateAutoMarriageBets(amount);
+            else if (game === 'auto_lotto4') autoBets = GameEngine.generateAutoLotto4Bets(amount);
+            else if (game === 'auto_lotto5') autoBets = GameEngine.generateAutoLotto5Bets(amount);
+
+            if (!autoBets.length) {
+                showMessage("Pa gen ase nimewo nan panye pou jenere " + game, true);
+                return;
+            }
+
+            for (const bet of autoBets) {
+                const number = bet.cleanNumber || bet.number;
+                const check = checkNumberLimit(number, selectedDraw.id, amount);
+                if (!check.success) {
+                    showMessage(check.msg, true);
+                    return;
+                }
+                if (isNumberBlocked(number, selectedDraw.id)) {
+                    showMessage(`Nimewo ${number} bloke`, true);
+                    return;
+                }
+            }
+
+            for (const bet of autoBets) {
+                currentCart.push({
+                    ...bet,
+                    id: Date.now() + Math.random(),
+                    drawId: selectedDraw.id,
+                    drawName: selectedDraw.name
+                });
+            }
+            renderCart();
+            numInput.value = '';
+            amtInput.value = '';
+            numInput.focus();
+            showMessage(`${game.toUpperCase()} ajoute`, false);
+            return;
+        }
+
+        // Pour les jeux normaux (borlette, lotto3,4,5, mariage)
+        let cleanNum = rawNum.replace(/\D/g, '');
+        if (!GameEngine.validateEntry(game, cleanNum)) {
+            showMessage("Nimewo pa valid pou jwèt sa a", true);
+            return;
+        }
+
+        // Ajustement du format selon le jeu
+        if (game === 'borlette') cleanNum = cleanNum.padStart(2, '0');
+        else if (game === 'lotto3') cleanNum = cleanNum.padStart(3, '0');
+        else if (game === 'lotto4') cleanNum = cleanNum.padStart(4, '0');
+        else if (game === 'lotto5') cleanNum = cleanNum.padStart(5, '0');
+        else if (game === 'mariage') cleanNum = cleanNum.padStart(4, '0');
+
+        const check = checkNumberLimit(cleanNum, selectedDraw.id, amount);
+        if (!check.success) {
+            showMessage(check.msg, true);
+            return;
+        }
+        if (isNumberBlocked(cleanNum, selectedDraw.id)) {
+            showMessage(`Nimewo ${cleanNum} bloke pou tiraj sa a`, true);
+            return;
+        }
+
+        currentCart.push({
+            id: Date.now() + Math.random(),
+            game: game,
+            number: (game === 'mariage') ? `${cleanNum.slice(0,2)}&${cleanNum.slice(2,4)}` : cleanNum,
+            cleanNumber: cleanNum,
+            amount: amount,
+            drawId: selectedDraw.id,
+            drawName: selectedDraw.name,
+            timestamp: new Date().toISOString()
+        });
+
+        renderCart();
+        numInput.value = '';
+        amtInput.value = '';
+        numInput.focus();
+        showMessage(`Mise ajoute: ${cleanNum} - ${amount} G`, false);
+    }
+
+    // ==================== VALIDATION ET IMPRESSION ====================
+    async function processFinalTicket() {
+        if (currentCart.length === 0) {
+            showMessage("Panye vid, pa gen tikè pou valide", true);
+            return;
+        }
+
+        const printWindow = window.open('', '_blank', 'width=500,height=700');
+        if (!printWindow) {
+            showMessage("Pèmèt fenèt pop-up pou enprime", true);
+            return;
+        }
+        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket...</p></body></html>');
+        printWindow.document.close();
+
+        const betsByDraw = {};
+        currentCart.forEach(b => {
+            if (!betsByDraw[b.drawId]) betsByDraw[b.drawId] = [];
+            betsByDraw[b.drawId].push(b);
+        });
+
+        try {
+            for (const drawId in betsByDraw) {
+                const bets = betsByDraw[drawId];
+                const total = bets.reduce((s, b) => s + b.amount, 0);
+                const drawObj = draws.find(d => d.id == drawId);
+                const payload = {
+                    agentId: agentId,
+                    agentName: agentName,
+                    drawId: drawId,
+                    drawName: drawObj ? drawObj.name : drawId,
+                    bets: bets,
+                    total: total
+                };
+                const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error("Erreur serveur");
+                const data = await res.json();
+                data.ticket.date = new Date().toISOString();
+                printTicket(data.ticket, printWindow);
+            }
+            currentCart = [];
+            renderCart();
+            showMessage("✅ Tikè sove & enprime", false);
+        } catch (err) {
+            console.error(err);
+            showMessage("❌ Erè pandan enpresyon: " + err.message, true);
+            printWindow.close();
+        }
+    }
+
+    function printTicket(ticket, printWindow) {
+        const html = generateTicketHTML(ticket);
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.onload = function() {
+            printWindow.focus();
+            printWindow.print();
+        };
+    }
+
+    function generateTicketHTML(ticket) {
+        const cfg = CONFIG;
+        const lotteryName = cfg.LOTTERY_NAME || 'LOTATO PRO';
+        const slogan = cfg.slogan || '';
+        const drawName = ticket.draw_name || (draws.find(d => d.id == ticket.draw_id)?.name) || 'Tiraj';
+        const date = new Date(ticket.date).toLocaleString('fr-FR');
+        const betsHTML = (ticket.bets || []).map(b => `
+            <div class="bet-row" style="display:flex; justify-content:space-between;">
+                <span>${getGameAbbreviation(b.game)} ${b.number || b.cleanNumber}</span>
+                <span>${b.amount} G</span>
+            </div>
+        `).join('');
+        return `<!DOCTYPE html>
+        <html>
+        <head><title>Ticket</title>
+        <style>
+            @page { size: 80mm auto; margin: 2mm; }
+            body { font-family: monospace; font-size: 28px; width: 76mm; margin: 0 auto; padding: 4mm; background: white; color: black; }
+            .header { text-align: center; border-bottom: 2px dashed #000; }
+            .total-row { font-weight: bold; margin-top: 10px; border-top: 1px solid #000; padding-top: 5px; }
+            .footer { text-align: center; margin-top: 20px; font-size: 20px; }
+        </style>
+        </head>
+        <body>
+            <div class="header"><strong>${lotteryName}</strong><br>${slogan}</div>
+            <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
+            <p>Tiraj: ${drawName}</p>
+            <p>Date: ${date}</p>
+            <p>Ajan: ${ticket.agent_name || agentName}</p>
+            <hr>
+            ${betsHTML}
+            <div class="total-row"><span>TOTAL</span><span>${ticket.total_amount || ticket.total || 0} Gdes</span></div>
+            <div class="footer">Merci !</div>
+        </body>
+        </html>`;
+    }
+
+    // ==================== GESTION CLAVIER ET SÉLECTION JEU ====================
+    let currentGame = 'borlette'; // par défaut
+
+    function selectGame(game) {
+        currentGame = game;
+        const input = document.getElementById('num-input');
+        if (game === 'auto_marriage' || game === 'auto_lotto4' || game === 'auto_lotto5' || game === 'bo' || game === 'grap') {
+            input.disabled = true;
+            input.value = '';
+            input.placeholder = 'Auto-genere';
+        } else {
+            input.disabled = false;
+            let placeholder = '';
+            if (game === 'borlette') placeholder = '00';
+            else if (game === 'lotto3') placeholder = '000';
+            else if (game === 'lotto4') placeholder = '0000';
+            else if (game === 'lotto5') placeholder = '00000';
+            else if (game === 'mariage') placeholder = '0000';
+            input.placeholder = placeholder;
+            input.focus();
+        }
+        showMessage(`Jwèt chwazi: ${game.toUpperCase()}`, false);
+    }
+
     let currentFocusIndex = 0;
     const focusableIds = ['num-input', 'amt-input', 'add-btn', 'print-btn'];
     function setFocusById(id) {
         const el = document.getElementById(id);
-        if (el) {
-            el.focus();
-            currentFocusIndex = focusableIds.indexOf(id);
-        }
+        if (el) el.focus();
+        currentFocusIndex = focusableIds.indexOf(id);
     }
 
     function setupKeyboardNavigation() {
-        // Focus initial sur num-input
         setFocusById('num-input');
-
-        // Tab / Shift+Tab entre champs
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Tab') {
                 e.preventDefault();
-                if (e.shiftKey) {
-                    currentFocusIndex = (currentFocusIndex - 1 + focusableIds.length) % focusableIds.length;
-                } else {
-                    currentFocusIndex = (currentFocusIndex + 1) % focusableIds.length;
-                }
+                if (e.shiftKey) currentFocusIndex = (currentFocusIndex - 1 + focusableIds.length) % focusableIds.length;
+                else currentFocusIndex = (currentFocusIndex + 1) % focusableIds.length;
                 setFocusById(focusableIds[currentFocusIndex]);
             }
-
-            // Flèches Haut/Bas pour changer de tirage si le focus n'est pas dans un input
             const activeTag = document.activeElement.tagName;
             if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && activeTag !== 'INPUT') {
                 e.preventDefault();
@@ -466,67 +548,33 @@
                 drawItems[idx].focus();
                 return;
             }
-
-            // Entrée : exécute l'action du champ actif
             if (e.key === 'Enter') {
                 const activeId = document.activeElement.id;
-                if (activeId === 'add-btn') {
-                    CartManager.addBet();
-                } else if (activeId === 'print-btn') {
-                    processFinalTicket();
-                } else if (activeId === 'num-input' || activeId === 'amt-input') {
-                    CartManager.addBet();
-                }
+                if (activeId === 'add-btn') addBet();
+                else if (activeId === 'print-btn') processFinalTicket();
+                else if (activeId === 'num-input' || activeId === 'amt-input') addBet();
             }
-
-            // Touches de fonction F1-F8 pour changer de jeu
             const gameMap = {
-                'F1': 'borlette',
-                'F2': 'lotto3',
-                'F3': 'lotto4',
-                'F4': 'lotto5',
-                'F5': 'mariage',
-                'F6': 'auto_marriage',
-                'F7': 'bo',
-                'F8': 'grap'
+                'F1': 'borlette', 'F2': 'lotto3', 'F3': 'lotto4', 'F4': 'lotto5',
+                'F5': 'mariage', 'F6': 'auto_marriage', 'F7': 'bo', 'F8': 'grap'
             };
             if (gameMap[e.key]) {
                 e.preventDefault();
                 selectGame(gameMap[e.key]);
-                showMessage(`Jwèt: ${gameMap[e.key].toUpperCase()}`, false);
             }
         });
     }
 
     // ==================== INITIALISATION APRÈS CONNEXION ====================
     async function initAfterLogin() {
-        // Initialiser APP_STATE pour cartManager, gameEngine
-        APP_STATE.agentId = agentId;
-        APP_STATE.agentName = agentName;
-        APP_STATE.selectedDraw = selectedDraw ? selectedDraw.id : (draws[0]?.id);
-        APP_STATE.currentCart = [];
-        APP_STATE.draws = draws;
-        APP_STATE.globalBlockedNumbers = globalBlocked;
-        APP_STATE.drawBlockedNumbers = drawBlocked;
-        APP_STATE.numberLimits = numberLimits;
-        APP_STATE.multiDrawMode = false;
-        APP_STATE.selectedGame = 'borlette'; // par défaut
-
-        // Charger la config de la loterie
         await loadLotteryConfig();
-
-        // Mettre à jour l'affichage de l'agent
         agentNameSpan.innerText = agentName;
-
-        // Appeler le rendu initial du panier
-        CartManager.renderCart();
-
-        // Démarrer l'horloge
+        renderCart();
         setInterval(() => {
             document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('fr-FR');
         }, 1000);
-
         showMessage("Terminal prèt - Chwazi tiraj ak nimewo", false);
+        console.log("✅ Initialisation terminée");
     }
 
     // ==================== LOGIN ====================
@@ -548,12 +596,10 @@
             localStorage.setItem('agent_id', agentId);
             localStorage.setItem('agent_name', agentName);
 
-            // Charger les données
             await loadDraws();
             await loadBlockedNumbers();
             await loadNumberLimits();
 
-            // Passer à l'interface principale
             loginScreen.style.display = 'none';
             mainApp.style.display = 'flex';
             await initAfterLogin();
@@ -563,7 +609,6 @@
         }
     }
 
-    // Gestionnaire du bouton login
     document.getElementById('login-btn').addEventListener('click', () => {
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value.trim();
@@ -574,7 +619,6 @@
         login(username, password);
     });
 
-    // Permettre Enter sur les champs login
     document.getElementById('login-username').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') document.getElementById('login-password').focus();
     });
@@ -582,8 +626,6 @@
         if (e.key === 'Enter') document.getElementById('login-btn').click();
     });
 
-    // Si déjà connecté (token valide), on peut passer directement
-    // (optionnel) vérifier token existant
     const savedToken = localStorage.getItem('auth_token');
     const savedAgentId = localStorage.getItem('agent_id');
     const savedAgentName = localStorage.getItem('agent_name');
@@ -591,45 +633,32 @@
         authToken = savedToken;
         agentId = savedAgentId;
         agentName = savedAgentName;
-        // Vérifier que le token est encore valide en essayant de charger les tirages
         loadDraws().then(() => {
             loginScreen.style.display = 'none';
             mainApp.style.display = 'flex';
             initAfterLogin();
         }).catch(() => {
-            // Token invalide, rester sur login
-            console.log('Token invalide, connexion requise');
             localStorage.removeItem('auth_token');
             localStorage.removeItem('agent_id');
             localStorage.removeItem('agent_name');
         });
     } else {
-        // Afficher login
         loginScreen.style.display = 'block';
         mainApp.style.display = 'none';
     }
 
-    // Exposer les fonctions nécessaires pour cartManager (qui utilise certaines globales)
-    window.CartManager = CartManager;
+    // Exposer les fonctions globales
+    window.addBet = addBet;
     window.processFinalTicket = processFinalTicket;
-    window.selectGame = selectGame;  // de gameEngine.js
-    window.toggleLottoOption = toggleLottoOption; // de gameEngine.js
-    window.selectMainGame = selectMainGame; // de gameEngine.js
-    window.toggleNumericChips = toggleNumericChips; // de gameEngine.js
+    window.removeBet = removeBet;
+    window.selectGame = selectGame;
 
-    // Configurer le gestionnaire clavier
+    addBtn.addEventListener('click', addBet);
+    printBtn.addEventListener('click', processFinalTicket);
     setupKeyboardNavigation();
 
-    // S'assurer que les boutons déclenchent les bonnes actions
-    addBtn.addEventListener('click', () => CartManager.addBet());
-    printBtn.addEventListener('click', () => processFinalTicket());
-
-    // Forcer la réinitialisation du panier après login
-    window.addEventListener('load', () => {
-        if (mainApp.style.display === 'flex') {
-            CartManager.renderCart();
-        }
-    });
+    // Initialisation du jeu par défaut
+    selectGame('borlette');
 </script>
 </body>
 </html>
