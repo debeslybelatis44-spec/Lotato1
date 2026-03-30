@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>LOTATO PRO - Terminal à boutons</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 24px;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .terminal {
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Écran de connexion */
+        .login-screen {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 20px;
+            text-align: center;
+        }
+        .login-screen input {
+            width: 100%;
+            background: #000;
+            border: 2px solid #0f0;
+            color: #0f0;
+            font-size: 28px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            text-align: center;
+        }
+        .login-screen button {
+            background: #222;
+            border: 2px solid #0f0;
+            color: #0f0;
+            font-size: 28px;
+            padding: 10px 20px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .login-screen button:focus {
+            background: #0f0;
+            color: #000;
+            outline: none;
+        }
+
+        /* Application principale */
+        .main-app {
+            display: none;
+            flex-direction: column;
+            gap: 15px;
+            height: 100%;
+        }
+
+        .header {
+            border-bottom: 2px solid #0f0;
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 20px;
+        }
+
+        .draw-selector {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 10px;
+        }
+        .draw-list {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            gap: 12px;
+            padding: 5px 0;
+        }
+        .draw-item {
+            background: #222;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+            border: 1px solid #0f0;
+            opacity: 0.7;
+            transition: all 0.1s;
+        }
+        .draw-item.active {
+            background: #0f0;
+            color: #000;
+            opacity: 1;
+            transform: scale(1.02);
+        }
+        .draw-item:focus {
+            outline: 3px solid #0f0;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            background: #111;
+            padding: 15px;
+            border: 2px solid #0f0;
+        }
+        .input-group {
+            flex: 1;
+            min-width: 150px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        .input-group input {
+            width: 100%;
+            background: #000;
+            border: 2px solid #0f0;
+            color: #0f0;
+            font-size: 28px;
+            padding: 10px;
+            font-family: monospace;
+            text-align: center;
+        }
+        .input-group input:focus {
+            outline: none;
+            background: #0f0;
+            color: #000;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        button {
+            background: #222;
+            border: 2px solid #0f0;
+            color: #0f0;
+            font-size: 28px;
+            padding: 12px 20px;
+            font-family: monospace;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.05s linear;
+        }
+        button:focus {
+            background: #0f0;
+            color: #000;
+            outline: none;
+        }
+
+        .cart {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 10px;
+            flex: 1;
+            overflow-y: auto;
+            min-height: 150px;
+        }
+        .cart-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #0f0;
+            padding-bottom: 5px;
+            margin-bottom: 8px;
+        }
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px dotted #0f0;
+            font-size: 22px;
+        }
+        .cart-total {
+            text-align: right;
+            font-weight: bold;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 2px solid #0f0;
+            font-size: 28px;
+        }
+        .empty-msg {
+            text-align: center;
+            color: #888;
+            padding: 20px;
+        }
+
+        .error-msg, .info-msg {
+            background: #300;
+            color: #f88;
+            padding: 8px;
+            border-left: 5px solid #f00;
+            font-size: 20px;
+        }
+        .info-msg {
+            background: #030;
+            color: #8f8;
+            border-left-color: #0f0;
+        }
+
+        .game-hint {
+            font-size: 16px;
+            background: #111;
+            padding: 5px;
+            text-align: center;
+            border-top: 1px solid #0f0;
+        }
+
+        @media (max-width: 600px) {
+            body { font-size: 18px; }
+            button { font-size: 22px; padding: 8px 12px; }
+            .input-group input { font-size: 24px; }
+            .cart-item { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+<div class="terminal">
+    <!-- Écran de connexion -->
+    <div id="login-screen" class="login-screen">
+        <h2>KONEXION</h2>
+        <input type="text" id="login-username" placeholder="Non itilizatè">
+        <input type="password" id="login-password" placeholder="Modpas">
+        <button id="login-btn">KONNEKTE</button>
+        <div id="login-message" style="margin-top: 10px; font-size: 18px;"></div>
+    </div>
+
+    <!-- Interface principale -->
+    <div id="main-app" class="main-app">
+        <div class="header">
+            <span class="logo" id="lottery-name">LOTATO PRO</span>
+            <span class="clock" id="live-clock">--:--:--</span>
+            <span id="agent-name" style="font-size: 18px;"></span>
+        </div>
+
+        <div class="draw-selector">
+            <div class="draw-list" id="draws-list"></div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-group">
+                <label>NUMÉRO</label>
+                <input type="text" id="num-input" placeholder="00" maxlength="5" autocomplete="off">
+            </div>
+            <div class="input-group">
+                <label>MONTANT (G)</label>
+                <input type="number" id="amt-input" placeholder="0" step="1" min="1" autocomplete="off">
+            </div>
+            <div class="action-buttons">
+                <button id="add-btn">AJOUTER</button>
+                <button id="print-btn">VALIDER</button>
+            </div>
+        </div>
+
+        <div class="cart">
+            <div class="cart-header">
+                <span>PANYE</span>
+                <span id="items-count">0 jwèt</span>
+            </div>
+            <div id="cart-display" class="cart-items"></div>
+            <div class="cart-total">
+                TOTAL: <span id="cart-total">0</span> Gdes
+            </div>
+        </div>
+
+        <div id="message-area" style="font-size: 18px;"></div>
+        <div class="game-hint">
+            F1=Borlette | F2=Lotto3 | F3=Lotto4 | F4=Lotto5 | F5=Mariage | F6=AutoMariage | F7=BO | F8=GRAP
+        </div>
+    </div>
+</div>
+
+<!-- Inclure les modules existants -->
+<script src="config.js"></script>
+<script src="gameEngine.js"></script>
+<script src="apiService.js"></script>
+<script src="cartManager.js"></script>
+
+<script>
+    // ==================== VARIABLES GLOBALES ====================
+    let authToken = null;
+    let agentId = null;
+    let agentName = null;
+
+    // État local pour le terminal
+    let draws = [];
+    let selectedDraw = null;
+    let globalBlocked = [];
+    let drawBlocked = {};
+    let numberLimits = {};
+
+    // Références DOM
+    const loginScreen = document.getElementById('login-screen');
+    const mainApp = document.getElementById('main-app');
+    const drawListDiv = document.getElementById('draws-list');
+    const numInput = document.getElementById('num-input');
+    const amtInput = document.getElementById('amt-input');
+    const addBtn = document.getElementById('add-btn');
+    const printBtn = document.getElementById('print-btn');
+    const messageArea = document.getElementById('message-area');
+    const agentNameSpan = document.getElementById('agent-name');
+
+    // ==================== FONCTIONS UTILITAIRES ====================
+    function showMessage(msg, isError = false) {
+        messageArea.innerHTML = `<div class="${isError ? 'error-msg' : 'info-msg'}">${msg}</div>`;
+        setTimeout(() => { if (messageArea.firstChild) messageArea.innerHTML = ''; }, 4000);
+    }
+
+    async function fetchAPI(endpoint, options = {}) {
+        const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+        const headers = {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        const resp = await fetch(url, { ...options, headers });
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(`HTTP ${resp.status}: ${text}`);
+        }
+        return resp.json();
+    }
+
+    // ==================== CHARGEMENT DES DONNÉES APRÈS CONNEXION ====================
+    async function loadDraws() {
+        try {
+            const data = await fetchAPI('/draws');
+            draws = data.draws.filter(d => d.active !== false);
+            if (draws.length === 0) throw new Error('Aucun tirage actif');
+            if (!selectedDraw) selectedDraw = draws[0];
+            renderDrawList();
+        } catch (err) {
+            console.error(err);
+            showMessage("Erreur chargement tirages", true);
+            // Fallback
+            draws = [{ id: 'tn_matin', name: 'Tunisia Matin' }, { id: 'tn_soir', name: 'Tunisia Soir' }];
+            selectedDraw = draws[0];
+            renderDrawList();
+        }
+    }
+
+    async function loadBlockedNumbers() {
+        try {
+            const globalRes = await fetchAPI('/blocked-numbers/global');
+            globalBlocked = globalRes.blockedNumbers || [];
+            const drawBlockedTemp = {};
+            for (const draw of draws) {
+                try {
+                    const res = await fetchAPI(`/blocked-numbers/draw/${draw.id}`);
+                    drawBlockedTemp[draw.id] = res.blockedNumbers || [];
+                } catch(e) { drawBlockedTemp[draw.id] = []; }
+            }
+            drawBlocked = drawBlockedTemp;
+        } catch(e) { console.warn(e); }
+    }
+
+    async function loadNumberLimits() {
+        try {
+            const limits = await fetchAPI('/number-limits');
+            numberLimits = {};
+            limits.forEach(l => {
+                const key = `${l.draw_id || 'global'}_${l.number}`;
+                numberLimits[key] = parseFloat(l.limit_amount);
+            });
+        } catch(e) { console.warn(e); }
+    }
+
+    async function loadLotteryConfig() {
+        try {
+            const config = await fetchAPI('/lottery-settings');
+            if (config) {
+                APP_STATE.lotteryConfig = config;
+                CONFIG.LOTTERY_NAME = config.name || 'LOTATO';
+                CONFIG.LOTTERY_LOGO = config.logo || config.logoUrl || '';
+                CONFIG.slogan = config.slogan || '';
+                document.getElementById('lottery-name').innerHTML = config.name;
+            }
+        } catch(e) { console.warn(e); }
+    }
+
+    // ==================== INTERFACE DESSIN ====================
+    function renderDrawList() {
+        if (!drawListDiv) return;
+        drawListDiv.innerHTML = draws.map(draw => `
+            <div class="draw-item ${selectedDraw && selectedDraw.id === draw.id ? 'active' : ''}" data-id="${draw.id}" data-name="${draw.name}">
+                ${draw.name}
+            </div>
+        `).join('');
+        // Focus sur l'élément actif pour la navigation
+        const activeDiv = drawListDiv.querySelector('.draw-item.active');
+        if (activeDiv) activeDiv.focus();
+    }
+
+    function updateDrawSelection(newDrawId) {
+        const draw = draws.find(d => d.id == newDrawId);
+        if (draw) {
+            selectedDraw = draw;
+            APP_STATE.selectedDraw = draw.id;
+            renderDrawList();
+            // Mettre à jour le titre du tirage pour cartManager (optionnel)
+            if (document.getElementById('current-draw-title')) {
+                document.getElementById('current-draw-title').innerText = draw.name;
+            }
+            showMessage(`Tiraj chwazi: ${draw.name}`, false);
+        }
+    }
+
+    // ==================== GESTION CLAVIER ====================
+    let currentFocusIndex = 0;
+    const focusableIds = ['num-input', 'amt-input', 'add-btn', 'print-btn'];
+    function setFocusById(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.focus();
+            currentFocusIndex = focusableIds.indexOf(id);
+        }
+    }
+
+    function setupKeyboardNavigation() {
+        // Focus initial sur num-input
+        setFocusById('num-input');
+
+        // Tab / Shift+Tab entre champs
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    currentFocusIndex = (currentFocusIndex - 1 + focusableIds.length) % focusableIds.length;
+                } else {
+                    currentFocusIndex = (currentFocusIndex + 1) % focusableIds.length;
+                }
+                setFocusById(focusableIds[currentFocusIndex]);
+            }
+
+            // Flèches Haut/Bas pour changer de tirage si le focus n'est pas dans un input
+            const activeTag = document.activeElement.tagName;
+            if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && activeTag !== 'INPUT') {
+                e.preventDefault();
+                const drawItems = document.querySelectorAll('.draw-item');
+                let activeDraw = document.querySelector('.draw-item.active');
+                let idx = Array.from(drawItems).findIndex(el => el === activeDraw);
+                if (e.key === 'ArrowDown') idx = (idx + 1) % drawItems.length;
+                if (e.key === 'ArrowUp') idx = (idx - 1 + drawItems.length) % drawItems.length;
+                const newId = drawItems[idx].getAttribute('data-id');
+                updateDrawSelection(newId);
+                drawItems[idx].focus();
+                return;
+            }
+
+            // Entrée : exécute l'action du champ actif
+            if (e.key === 'Enter') {
+                const activeId = document.activeElement.id;
+                if (activeId === 'add-btn') {
+                    CartManager.addBet();
+                } else if (activeId === 'print-btn') {
+                    processFinalTicket();
+                } else if (activeId === 'num-input' || activeId === 'amt-input') {
+                    CartManager.addBet();
+                }
+            }
+
+            // Touches de fonction F1-F8 pour changer de jeu
+            const gameMap = {
+                'F1': 'borlette',
+                'F2': 'lotto3',
+                'F3': 'lotto4',
+                'F4': 'lotto5',
+                'F5': 'mariage',
+                'F6': 'auto_marriage',
+                'F7': 'bo',
+                'F8': 'grap'
+            };
+            if (gameMap[e.key]) {
+                e.preventDefault();
+                selectGame(gameMap[e.key]);
+                showMessage(`Jwèt: ${gameMap[e.key].toUpperCase()}`, false);
+            }
+        });
+    }
+
+    // ==================== INITIALISATION APRÈS CONNEXION ====================
+    async function initAfterLogin() {
+        // Initialiser APP_STATE pour cartManager, gameEngine
+        APP_STATE.agentId = agentId;
+        APP_STATE.agentName = agentName;
+        APP_STATE.selectedDraw = selectedDraw ? selectedDraw.id : (draws[0]?.id);
+        APP_STATE.currentCart = [];
+        APP_STATE.draws = draws;
+        APP_STATE.globalBlockedNumbers = globalBlocked;
+        APP_STATE.drawBlockedNumbers = drawBlocked;
+        APP_STATE.numberLimits = numberLimits;
+        APP_STATE.multiDrawMode = false;
+        APP_STATE.selectedGame = 'borlette'; // par défaut
+
+        // Charger la config de la loterie
+        await loadLotteryConfig();
+
+        // Mettre à jour l'affichage de l'agent
+        agentNameSpan.innerText = agentName;
+
+        // Appeler le rendu initial du panier
+        CartManager.renderCart();
+
+        // Démarrer l'horloge
+        setInterval(() => {
+            document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('fr-FR');
+        }, 1000);
+
+        showMessage("Terminal prèt - Chwazi tiraj ak nimewo", false);
+    }
+
+    // ==================== LOGIN ====================
+    async function login(username, password) {
+        const loginMsg = document.getElementById('login-message');
+        loginMsg.innerText = 'Koneksyon...';
+        try {
+            const resp = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.LOGIN}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, role: 'agent' })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Erreur');
+            authToken = data.token;
+            agentId = data.agentId;
+            agentName = data.name;
+            localStorage.setItem('auth_token', authToken);
+            localStorage.setItem('agent_id', agentId);
+            localStorage.setItem('agent_name', agentName);
+
+            // Charger les données
+            await loadDraws();
+            await loadBlockedNumbers();
+            await loadNumberLimits();
+
+            // Passer à l'interface principale
+            loginScreen.style.display = 'none';
+            mainApp.style.display = 'flex';
+            await initAfterLogin();
+        } catch (err) {
+            loginMsg.innerText = 'Erreur: ' + err.message;
+            console.error(err);
+        }
+    }
+
+    // Gestionnaire du bouton login
+    document.getElementById('login-btn').addEventListener('click', () => {
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value.trim();
+        if (!username || !password) {
+            document.getElementById('login-message').innerText = 'Ranpli tout chan yo';
+            return;
+        }
+        login(username, password);
+    });
+
+    // Permettre Enter sur les champs login
+    document.getElementById('login-username').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('login-password').focus();
+    });
+    document.getElementById('login-password').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('login-btn').click();
+    });
+
+    // Si déjà connecté (token valide), on peut passer directement
+    // (optionnel) vérifier token existant
+    const savedToken = localStorage.getItem('auth_token');
+    const savedAgentId = localStorage.getItem('agent_id');
+    const savedAgentName = localStorage.getItem('agent_name');
+    if (savedToken && savedAgentId) {
+        authToken = savedToken;
+        agentId = savedAgentId;
+        agentName = savedAgentName;
+        // Vérifier que le token est encore valide en essayant de charger les tirages
+        loadDraws().then(() => {
+            loginScreen.style.display = 'none';
+            mainApp.style.display = 'flex';
+            initAfterLogin();
+        }).catch(() => {
+            // Token invalide, rester sur login
+            console.log('Token invalide, connexion requise');
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('agent_id');
+            localStorage.removeItem('agent_name');
+        });
+    } else {
+        // Afficher login
+        loginScreen.style.display = 'block';
+        mainApp.style.display = 'none';
+    }
+
+    // Exposer les fonctions nécessaires pour cartManager (qui utilise certaines globales)
+    window.CartManager = CartManager;
+    window.processFinalTicket = processFinalTicket;
+    window.selectGame = selectGame;  // de gameEngine.js
+    window.toggleLottoOption = toggleLottoOption; // de gameEngine.js
+    window.selectMainGame = selectMainGame; // de gameEngine.js
+    window.toggleNumericChips = toggleNumericChips; // de gameEngine.js
+
+    // Configurer le gestionnaire clavier
+    setupKeyboardNavigation();
+
+    // S'assurer que les boutons déclenchent les bonnes actions
+    addBtn.addEventListener('click', () => CartManager.addBet());
+    printBtn.addEventListener('click', () => processFinalTicket());
+
+    // Forcer la réinitialisation du panier après login
+    window.addEventListener('load', () => {
+        if (mainApp.style.display === 'flex') {
+            CartManager.renderCart();
+        }
+    });
+</script>
+</body>
+</html>
