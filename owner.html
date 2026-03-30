@@ -345,17 +345,14 @@
             <div id="settings-message" class="alert" style="display:none;"></div>
         </div>
 
-        <script>
+<script>
     // ---------- CONFIGURATION ----------
-    // Utilisez l'URL relative, car le backend sert les fichiers statiques sur le même port.
     const API_URL = '';
     let chartInstance = null;
     let lastDetailedReportHTML = '';
 
-    // Fonction utilitaire pour afficher les erreurs réseau en console
     function handleFetchError(error, context) {
         console.error(`❌ Erreur réseau (${context}):`, error);
-        // Afficher un message dans l'UI si besoin
         const errorContainer = document.getElementById('global-error-message');
         if (errorContainer) {
             errorContainer.innerText = `Erreur réseau: ${error.message}`;
@@ -434,7 +431,7 @@
             loadDrawsForSelects();
             loadAllRestrictions();
             loadBlockedLotto3();
-            loadGlobalLimits();   // NOUVEAU : charge les limites globales
+            loadGlobalLimits();   // Charge les limites globales
         }
         if (tabId === 'reports') { loadSupervisorsAndAgents(); loadDrawsForReport(); }
         if (tabId === 'tickets') { loadTicketFilters(); loadTickets(); }
@@ -502,7 +499,7 @@
             let limitsHtml = '';
             if (data.limits_progress.length === 0) limitsHtml = '<p>Aucune limite définie</p>';
             else {
-                limitsHtml = '能<table><thead> <tr><th>Tirage</th><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></tr></thead><tbody>';
+                limitsHtml = '<div class="table-responsive"><table><thead><tr><th>Tirage</th><th>Numéro</th><th>Limite</th><th>Misé</th><th>%</th></tr></thead><tbody>';
                 data.limits_progress.forEach(l => {
                     const percent = parseFloat(l.progress_percent).toFixed(1);
                     let statusClass = '';
@@ -511,13 +508,13 @@
                     else statusClass = 'badge-success';
                     limitsHtml += `<tr><td>${l.draw_name}</td><td>${l.number}</td><td>${parseFloat(l.limit_amount).toLocaleString()} G</td><td>${parseFloat(l.current_bets).toLocaleString()} G</td><td><span class="${statusClass}">${percent}%</span></td></tr>`;
                 });
-                limitsHtml += '</tbody></table>';
+                limitsHtml += '</tbody></table></div>';
             }
             document.getElementById('limits-progress-container').innerHTML = limitsHtml;
             let agentsHtml = '';
             if (data.agents_gain_loss.length === 0) agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
             else {
-                agentsHtml = '<table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
+                agentsHtml = '<div class="table-responsive"><table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
                 data.agents_gain_loss.forEach(a => {
                     const netResult = parseFloat(a.total_bets) - parseFloat(a.total_wins);
                     const netClass = netResult >= 0 ? 'profit' : 'loss';
@@ -525,13 +522,13 @@
                     const statusText = netResult >= 0 ? 'Gagnant' : 'Perdant';
                     agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
                 });
-                agentsHtml += '</tbody></table>';
+                agentsHtml += '</tbody></table></div>';
             }
             document.getElementById('agents-gainloss-container').innerHTML = agentsHtml;
         } catch (e) { handleFetchError(e, 'loadDashboard'); showMessage('', 'Erreur chargement dashboard: ' + e.message, false); }
     }
 
-    // ---------- GESTION UTILISATEURS (inchangé) ----------
+    // ---------- GESTION UTILISATEURS ----------
     async function loadUsersLists() {
         const token = localStorage.getItem('auth_token');
         try {
@@ -721,7 +718,7 @@
         loadAllRestrictions();
     }
 
-    // === NOUVELLES FONCTIONS POUR LIMITES GLOBALES ===
+    // === FONCTIONS POUR LIMITES GLOBALES ===
     async function loadGlobalLimits() {
         const token = localStorage.getItem('auth_token');
         const container = document.getElementById('global-limits-list');
@@ -774,7 +771,7 @@
             if (result.success) {
                 alert('Limite globale ajoutée / mise à jour');
                 loadGlobalLimits();
-                if (typeof loadAllRestrictions === 'function') loadAllRestrictions();
+                loadAllRestrictions();
             } else {
                 alert('Erreur : ' + (result.error || ''));
             }
@@ -796,7 +793,7 @@
             if (result.success) {
                 alert('Limite globale supprimée');
                 loadGlobalLimits();
-                if (typeof loadAllRestrictions === 'function') loadAllRestrictions();
+                loadAllRestrictions();
             } else {
                 alert('Erreur : ' + (result.error || ''));
             }
@@ -859,7 +856,7 @@
                 container.innerHTML = '<p class="badge-success" style="padding:10px;">✅ Aucune autre restriction active</p>';
                 return;
             }
-            let html = '<table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
+            let html = '<div class="table-responsive"><table><thead><tr><th>Type</th><th>Tirage</th><th>Numéro</th><th>Limite (G)</th><th>Action</th></tr></thead><tbody>';
             blockedDraws.forEach(item => {
                 html += `<tr style="background:rgba(255,77,77,0.1);"><td>⏸️ Tirage bloqué</td><td>${item.drawName}</td><td>—</td><td>—</td><td><button class="btn-primary" style="padding:4px 8px;" onclick="unblockDraw('${item.drawId}')">Débloquer</button></td></tr>`;
             });
@@ -873,7 +870,7 @@
                 const drawDisplay = item.draw_name || item.draw_id;
                 html += `<tr style="background:rgba(0,212,255,0.05);"><td>💰 Limite de mise</td><td>${drawDisplay}</td><td><strong>${item.number}</strong></td><td>${parseFloat(item.limit_amount).toLocaleString()} G</td><td><button class="btn-danger" style="padding:4px 8px;" onclick="removeLimit('${item.draw_id}', '${item.number}')">Supprimer</button></td></tr>`;
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             container.innerHTML = html;
         } catch (e) {
             handleFetchError(e, 'loadAllRestrictions');
@@ -1001,12 +998,12 @@
         html += `<div class="stat-card"><div style="font-size:2rem;">${s.loss_count}</div><div>Agents en perte</div></div>`;
         html += `</div>`;
         if (report.detail && report.detail.length > 0) {
-            html += `<h3>Détail</h3><div class="list-container"><table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
+            html += `<h3>Détail</h3><div class="list-container"><div class="table-responsive"><table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
             report.detail.forEach(d => {
                 const result = parseFloat(d.result || d.wins - d.bets);
                 html += `<tr><td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td><td>${d.tickets}</td><td>${parseFloat(d.bets).toLocaleString()} G</td><td>${parseFloat(d.wins).toLocaleString()} G</td><td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td></tr>`;
             });
-            html += `</tbody></table></div>`;
+            html += `</tbody></table></div></div>`;
         }
         document.getElementById('report-result').innerHTML = html;
         const ctx = document.getElementById('reportChart').getContext('2d');
@@ -1107,12 +1104,12 @@
                 grandTotals.commission += sup.totals.commission;
                 grandTotals.netNoComm += sup.totals.netNoComm;
                 grandTotals.netWithComm += sup.totals.netWithComm;
-                html += `<div class="report-section"><h3>👑 ${escapeHtml(sup.name)}</h3><div style="overflow-x:auto;"><table><thead><tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody>`;
+                html += `<div class="report-section"><h3>👑 ${escapeHtml(sup.name)}</h3><div style="overflow-x:auto;"><div class="table-responsive"><table><thead><tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody>`;
                 sup.agents.forEach(agent => {
                     html += `<tr><td>${escapeHtml(agent.name)}</td><td style="text-align:right;">${agent.tickets.toLocaleString()}</td><td style="text-align:right;">${agent.ventes.toLocaleString()} G</td><td style="text-align:right;">${agent.paye.toLocaleString()} G</td><td style="text-align:right;">${agent.commission.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td></tr>`;
                 });
                 html += `<tr class="subtotal-row"><td><strong>Sous-total superviseur</strong></td><td style="text-align:right;"><strong>${sup.totals.tickets.toLocaleString()}</strong></td><td style="text-align:right;"><strong>${sup.totals.bets.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${sup.totals.wins.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${sup.totals.commission.toLocaleString()} G</strong></td><td style="text-align:right; ${sup.totals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netNoComm.toLocaleString()} G</strong></td><td style="text-align:right; ${sup.totals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${sup.totals.netWithComm.toLocaleString()} G</strong></td></tr>`;
-                html += `</tbody></table></div></div>`;
+                html += `</tbody></table></div></div></div>`;
             }
             if (freeAgents.length > 0) {
                 let freeTotals = { tickets: 0, bets: 0, wins: 0, commission: 0, netNoComm: 0, netWithComm: 0 };
@@ -1130,14 +1127,14 @@
                 grandTotals.commission += freeTotals.commission;
                 grandTotals.netNoComm += freeTotals.netNoComm;
                 grandTotals.netWithComm += freeTotals.netWithComm;
-                html += `<div class="report-section free-agents-section"><h3>🔓 Agents libres (sans superviseur)</h3><div style="overflow-x:auto;"><table><thead><tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody>`;
+                html += `<div class="report-section free-agents-section"><h3>🔓 Agents libres (sans superviseur)</h3><div style="overflow-x:auto;"><div class="table-responsive"><table><thead><tr><th>Agent</th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody>`;
                 freeAgents.forEach(agent => {
                     html += `<tr><td>${escapeHtml(agent.name)}</td><td style="text-align:right;">${agent.tickets.toLocaleString()}</td><td style="text-align:right;">${agent.ventes.toLocaleString()} G</td><td style="text-align:right;">${agent.paye.toLocaleString()} G</td><td style="text-align:right;">${agent.commission.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceSans >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceSans.toLocaleString()} G</td><td style="text-align:right; ${agent.balanceAvec >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${agent.balanceAvec.toLocaleString()} G</td></tr>`;
                 });
                 html += `<tr class="subtotal-row"><td><strong>Sous-total agents libres</strong></td><td style="text-align:right;"><strong>${freeTotals.tickets.toLocaleString()}</strong></td><td style="text-align:right;"><strong>${freeTotals.bets.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${freeTotals.wins.toLocaleString()} G</strong></td><td style="text-align:right;"><strong>${freeTotals.commission.toLocaleString()} G</strong></td><td style="text-align:right; ${freeTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netNoComm.toLocaleString()} G</strong></td><td style="text-align:right; ${freeTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}"><strong>${freeTotals.netWithComm.toLocaleString()} G</strong></td></tr>`;
-                html += `</tbody></table></div></div>`;
+                html += `</tbody></table></div></div></div>`;
             }
-            html += `<div class="report-section" style="border:2px solid #00d4ff;"><h3>📊 TOTAL GÉNÉRAL</h3><div style="overflow-x:auto;"><table><thead><tr><th></th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody><tr style="font-weight:bold; background:rgba(0,212,255,0.1);"><td>Total</td><td style="text-align:right;">${grandTotals.tickets.toLocaleString()}</td><td style="text-align:right;">${grandTotals.bets.toLocaleString()} G</td><td style="text-align:right;">${grandTotals.wins.toLocaleString()} G</td><td style="text-align:right;">${grandTotals.commission.toLocaleString()} G</td><td style="text-align:right; ${grandTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netNoComm.toLocaleString()} G</td><td style="text-align:right; ${grandTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netWithComm.toLocaleString()} G</td></tr></tbody></table></div></div>`;
+            html += `<div class="report-section" style="border:2px solid #00d4ff;"><h3>📊 TOTAL GÉNÉRAL</h3><div style="overflow-x:auto;"><div class="table-responsive"><table><thead><tr><th></th><th>Tickets</th><th>Vente (G)</th><th>A payé (G)</th><th>%Agent (G)</th><th>Balance sans % (G)</th><th>Balance avec % (G)</th></tr></thead><tbody><tr style="font-weight:bold; background:rgba(0,212,255,0.1);"><td>Total</td><td style="text-align:right;">${grandTotals.tickets.toLocaleString()}</td><td style="text-align:right;">${grandTotals.bets.toLocaleString()} G</td><td style="text-align:right;">${grandTotals.wins.toLocaleString()} G</td><td style="text-align:right;">${grandTotals.commission.toLocaleString()} G</td><td style="text-align:right; ${grandTotals.netNoComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netNoComm.toLocaleString()} G</td><td style="text-align:right; ${grandTotals.netWithComm >= 0 ? 'color:#00f190;' : 'color:#ff4d4d;'}">${grandTotals.netWithComm.toLocaleString()} G</td></tr></tbody></table></div></div></div>`;
             container.innerHTML = html;
             lastDetailedReportHTML = container.innerHTML;
             printBtn.style.display = 'inline-block';
@@ -1207,14 +1204,14 @@
     function displayTickets(tickets) {
         const container = document.getElementById('tickets-list-container');
         if (!tickets || tickets.length === 0) { container.innerHTML = '<p>Aucun ticket trouvé</p>'; return; }
-        let html = '<table><thead><tr><th>ID</th><th>Agent</th><th>Tirage</th><th>Date</th><th>Montant</th><th>Gain</th><th>Payé</th><th>Actions</th></tr></thead><tbody>';
+        let html = '<div class="table-responsive"><table><thead><tr><th>ID</th><th>Agent</th><th>Tirage</th><th>Date</th><th>Montant</th><th>Gain</th><th>Payé</th><th>Actions</th></tr></thead><tbody>';
         tickets.forEach(t => {
             const paidStatus = t.paid ? '<span class="badge-success">Payé</span>' : '<span class="badge-danger">Non payé</span>';
             const gainClass = t.win_amount > 0 ? 'profit' : '';
             const gainDisplay = t.win_amount > 0 ? t.win_amount.toLocaleString() + ' G' : '-';
             html += `<tr><td>${t.ticket_id || t.id}</td><td>${t.agent_name || t.agent_id}</td><td>${t.draw_name || t.draw_id}</td><td>${new Date(t.date).toLocaleString()}</td><td>${parseFloat(t.total_amount).toLocaleString()} G</td><td class="${gainClass}">${gainDisplay}</td><td>${paidStatus}</td><td><button class="btn-primary" style="padding:4px 8px; margin-right:5px;" onclick="viewTicketDetails('${t.id}')"><i class="fas fa-eye"></i></button><button class="btn-danger" style="padding:4px 8px;" onclick="confirmDeleteTicket('${t.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
         });
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         container.innerHTML = html;
     }
 
@@ -1240,7 +1237,7 @@
             const res = await fetch(`${API_URL}/api/owner/tickets/${ticketId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             if (!res.ok) throw new Error('Erreur chargement détails');
             const ticket = await res.json();
-            let betsHtml = '<h4>Pari(s)</h4><table><thead><tr><th>Numéro</th><th>Jeu</th><th>Montant</th><th>Gain estimé</th></tr></thead><tbody>';
+            let betsHtml = '<h4>Pari(s)</h4><div class="table-responsive"><table><thead><tr><th>Numéro</th><th>Jeu</th><th>Montant</th><th>Gain estimé</th></tr></thead><tbody>';
             if (ticket.bets && Array.isArray(ticket.bets)) {
                 ticket.bets.forEach(bet => {
                     const game = bet.game || bet.specialType || 'N/A';
@@ -1250,7 +1247,7 @@
                     betsHtml += `<tr><td>${number}</td><td>${game}</td><td>${amount} G</td><td>${win > 0 ? win + ' G' : '-'}</td></tr>`;
                 });
             }
-            betsHtml += '</tbody></table>';
+            betsHtml += '</tbody></table></div>';
             const html = `<p><strong>Ticket ID:</strong> ${ticket.ticket_id || ticket.id}</p><p><strong>Agent:</strong> ${ticket.agent_name} (ID: ${ticket.agent_id})</p><p><strong>Tirage:</strong> ${ticket.draw_name}</p><p><strong>Date:</strong> ${new Date(ticket.date).toLocaleString()}</p><p><strong>Total misé:</strong> ${parseFloat(ticket.total_amount).toLocaleString()} G</p><p><strong>Gain total:</strong> <span class="${ticket.win_amount > 0 ? 'profit' : ''}">${parseFloat(ticket.win_amount).toLocaleString()} G</span></p><p><strong>Payé:</strong> ${ticket.paid ? 'Oui' : 'Non'}</p>${betsHtml}`;
             document.getElementById('modal-ticket-content').innerHTML = html;
             document.getElementById('modal-ticket-id').innerText = ticket.ticket_id || ticket.id;
@@ -1386,6 +1383,7 @@
 
     function logout() { localStorage.clear(); window.location.href = 'index.html'; }
 
+    // Initialisation
     window.onload = function() {
         loadDashboard();
         loadUsersLists();
@@ -1419,7 +1417,157 @@
             loadBlockedLotto3();
         }
     };
-    </script>
-        <script src="a.js"></script>
+</script>
+<!-- Bouton flottant pour les limites globales -->
+<button id="global-limit-btn" style="position: fixed; bottom: 20px; right: 20px; background: linear-gradient(135deg, #ad00f1, #00d4ff); border: none; border-radius: 50px; padding: 12px 20px; color: white; font-weight: bold; cursor: pointer; z-index: 9999;">
+    🌍 Limites globales
+</button>
+
+<!-- Modale pour gérer les limites globales -->
+<div id="global-limit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: #1e1f36; border-radius: 20px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; padding: 20px; color: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2><i class="fas fa-globe"></i> Limites globales (tous tirages)</h2>
+            <button id="close-modal-btn" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer;">&times;</button>
+        </div>
+        <div style="margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;">
+                <input type="text" id="global-number" maxlength="2" placeholder="Numéro (00-99)" style="padding: 10px; border-radius: 8px; border: 1px solid #aaa; background: #2a2a3a; color: white;">
+                <input type="number" id="global-amount" placeholder="Montant max (G)" step="1" min="1" style="padding: 10px; border-radius: 8px; border: 1px solid #aaa; background: #2a2a3a; color: white;">
+                <button id="add-global-limit" class="btn-primary" style="padding: 10px 15px;">Ajouter</button>
+            </div>
+        </div>
+        <div id="global-limits-list" style="max-height: 300px; overflow-y: auto;">
+            <p>Chargement...</p>
+        </div>
+        <div id="global-limit-message" style="margin-top: 15px; padding: 10px; border-radius: 8px; display: none;"></div>
+    </div>
+</div>
+
+<script>
+// Script de gestion des limites globales
+(function() {
+    const modal = document.getElementById('global-limit-modal');
+    const btn = document.getElementById('global-limit-btn');
+    const closeBtn = document.getElementById('close-modal-btn');
+    const addBtn = document.getElementById('add-global-limit');
+    const numberInput = document.getElementById('global-number');
+    const amountInput = document.getElementById('global-amount');
+    const listContainer = document.getElementById('global-limits-list');
+    const msgDiv = document.getElementById('global-limit-message');
+
+    // Ouvrir la modale
+    btn.onclick = () => {
+        modal.style.display = 'flex';
+        loadLimits();
+    };
+    closeBtn.onclick = () => modal.style.display = 'none';
+    modal.onclick = (e) => { if (e.target === modal) modal.style.display = 'none'; };
+
+    // Fonction API avec token
+    async function apiFetch(url, options = {}) {
+        const token = localStorage.getItem('auth_token');
+        if (!token) throw new Error('Non authentifié');
+        const headers = {
+            'Authorization': `Bearer ${token}`,
+            ...options.headers
+        };
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || `Erreur HTTP ${response.status}`);
+        }
+        return response.json();
+    }
+
+    // Charger la liste
+    async function loadLimits() {
+        listContainer.innerHTML = '<p>Chargement...</p>';
+        try {
+            const data = await apiFetch('/api/owner/global-limits');
+            if (!data || data.length === 0) {
+                listContainer.innerHTML = '<p>Aucune limite globale définie.</p>';
+                return;
+            }
+            let html = '<table style="width:100%; border-collapse: collapse;">';
+            html += '<thead><tr><th>Numéro</th><th>Montant max (G)</th><th>Action</th></tr></thead><tbody>';
+            data.forEach(limit => {
+                html += `<tr>
+                            <td style="padding:8px;">${escapeHtml(limit.number)}</td>
+                            <td style="padding:8px;">${Number(limit.limit_amount).toLocaleString('fr-FR')} G</td>
+                            <td style="padding:8px;"><button class="btn-danger" data-number="${limit.number}" style="padding:4px 8px;">Supprimer</button></td>
+                         </tr>`;
+            });
+            html += '</tbody></table>';
+            listContainer.innerHTML = html;
+            // Attacher les événements suppression
+            listContainer.querySelectorAll('.btn-danger').forEach(btn => {
+                btn.onclick = () => removeLimit(btn.getAttribute('data-number'));
+            });
+        } catch (err) {
+            listContainer.innerHTML = `<p style="color:#ff4d4d;">Erreur : ${err.message}</p>`;
+        }
+    }
+
+    // Ajouter une limite
+    addBtn.onclick = async () => {
+        const number = numberInput.value.trim();
+        const amount = parseFloat(amountInput.value);
+        if (!number || !/^\d{1,2}$/.test(number)) {
+            showMessage('Numéro invalide (1 ou 2 chiffres).', false);
+            return;
+        }
+        if (isNaN(amount) || amount <= 0) {
+            showMessage('Montant invalide.', false);
+            return;
+        }
+        const normalized = number.padStart(2, '0');
+        try {
+            await apiFetch('/api/owner/global-limits', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number: normalized, limitAmount: amount })
+            });
+            showMessage(`✅ Limite pour ${normalized} = ${amount} G ajoutée/modifiée.`, true);
+            numberInput.value = '';
+            amountInput.value = '';
+            loadLimits();
+        } catch (err) {
+            showMessage(`❌ Erreur : ${err.message}`, false);
+        }
+    };
+
+    // Supprimer une limite
+    async function removeLimit(number) {
+        if (!confirm(`Supprimer la limite pour le numéro ${number} ?`)) return;
+        try {
+            await apiFetch(`/api/owner/global-limits/${number}`, { method: 'DELETE' });
+            showMessage(`✅ Limite supprimée pour ${number}`, true);
+            loadLimits();
+        } catch (err) {
+            showMessage(`❌ Erreur : ${err.message}`, false);
+        }
+    }
+
+    function showMessage(msg, isSuccess) {
+        msgDiv.textContent = msg;
+        msgDiv.style.backgroundColor = isSuccess ? 'rgba(0,241,144,0.2)' : 'rgba(255,77,77,0.2)';
+        msgDiv.style.border = isSuccess ? '1px solid #00f190' : '1px solid #ff4d4d';
+        msgDiv.style.color = isSuccess ? '#00f190' : '#ff4d4d';
+        msgDiv.style.display = 'block';
+        setTimeout(() => msgDiv.style.display = 'none', 5000);
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+})();
+</script>
 </body>
 </html>
