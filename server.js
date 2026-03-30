@@ -472,7 +472,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       const resTot = await pool.query(`
         SELECT bet->>'cleanNumber' as number, SUM((bet->>'amount')::numeric) as total
         FROM tickets, jsonb_array_elements(bets::jsonb) as bet
-        WHERE owner_id = $1 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = ANY($2)
+        WHERE owner_id = $1 AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE AND bet->>'cleanNumber' = ANY($2)
         GROUP BY bet->>'cleanNumber'
       `, [ownerId, Array.from(numbersWithGlobalLimit)]);
       for (const row of resTot.rows) globalTotalsMap.set(row.number, parseFloat(row.total) || 0);
@@ -484,7 +484,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       const resTot = await pool.query(`
         SELECT bet->>'cleanNumber' as number, SUM((bet->>'amount')::numeric) as total
         FROM tickets, jsonb_array_elements(bets::jsonb) as bet
-        WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = ANY($3)
+        WHERE owner_id = $1 AND draw_id = $2 AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE AND bet->>'cleanNumber' = ANY($3)
         GROUP BY bet->>'cleanNumber'
       `, [ownerId, drawId, Array.from(numbersWithDrawLimit)]);
       for (const row of resTot.rows) drawTotalsMap.set(row.number, parseFloat(row.total) || 0);
@@ -815,7 +815,8 @@ app.get('/api/supervisor/reports/overall', authenticate, requireRole('supervisor
               COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as balance
        FROM tickets t
        JOIN users u ON t.agent_id = u.id
-       WHERE t.owner_id = $1 AND u.supervisor_id = $2 AND DATE(t.date) = CURRENT_DATE`,
+       WHERE t.owner_id = $1 AND u.supervisor_id = $2
+         AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE`,
       [ownerId, supervisorId]
     );
     res.json(result.rows[0]);
@@ -834,7 +835,8 @@ app.get('/api/supervisor/agents', authenticate, requireRole('supervisor'), async
               COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as balance,
               COALESCE(SUM(CASE WHEN t.paid = false THEN t.win_amount ELSE 0 END),0) as unpaid_wins
        FROM users u
-       LEFT JOIN tickets t ON u.id = t.agent_id AND DATE(t.date) = CURRENT_DATE
+       LEFT JOIN tickets t ON u.id = t.agent_id
+          AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE
        WHERE u.owner_id = $1 AND u.supervisor_id = $2 AND u.role = 'agent'
        GROUP BY u.id`,
       [ownerId, supervisorId]
@@ -882,12 +884,12 @@ app.get('/api/supervisor/tickets', authenticate, requireRole('supervisor'), asyn
   if (paid === 'paid') query += ` AND t.paid = true`;
   else if (paid === 'unpaid') query += ` AND t.paid = false`;
 
-  if (period === 'today') query += ` AND DATE(t.date) = CURRENT_DATE`;
-  else if (period === 'yesterday') query += ` AND DATE(t.date) = CURRENT_DATE - INTERVAL '1 day'`;
-  else if (period === 'week') query += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
-  else if (period === 'month') query += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+  if (period === 'today') query += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE`;
+  else if (period === 'yesterday') query += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE - INTERVAL '1 day'`;
+  else if (period === 'week') query += ` AND t.date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('week', CURRENT_DATE)`;
+  else if (period === 'month') query += ` AND t.date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('month', CURRENT_DATE)`;
   else if (period === 'custom' && fromDate && toDate) {
-    query += ` AND DATE(t.date) BETWEEN $${idx++} AND $${idx++}`;
+    query += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
     params.push(fromDate, toDate);
   }
 
@@ -1288,13 +1290,20 @@ app.post('/api/owner/unblock-lotto3', authenticate, requireRole('owner'), async 
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Dashboard propriétaire
+// Dashboard propriétaire (corrigé avec fuseau)
 app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
     const supervisors = await pool.query('SELECT id, name, username FROM users WHERE owner_id = $1 AND role = $2', [ownerId, 'supervisor']);
     const agents = await pool.query('SELECT id, name, username FROM users WHERE owner_id = $1 AND role = $2', [ownerId, 'agent']);
-    const sales = await pool.query('SELECT COALESCE(SUM(total_amount),0) as total FROM tickets WHERE owner_id = $1 AND date >= CURRENT_DATE', [ownerId]);
+
+    const sales = await pool.query(
+      `SELECT COALESCE(SUM(total_amount),0) as total
+       FROM tickets
+       WHERE owner_id = $1
+       AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE`,
+      [ownerId]
+    );
 
     const agentsGainLoss = await pool.query(
       `SELECT u.id, u.name,
@@ -1302,7 +1311,8 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
               COALESCE(SUM(t.win_amount),0) as total_wins,
               COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as net_result
        FROM users u
-       LEFT JOIN tickets t ON u.id = t.agent_id AND DATE(t.date) = CURRENT_DATE
+       LEFT JOIN tickets t ON u.id = t.agent_id
+          AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE
        WHERE u.owner_id = $1 AND u.role = $2
        GROUP BY u.id`,
       [ownerId, 'agent']
@@ -1321,7 +1331,8 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
         SELECT owner_id, draw_id, number, limit_amount FROM draw_number_limits
       ) l
       LEFT JOIN draws d ON l.draw_id = d.id
-      LEFT JOIN tickets t ON t.owner_id = l.owner_id AND DATE(t.date) = CURRENT_DATE
+      LEFT JOIN tickets t ON t.owner_id = l.owner_id
+        AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE
         AND (l.draw_id IS NULL OR t.draw_id = l.draw_id)
       LEFT JOIN LATERAL jsonb_array_elements(t.bets) AS bet ON (bet->>'cleanNumber') = l.number
       WHERE l.owner_id = $1
@@ -1340,10 +1351,13 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
       limits_progress: limitsProgress.rows,
       agents_gain_loss: agentsGainLoss.rows
     });
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
-// Rapports propriétaire
+// Rapports propriétaire (corrigé avec fuseau)
 app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { supervisorId, agentId, drawId, period, fromDate, toDate, gainLoss } = req.query;
@@ -1365,12 +1379,12 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     params.push(drawId);
   }
 
-  if (period === 'today') baseQuery += ` AND date >= CURRENT_DATE`;
-  else if (period === 'yesterday') baseQuery += ` AND date >= CURRENT_DATE - INTERVAL '1 day' AND date < CURRENT_DATE`;
-  else if (period === 'week') baseQuery += ` AND date >= DATE_TRUNC('week', CURRENT_DATE)`;
-  else if (period === 'month') baseQuery += ` AND date >= DATE_TRUNC('month', CURRENT_DATE)`;
+  if (period === 'today') baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE`;
+  else if (period === 'yesterday') baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE - INTERVAL '1 day'`;
+  else if (period === 'week') baseQuery += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('week', CURRENT_DATE)`;
+  else if (period === 'month') baseQuery += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('month', CURRENT_DATE)`;
   else if (period === 'custom' && fromDate && toDate) {
-    baseQuery += ` AND date >= $${idx++} AND date <= $${idx++}`;
+    baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
     params.push(fromDate, toDate);
   }
 
@@ -1405,12 +1419,12 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     detailParams.push(drawId);
   }
 
-  if (period === 'today') detailQuery += ` AND t.date >= CURRENT_DATE`;
-  else if (period === 'yesterday') detailQuery += ` AND t.date >= CURRENT_DATE - INTERVAL '1 day' AND t.date < CURRENT_DATE`;
-  else if (period === 'week') detailQuery += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
-  else if (period === 'month') detailQuery += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+  if (period === 'today') detailQuery += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE`;
+  else if (period === 'yesterday') detailQuery += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE - INTERVAL '1 day'`;
+  else if (period === 'week') detailQuery += ` AND t.date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('week', CURRENT_DATE)`;
+  else if (period === 'month') detailQuery += ` AND t.date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('month', CURRENT_DATE)`;
   else if (period === 'custom' && fromDate && toDate) {
-    detailQuery += ` AND t.date >= $${didx++} AND t.date <= $${didx++}`;
+    detailQuery += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${didx++} AND $${didx++}`;
     detailParams.push(fromDate, toDate);
   }
 
@@ -1424,7 +1438,7 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
     `SELECT COUNT(CASE WHEN net_result > 0 THEN 1 END) as gain_count, COUNT(CASE WHEN net_result < 0 THEN 1 END) as loss_count
      FROM (SELECT u.id, COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as net_result
            FROM users u
-           LEFT JOIN tickets t ON u.id = t.agent_id ${period === 'today' ? 'AND DATE(t.date) = CURRENT_DATE' : ''}
+           LEFT JOIN tickets t ON u.id = t.agent_id ${period === 'today' ? 'AND DATE(t.date AT TIME ZONE \'America/Port-au-Prince\') = CURRENT_DATE' : ''}
            WHERE u.owner_id = $1 AND u.role = 'agent'
            GROUP BY u.id) sub`,
     [ownerId]
@@ -1443,7 +1457,7 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
   });
 });
 
-// Tickets propriétaire
+// Tickets propriétaire (corrigé avec fuseau)
 app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { page = 0, limit = 20, supervisorId, agentId, drawId, period, fromDate, toDate, gain, paid } = req.query;
@@ -1465,12 +1479,12 @@ app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, re
     params.push(drawId);
   }
 
-  if (period === 'today') query += ` AND DATE(t.date) = CURRENT_DATE`;
-  else if (period === 'yesterday') query += ` AND DATE(t.date) = CURRENT_DATE - INTERVAL '1 day'`;
-  else if (period === 'week') query += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
-  else if (period === 'month') query += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+  if (period === 'today') query += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE`;
+  else if (period === 'yesterday') query += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE - INTERVAL '1 day'`;
+  else if (period === 'week') query += ` AND t.date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('week', CURRENT_DATE)`;
+  else if (period === 'month') query += ` AND t.date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('month', CURRENT_DATE)`;
   else if (period === 'custom' && fromDate && toDate) {
-    query += ` AND DATE(t.date) BETWEEN $${idx++} AND $${idx++}`;
+    query += ` AND DATE(t.date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
     params.push(fromDate, toDate);
   }
 
@@ -1568,6 +1582,7 @@ app.get('/api/owner/quota', authenticate, requireRole('owner'), async (req, res)
     res.json({ quota, used });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
+
 // Récupérer les tirages bloqués (active = false)
 app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (req, res) => {
   try {
@@ -1579,12 +1594,8 @@ app.get('/api/owner/blocked-draws', authenticate, requireRole('owner'), async (r
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-// ==================== Gestion indépendante des limites globales ====================
 
-/**
- * Récupère toutes les limites globales du propriétaire connecté.
- * GET /api/owner/global-limits
- */
+// ==================== Gestion indépendante des limites globales ====================
 app.get('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
@@ -1599,11 +1610,6 @@ app.get('/api/owner/global-limits', authenticate, requireRole('owner'), async (r
   }
 });
 
-/**
- * Crée ou met à jour une limite globale.
- * POST /api/owner/global-limits
- * Body : { number: "XX", limitAmount: 100 }
- */
 app.post('/api/owner/global-limits', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { number, limitAmount } = req.body;
@@ -1611,7 +1617,8 @@ app.post('/api/owner/global-limits', authenticate, requireRole('owner'), async (
   if (!/^\d{2}$/.test(normalized)) {
     return res.status(400).json({ error: 'Numéro invalide (2 chiffres requis)' });
   }
-  if (typeof limitAmount !== 'number' || limitAmount <= 0) {
+  const amount = parseFloat(limitAmount);
+  if (isNaN(amount) || amount <= 0) {
     return res.status(400).json({ error: 'Montant limite invalide (doit être un nombre positif)' });
   }
   try {
@@ -1619,7 +1626,7 @@ app.post('/api/owner/global-limits', authenticate, requireRole('owner'), async (
       `INSERT INTO global_number_limits (owner_id, number, limit_amount)
        VALUES ($1, $2, $3)
        ON CONFLICT (owner_id, number) DO UPDATE SET limit_amount = $3, updated_at = NOW()`,
-      [ownerId, normalized, limitAmount]
+      [ownerId, normalized, amount]
     );
     res.json({ success: true });
   } catch (err) {
@@ -1628,10 +1635,6 @@ app.post('/api/owner/global-limits', authenticate, requireRole('owner'), async (
   }
 });
 
-/**
- * Supprime une limite globale.
- * DELETE /api/owner/global-limits/:number
- */
 app.delete('/api/owner/global-limits/:number', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { number } = req.params;
@@ -1651,10 +1654,7 @@ app.delete('/api/owner/global-limits/:number', authenticate, requireRole('owner'
   }
 });
 
-// ==================== Routes superadmin (inchangées) ====================
-// ... (les routes superadmin sont identiques à la version précédente, mais adaptées car draws est commun)
-// Je les réinclus brièvement pour que le code soit complet. On peut les reprendre telles quelles.
-
+// ==================== Routes superadmin ====================
 app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
