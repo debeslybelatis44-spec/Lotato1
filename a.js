@@ -1,9 +1,9 @@
-// globalLimitsManager.js - Version compatible avec owner.html
+// globalLimitsManager.js - Version stable avec intégration parfaite
 (function() {
     if (window.globalLimitsManagerReady) return;
     window.globalLimitsManagerReady = true;
 
-    // Fonction utilitaire pour les appels API avec token
+    // ========== Fonctions API ==========
     async function apiFetch(url, options = {}) {
         const token = localStorage.getItem('auth_token');
         if (!token) throw new Error('Non authentifié');
@@ -19,35 +19,34 @@
         return response.json();
     }
 
-    // Création de l'interface dans l'onglet "Limites globales"
-    function createGlobalLimitsTab() {
-        // Vérifier si le conteneur d'onglets existe
+    // ========== Création de l'onglet et du contenu ==========
+    function createGlobalLimitsUI() {
+        // 1. Onglet
         const tabsContainer = document.querySelector('.tabs');
         if (!tabsContainer) {
             console.error('Conteneur .tabs introuvable');
             return;
         }
+        if (document.getElementById('global-limits-tab')) return; // déjà créé
 
-        // Vérifier si l'onglet existe déjà
-        if (document.getElementById('global-limits-tab')) return;
-
-        // Créer l'onglet
         const tab = document.createElement('div');
         tab.id = 'global-limits-tab';
         tab.className = 'tab';
         tab.textContent = '🌍 Limites globales';
-        tab.onclick = () => switchTab('global-limits');
+        tab.setAttribute('onclick', 'switchTab("global-limits")');
         tabsContainer.appendChild(tab);
 
-        // Créer le contenu de l'onglet (screen)
-        const screens = document.querySelectorAll('.screen');
-        const lastScreen = screens[screens.length - 1];
-        if (!lastScreen) return;
+        // 2. Contenu (tab-content)
+        const main = document.querySelector('.content-area');
+        if (!main) {
+            console.error('Conteneur .content-area introuvable');
+            return;
+        }
 
-        const newScreen = document.createElement('div');
-        newScreen.id = 'tab-global-limits';
-        newScreen.className = 'tab-content';
-        newScreen.innerHTML = `
+        const content = document.createElement('div');
+        content.id = 'tab-global-limits';
+        content.className = 'tab-content';
+        content.innerHTML = `
             <div class="section-title">
                 <i class="fas fa-globe"></i> Limites globales (tous tirages)
                 <button id="refresh-global-limits-btn" class="filter-btn" style="margin-left: 15px;">
@@ -74,16 +73,16 @@
             </div>
             <div id="global-limits-message" class="alert" style="display: none;"></div>
         `;
-        // Insérer après le dernier écran ou dans le main
-        const main = document.querySelector('.content-area');
-        if (main) main.appendChild(newScreen);
-        else document.body.appendChild(newScreen);
+        main.appendChild(content);
 
-        // Ajouter les événements
-        document.getElementById('add-global-limit-btn').addEventListener('click', addGlobalLimit);
-        document.getElementById('refresh-global-limits-btn').addEventListener('click', loadGlobalLimits);
+        // 3. Événements
+        const addBtn = document.getElementById('add-global-limit-btn');
+        if (addBtn) addBtn.addEventListener('click', addGlobalLimit);
+        const refreshBtn = document.getElementById('refresh-global-limits-btn');
+        if (refreshBtn) refreshBtn.addEventListener('click', loadGlobalLimits);
     }
 
+    // ========== Chargement des limites ==========
     async function loadGlobalLimits() {
         const container = document.getElementById('global-limits-list');
         if (!container) return;
@@ -107,7 +106,7 @@
                     <tr>
                         <td><strong>${escapeHtml(limit.number)}</strong></td>
                         <td>${parseFloat(limit.limit_amount).toLocaleString('fr-FR')} G</td>
-                        <td><button class="btn-danger" data-number="${limit.number}" onclick="window.removeGlobalLimit('${limit.number}')">Supprimer</button></td>
+                        <td><button class="btn-danger" onclick="window.removeGlobalLimit('${limit.number}')">Supprimer</button></td>
                     </tr>
                 `;
             }
@@ -118,11 +117,13 @@
         }
     }
 
+    // ========== Ajouter une limite ==========
     async function addGlobalLimit() {
         const numberInput = document.getElementById('global-number');
         const amountInput = document.getElementById('global-amount');
         const number = numberInput.value.trim();
         const amount = parseFloat(amountInput.value);
+
         if (!number || !/^\d{1,2}$/.test(number)) {
             showMessage('Veuillez entrer un numéro valide (1 ou 2 chiffres).', false);
             return;
@@ -131,6 +132,7 @@
             showMessage('Veuillez entrer un montant positif.', false);
             return;
         }
+
         const normalized = number.padStart(2, '0');
         try {
             await apiFetch('/api/owner/global-limits', {
@@ -147,6 +149,7 @@
         }
     }
 
+    // ========== Supprimer une limite ==========
     window.removeGlobalLimit = async function(number) {
         if (!confirm(`Supprimer la limite pour le numéro ${number} ?`)) return;
         try {
@@ -158,6 +161,7 @@
         }
     };
 
+    // ========== Affichage des messages ==========
     function showMessage(msg, isSuccess) {
         const msgDiv = document.getElementById('global-limits-message');
         if (msgDiv) {
@@ -178,17 +182,34 @@
         });
     }
 
-    // Initialisation après le chargement du DOM
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            createGlobalLimitsTab();
-            // Si l'onglet est déjà actif par défaut, on peut charger les limites
-            // mais on laisse l'utilisateur cliquer pour charger
-        });
-    } else {
-        createGlobalLimitsTab();
+    // ========== Initialisation ==========
+    function init() {
+        createGlobalLimitsUI();
+
+        // Charger les limites uniquement lorsque l'onglet devient actif
+        const tab = document.getElementById('global-limits-tab');
+        if (tab) {
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                        if (tab.classList.contains('active')) {
+                            loadGlobalLimits();
+                        }
+                    }
+                });
+            });
+            observer.observe(tab, { attributes: true });
+
+            // Si l'onglet est déjà actif au chargement (rare), on charge
+            if (tab.classList.contains('active')) {
+                loadGlobalLimits();
+            }
+        }
     }
 
-    // Exposer la fonction de rafraîchissement si nécessaire
-    window.refreshGlobalLimits = loadGlobalLimits;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 })();
