@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>LOTATO PRO - Terminal à boutons</title>
+    <title>LOTATO PRO - Terminal complet</title>
     <style>
+        /* === STYLES GLOBAUX === */
         * { box-sizing: border-box; user-select: none; }
         body {
             background: #000; color: #0f0; font-family: 'Courier New', monospace;
@@ -12,34 +13,208 @@
             display: flex; flex-direction: column; overflow: hidden;
         }
         .terminal { max-width: 800px; margin: 0 auto; width: 100%; height: 100%; display: flex; flex-direction: column; gap: 15px; }
+
+        /* Écran de connexion */
         .login-screen { background: #111; border: 2px solid #0f0; padding: 20px; text-align: center; }
         .login-screen input { width: 100%; background: #000; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 10px; margin: 10px 0; font-family: monospace; text-align: center; }
         .login-screen button { background: #222; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 10px 20px; cursor: pointer; width: 100%; }
         .login-screen button:focus { background: #0f0; color: #000; outline: none; }
+
+        /* Application principale */
         .main-app { display: none; flex-direction: column; gap: 15px; height: 100%; }
-        .header { border-bottom: 2px solid #0f0; padding-bottom: 8px; display: flex; justify-content: space-between; font-size: 20px; }
-        .draw-selector { background: #111; border: 2px solid #0f0; padding: 10px; }
-        .draw-list { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px; padding: 5px 0; }
-        .draw-item { background: #222; padding: 8px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; border: 1px solid #0f0; opacity: 0.7; transition: all 0.1s; }
-        .draw-item.active { background: #0f0; color: #000; opacity: 1; transform: scale(1.02); }
-        .draw-item:focus { outline: 3px solid #0f0; }
-        .input-area { display: flex; gap: 12px; flex-wrap: wrap; background: #111; padding: 15px; border: 2px solid #0f0; }
-        .input-group { flex: 1; min-width: 150px; }
-        .input-group label { display: block; font-size: 18px; margin-bottom: 5px; }
-        .input-group input { width: 100%; background: #000; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 10px; font-family: monospace; text-align: center; }
-        .input-group input:focus { outline: none; background: #0f0; color: #000; }
-        .action-buttons { display: flex; gap: 15px; margin-top: 10px; }
-        button { background: #222; border: 2px solid #0f0; color: #0f0; font-size: 28px; padding: 12px 20px; font-family: monospace; font-weight: bold; cursor: pointer; transition: 0.05s linear; }
-        button:focus { background: #0f0; color: #000; outline: none; }
-        .cart { background: #111; border: 2px solid #0f0; padding: 10px; flex: 1; overflow-y: auto; min-height: 150px; }
-        .cart-header { display: flex; justify-content: space-between; border-bottom: 1px solid #0f0; padding-bottom: 5px; margin-bottom: 8px; }
-        .cart-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dotted #0f0; font-size: 22px; }
-        .cart-total { text-align: right; font-weight: bold; margin-top: 10px; padding-top: 8px; border-top: 2px solid #0f0; font-size: 28px; }
-        .empty-msg { text-align: center; color: #888; padding: 20px; }
-        .error-msg, .info-msg { background: #300; color: #f88; padding: 8px; border-left: 5px solid #f00; font-size: 20px; }
-        .info-msg { background: #030; color: #8f8; border-left-color: #0f0; }
-        .game-hint { font-size: 16px; background: #111; padding: 5px; text-align: center; border-top: 1px solid #0f0; }
-        @media (max-width: 600px) { body { font-size: 18px; } button { font-size: 22px; padding: 8px 12px; } .input-group input { font-size: 24px; } .cart-item { font-size: 18px; } }
+        .header { border-bottom: 2px solid #0f0; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo img { max-height: 50px; }
+        #current-game-display { background: #222; padding: 2px 10px; border-radius: 20px; font-size: 20px; }
+
+        /* Onglets */
+        .tabs {
+            display: flex;
+            gap: 5px;
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 5px;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            background: #222;
+            cursor: pointer;
+            border: 1px solid #0f0;
+            transition: 0.1s;
+        }
+        .tab.active {
+            background: #0f0;
+            color: #000;
+            font-weight: bold;
+        }
+        .tab:focus {
+            outline: 3px solid #0f0;
+        }
+
+        /* Écrans */
+        .screen { display: none; flex-direction: column; gap: 15px; overflow-y: auto; flex: 1; }
+        .screen.active { display: flex; }
+
+        /* Composants communs */
+        .draw-selector, .input-area, .cart, .list-container, .report-card, .winner-list, .result-list {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 10px;
+        }
+        .draw-list, .ticket-list, .winner-list, .result-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .draw-item, .ticket-item, .winner-item, .result-item {
+            background: #222;
+            padding: 8px;
+            border: 1px solid #0f0;
+            cursor: pointer;
+        }
+        .draw-item.active, .ticket-item.active, .winner-item.active, .result-item.active {
+            background: #0f0;
+            color: #000;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 18px;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            background: #000;
+            border: 2px solid #0f0;
+            color: #0f0;
+            font-size: 28px;
+            padding: 10px;
+            font-family: monospace;
+            text-align: center;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        button {
+            background: #222;
+            border: 2px solid #0f0;
+            color: #0f0;
+            font-size: 28px;
+            padding: 12px 20px;
+            font-family: monospace;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:focus {
+            background: #0f0;
+            color: #000;
+            outline: none;
+        }
+
+        .cart-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #0f0;
+            margin-bottom: 8px;
+        }
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px dotted #0f0;
+        }
+        .cart-total {
+            text-align: right;
+            font-weight: bold;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 2px solid #0f0;
+        }
+
+        .report-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+        }
+        .report-row.total {
+            font-weight: bold;
+            border-top: 1px solid #0f0;
+            margin-top: 10px;
+            padding-top: 5px;
+        }
+        .winner-actions {
+            margin-top: 8px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .error-msg, .info-msg {
+            background: #300;
+            color: #f88;
+            padding: 8px;
+            border-left: 5px solid #f00;
+        }
+        .info-msg {
+            background: #030;
+            color: #8f8;
+            border-left-color: #0f0;
+        }
+        .game-hint {
+            font-size: 16px;
+            background: #111;
+            padding: 5px;
+            text-align: center;
+            border-top: 1px solid #0f0;
+        }
+        .empty-msg {
+            text-align: center;
+            color: #888;
+            padding: 20px;
+        }
+
+        /* Menu jeux */
+        #game-menu-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        #game-menu {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 20px;
+            min-width: 300px;
+            text-align: center;
+        }
+        .game-menu-item {
+            padding: 8px;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+        .game-menu-item.active {
+            background: #0f0;
+            color: #000;
+        }
+
+        @media (max-width: 600px) {
+            body { font-size: 18px; }
+            button { font-size: 22px; padding: 8px 12px; }
+            .input-group input { font-size: 24px; }
+        }
     </style>
 </head>
 <body>
@@ -54,41 +229,101 @@
 
     <div id="main-app" class="main-app">
         <div class="header">
-            <span class="logo" id="lottery-name">LOTATO PRO</span>
+            <div class="logo">
+                <img id="lottery-logo" style="max-height: 50px;">
+                <span id="lottery-name">LOTATO PRO</span>
+            </div>
             <span class="clock" id="live-clock">--:--:--</span>
+            <span id="current-game-display">Borlette</span>
             <span id="agent-name" style="font-size: 18px;"></span>
         </div>
-        <div class="draw-selector">
-            <div class="draw-list" id="draws-list"></div>
+
+        <div class="tabs">
+            <div class="tab active" data-tab="sale">VANT</div>
+            <div class="tab" data-tab="history">ISTORIK</div>
+            <div class="tab" data-tab="reports">RAPÒ</div>
+            <div class="tab" data-tab="winners">GANYEN</div>
+            <div class="tab" data-tab="results">REZILTA</div>
         </div>
-        <div class="input-area">
+
+        <!-- Écran VENTE -->
+        <div id="sale-screen" class="screen active">
+            <div class="draw-selector">
+                <div class="draw-list" id="draws-list"></div>
+            </div>
+            <div class="input-area">
+                <div class="input-group">
+                    <label>NUMÉRO</label>
+                    <input type="text" id="num-input" placeholder="00" maxlength="5" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label>MONTANT (G)</label>
+                    <input type="number" id="amt-input" placeholder="0" step="1" min="1" autocomplete="off">
+                </div>
+                <div class="action-buttons">
+                    <button id="add-btn">AJOUTER</button>
+                    <button id="print-btn">VALIDER</button>
+                </div>
+            </div>
+            <div class="cart">
+                <div class="cart-header">
+                    <span>PANYE</span>
+                    <span id="items-count">0 jwèt</span>
+                </div>
+                <div id="cart-display" class="cart-items"></div>
+                <div class="cart-total">
+                    TOTAL: <span id="cart-total-display">0</span> Gdes
+                </div>
+            </div>
+            <div id="sale-message" class="info-msg" style="display: none;"></div>
+            <div class="game-hint">
+                F1‑F8 chwazi jwèt | # meni | Tab chanje chan | Flèch chwazi tiraj
+            </div>
+        </div>
+
+        <!-- Écran HISTORIQUE -->
+        <div id="history-screen" class="screen">
+            <div class="list-container">
+                <div class="ticket-list" id="history-list"></div>
+            </div>
+        </div>
+
+        <!-- Écran RAPPORTS -->
+        <div id="reports-screen" class="screen">
             <div class="input-group">
-                <label>NUMÉRO</label>
-                <input type="text" id="num-input" placeholder="00" maxlength="5" autocomplete="off">
+                <label>Peryòd</label>
+                <select id="report-period">
+                    <option value="today">Jodi a</option>
+                    <option value="yesterday">Yè</option>
+                    <option value="week">Semèn sa a</option>
+                    <option value="custom">Dat pèsonalize</option>
+                </select>
             </div>
-            <div class="input-group">
-                <label>MONTANT (G)</label>
-                <input type="number" id="amt-input" placeholder="0" step="1" min="1" autocomplete="off">
+            <div id="custom-date-range" style="display: none;">
+                <div class="input-group"><label>Kòmanse</label><input type="date" id="from-date"></div>
+                <div class="input-group"><label>Fini</label><input type="date" id="to-date"></div>
             </div>
-            <div class="action-buttons">
-                <button id="add-btn">AJOUTER</button>
-                <button id="print-btn">VALIDER</button>
+            <button id="apply-reports">Aplike</button>
+            <div class="report-card">
+                <div class="report-row"><span>Total Tikè:</span><span id="total-tickets">0</span></div>
+                <div class="report-row"><span>Total Pari:</span><span id="total-bets">0 G</span></div>
+                <div class="report-row"><span>Total Genyen:</span><span id="total-wins">0 G</span></div>
+                <div class="report-row"><span>Pèdi:</span><span id="total-loss">0 G</span></div>
+                <div class="report-row total"><span>Balans:</span><span id="balance">0 G</span></div>
             </div>
         </div>
-        <div class="cart">
-            <div class="cart-header">
-                <span>PANYE</span>
-                <span id="items-count">0 jwèt</span>
-            </div>
-            <div id="cart-display" class="cart-items"></div>
-            <div class="cart-total">
-                TOTAL: <span id="cart-total-display">0</span> Gdes
-            </div>
+
+        <!-- Écran GAGNANTS -->
+        <div id="winners-screen" class="screen">
+            <div class="winner-list" id="winners-list"></div>
         </div>
-        <div id="message-area" style="font-size: 18px;"></div>
-        <div class="game-hint">
-            F1=Borlette | F2=Lotto3 | F3=Lotto4 | F4=Lotto5 | F5=Mariage | F6=AutoMariage | F7=BO | F8=GRAP
+
+        <!-- Écran RÉSULTATS -->
+        <div id="results-screen" class="screen">
+            <div class="result-list" id="results-list"></div>
         </div>
+
+        <div id="global-message" style="font-size: 18px;"></div>
     </div>
 </div>
 
@@ -107,9 +342,19 @@
     let globalBlocked = [];
     let drawBlocked = {};
     let numberLimits = {};
-
-    // Panier local
     let currentCart = [];
+    let currentGame = 'borlette';
+
+    let allTickets = [];
+    let winningTickets = [];
+    let winningResults = [];
+    let selectedHistoryIndex = -1;
+    let selectedWinnerIndex = -1;
+    let selectedResultIndex = -1;
+
+    // Liste des jeux pour le menu
+    const gameList = ['borlette','lotto3','lotto4','lotto5','mariage','auto_marriage','bo','grap'];
+    const gameLabels = ['Borlette','Lotto 3','Lotto 4','Lotto 5','Mariage','Auto Mariage','BO','GRAP'];
 
     // DOM elements
     const loginScreen = document.getElementById('login-screen');
@@ -119,13 +364,19 @@
     const amtInput = document.getElementById('amt-input');
     const addBtn = document.getElementById('add-btn');
     const printBtn = document.getElementById('print-btn');
-    const messageArea = document.getElementById('message-area');
+    const globalMsg = document.getElementById('global-message');
     const agentNameSpan = document.getElementById('agent-name');
+    const tabs = document.querySelectorAll('.tab');
+    const saleScreen = document.getElementById('sale-screen');
+    const historyScreen = document.getElementById('history-screen');
+    const reportsScreen = document.getElementById('reports-screen');
+    const winnersScreen = document.getElementById('winners-screen');
+    const resultsScreen = document.getElementById('results-screen');
 
     // ==================== UTILITAIRES ====================
-    function showMessage(msg, isError = false) {
-        messageArea.innerHTML = `<div class="${isError ? 'error-msg' : 'info-msg'}">${msg}</div>`;
-        setTimeout(() => { if (messageArea.firstChild) messageArea.innerHTML = ''; }, 4000);
+    function showMessage(msg, isError = false, element = globalMsg) {
+        element.innerHTML = `<div class="${isError ? 'error-msg' : 'info-msg'}">${msg}</div>`;
+        setTimeout(() => { if (element.firstChild) element.innerHTML = ''; }, 4000);
     }
 
     async function fetchAPI(endpoint, options = {}) {
@@ -194,12 +445,29 @@
                 CONFIG.LOTTERY_LOGO = config.logo || config.logoUrl || '';
                 CONFIG.slogan = config.slogan || '';
                 document.getElementById('lottery-name').innerHTML = config.name;
+                const logoImg = document.getElementById('lottery-logo');
+                if (logoImg && config.logoUrl) logoImg.src = config.logoUrl;
             }
         } catch(e) { console.warn(e); }
     }
 
+    // ==================== GESTION DES ÉCRANS (ONGLEs) ====================
+    function switchTab(tabId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(`${tabId}-screen`).classList.add('active');
+        document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add('active');
+        if (tabId === 'history') loadHistory();
+        else if (tabId === 'reports') loadReports();
+        else if (tabId === 'winners') loadWinners();
+        else if (tabId === 'results') loadResults();
+        else if (tabId === 'sale') {
+            numInput.focus();
+        }
+    }
+
+    // ==================== ÉCRAN VENTE ====================
     function renderDrawList() {
-        if (!drawListDiv) return;
         drawListDiv.innerHTML = draws.map(draw => `
             <div class="draw-item ${selectedDraw && selectedDraw.id === draw.id ? 'active' : ''}" data-id="${draw.id}" data-name="${draw.name}">
                 ${draw.name}
@@ -218,12 +486,10 @@
         }
     }
 
-    // ==================== GESTION DU PANIER ====================
     function renderCart() {
         const container = document.getElementById('cart-display');
         const totalSpan = document.getElementById('cart-total-display');
         const itemsCountSpan = document.getElementById('items-count');
-
         if (!container) return;
         if (currentCart.length === 0) {
             container.innerHTML = '<div class="empty-msg">Panye vid</div>';
@@ -231,7 +497,6 @@
             itemsCountSpan.innerText = '0 jwèt';
             return;
         }
-
         let total = 0;
         let count = 0;
         container.innerHTML = currentCart.map((item, idx) => {
@@ -250,7 +515,6 @@
                 </div>
             `;
         }).join('');
-
         totalSpan.innerText = total.toLocaleString('fr-FR');
         itemsCountSpan.innerText = count + ' jwèt';
     }
@@ -270,7 +534,6 @@
         showMessage("Mise retire", false);
     }
 
-    // Vérifications de blocage et limites
     function isNumberBlocked(number, drawId) {
         if (globalBlocked.includes(number)) return true;
         return (drawBlocked[drawId] || []).includes(number);
@@ -289,7 +552,6 @@
         return { success: true };
     }
 
-    // Ajout d'une mise
     function addBet() {
         if (!selectedDraw) {
             showMessage("Chwazi yon tiraj anvan", true);
@@ -302,11 +564,10 @@
             return;
         }
 
-        const game = window.currentGame || 'borlette'; // défini par les touches F1-F8
+        const game = currentGame;
 
-        // Pour les jeux spéciaux qui ne nécessitent pas de numéro
+        // Jeux automatiques
         if (game === 'bo' || game === 'grap' || game === 'auto_marriage' || game === 'auto_lotto4' || game === 'auto_lotto5') {
-            // Génération automatique
             let autoBets = [];
             if (game === 'bo') autoBets = SpecialGames.generateBOBets(amount);
             else if (game === 'grap') autoBets = SpecialGames.generateGRAPBets(amount);
@@ -348,14 +609,13 @@
             return;
         }
 
-        // Pour les jeux normaux (borlette, lotto3,4,5, mariage)
+        // Jeux normaux
         let cleanNum = rawNum.replace(/\D/g, '');
         if (!GameEngine.validateEntry(game, cleanNum)) {
             showMessage("Nimewo pa valid pou jwèt sa a", true);
             return;
         }
 
-        // Ajustement du format selon le jeu
         if (game === 'borlette') cleanNum = cleanNum.padStart(2, '0');
         else if (game === 'lotto3') cleanNum = cleanNum.padStart(3, '0');
         else if (game === 'lotto4') cleanNum = cleanNum.padStart(4, '0');
@@ -390,7 +650,6 @@
         showMessage(`Mise ajoute: ${cleanNum} - ${amount} G`, false);
     }
 
-    // ==================== VALIDATION ET IMPRESSION ====================
     async function processFinalTicket() {
         if (currentCart.length === 0) {
             showMessage("Panye vid, pa gen tikè pou valide", true);
@@ -436,6 +695,7 @@
                 const data = await res.json();
                 data.ticket.date = new Date().toISOString();
                 printTicket(data.ticket, printWindow);
+                allTickets.unshift(data.ticket);
             }
             currentCart = [];
             renderCart();
@@ -494,11 +754,96 @@
         </html>`;
     }
 
-    // ==================== GESTION CLAVIER ET SÉLECTION JEU ====================
-    let currentGame = 'borlette'; // par défaut
+    // ==================== MENU DE SÉLECTION DES JEUX (touche #) ====================
+    let gameMenuVisible = false;
+    let gameMenuIndex = 0;
+    let gameMenuOverlay = null;
 
+    function showGameMenu() {
+        if (gameMenuVisible) return;
+        gameMenuVisible = true;
+        gameMenuIndex = gameList.indexOf(currentGame);
+        if (gameMenuIndex === -1) gameMenuIndex = 0;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'game-menu-overlay';
+        const menu = document.createElement('div');
+        menu.id = 'game-menu';
+        menu.innerHTML = `
+            <h3 style="margin:0 0 15px 0;">Chwazi Jwèt</h3>
+            <div id="game-menu-items">
+                ${gameLabels.map((label, i) => `
+                    <div class="game-menu-item ${i === gameMenuIndex ? 'active' : ''}" data-game="${gameList[i]}" data-idx="${i}">${label}</div>
+                `).join('')}
+            </div>
+            <button id="close-game-menu" style="margin-top: 15px;">Fèmen (Esc)</button>
+        `;
+        overlay.appendChild(menu);
+        document.body.appendChild(overlay);
+        gameMenuOverlay = overlay;
+
+        const menuItems = document.querySelectorAll('.game-menu-item');
+        menuItems[gameMenuIndex].focus();
+
+        const handleKey = (e) => {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                gameMenuIndex = (gameMenuIndex - 1 + menuItems.length) % menuItems.length;
+                updateMenuSelection(menuItems);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                gameMenuIndex = (gameMenuIndex + 1) % menuItems.length;
+                updateMenuSelection(menuItems);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const selectedGame = gameList[gameMenuIndex];
+                selectGame(selectedGame);
+                closeGameMenu();
+            } else if (e.key === 'Escape') {
+                closeGameMenu();
+            }
+        };
+
+        function updateMenuSelection(items) {
+            items.forEach((item, idx) => {
+                if (idx === gameMenuIndex) {
+                    item.classList.add('active');
+                    item.focus();
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+
+        function closeGameMenu() {
+            document.removeEventListener('keydown', handleKey);
+            if (gameMenuOverlay) gameMenuOverlay.remove();
+            gameMenuVisible = false;
+            numInput.focus();
+        }
+
+        document.addEventListener('keydown', handleKey);
+        document.getElementById('close-game-menu').addEventListener('click', closeGameMenu);
+
+        // Clic sur un élément du menu
+        menuItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const game = item.dataset.game;
+                selectGame(game);
+                closeGameMenu();
+            });
+        });
+    }
+
+    // ==================== SÉLECTION DU JEU ====================
     function selectGame(game) {
         currentGame = game;
+        const idx = gameList.indexOf(game);
+        if (idx !== -1) {
+            document.getElementById('current-game-display').innerText = gameLabels[idx];
+        } else {
+            document.getElementById('current-game-display').innerText = game.toUpperCase();
+        }
         const input = document.getElementById('num-input');
         if (game === 'auto_marriage' || game === 'auto_lotto4' || game === 'auto_lotto5' || game === 'bo' || game === 'grap') {
             input.disabled = true;
@@ -515,9 +860,177 @@
             input.placeholder = placeholder;
             input.focus();
         }
-        showMessage(`Jwèt chwazi: ${game.toUpperCase()}`, false);
     }
 
+    // ==================== HISTORIQUE ====================
+    async function loadHistory() {
+        try {
+            const tickets = await fetchAPI('/tickets');
+            allTickets = tickets;
+            renderHistory();
+        } catch (err) {
+            console.error(err);
+            showMessage("Erreur chargement historique", true);
+        }
+    }
+
+    function renderHistory() {
+        const container = document.getElementById('history-list');
+        if (!container) return;
+        if (!allTickets.length) {
+            container.innerHTML = '<div class="empty-msg">Pa gen tikè</div>';
+            return;
+        }
+        container.innerHTML = allTickets.map((t, idx) => `
+            <div class="ticket-item" data-idx="${idx}" data-ticket-id="${t.id}" data-ticket-obj='${JSON.stringify(t).replace(/'/g, "&apos;")}'>
+                <strong>#${t.ticket_id || t.id}</strong> - ${t.draw_name || t.drawName} - ${new Date(t.date).toLocaleString()} - ${t.total_amount} G
+                ${t.win_amount > 0 ? `<span style="color:#0f0"> +${t.win_amount} G</span>` : ''}
+            </div>
+        `).join('');
+        selectedHistoryIndex = -1;
+    }
+
+    function viewTicketDetails(ticket) {
+        const details = `Ticket #${ticket.ticket_id || ticket.id}\nTiraj: ${ticket.draw_name || ticket.drawName}\nDate: ${new Date(ticket.date).toLocaleString()}\nTotal: ${ticket.total_amount} G\nGanyen: ${ticket.win_amount || 0} G\n\nMises:\n` +
+            (ticket.bets || []).map(b => `${getGameAbbreviation(b.game)} ${b.number || b.cleanNumber} : ${b.amount} G`).join('\n');
+        alert(details);
+    }
+
+    async function reprintTicket(ticket) {
+        const printWindow = window.open('', '_blank', 'width=500,height=700');
+        if (!printWindow) {
+            showMessage("Pèmèt pop-up pou enprime", true);
+            return;
+        }
+        printTicket(ticket, printWindow);
+    }
+
+    async function deleteTicket(ticketId, ticketDate) {
+        const now = new Date();
+        const ticketTime = new Date(ticketDate);
+        const diffMinutes = (now - ticketTime) / 60000;
+        if (diffMinutes > 3) {
+            showMessage("Tikè gen plis pase 3 minit, ou pa ka efase l.", true);
+            return;
+        }
+        if (!confirm("Efase tikè sa a?")) return;
+        try {
+            await fetchAPI(`/tickets/${ticketId}`, { method: 'DELETE' });
+            allTickets = allTickets.filter(t => t.id != ticketId && t.ticket_id != ticketId);
+            renderHistory();
+            showMessage("Tikè efase", false);
+        } catch (err) {
+            showMessage("Erè efasman", true);
+        }
+    }
+
+    // ==================== RAPPORTS ====================
+    async function loadReports() {
+        const period = document.getElementById('report-period').value;
+        let from = null, to = null;
+        if (period === 'custom') {
+            from = document.getElementById('from-date').value;
+            to = document.getElementById('to-date').value;
+            if (!from || !to) {
+                showMessage("Chwazi dat yo", true);
+                return;
+            }
+        }
+        try {
+            let url = '/reports';
+            if (period === 'today') url += '?period=today';
+            else if (period === 'yesterday') url += '?period=yesterday';
+            else if (period === 'week') url += '?period=week';
+            else if (period === 'custom') url += `?period=custom&from=${from}&to=${to}`;
+            const data = await fetchAPI(url);
+            document.getElementById('total-tickets').innerText = data.total_tickets || 0;
+            document.getElementById('total-bets').innerText = (data.total_bets || 0) + ' G';
+            document.getElementById('total-wins').innerText = (data.total_wins || 0) + ' G';
+            document.getElementById('total-loss').innerText = ((data.total_bets || 0) - (data.total_wins || 0)) + ' G';
+            document.getElementById('balance').innerText = ((data.total_wins || 0) - (data.total_bets || 0)) + ' G';
+        } catch (err) {
+            console.error(err);
+            showMessage("Erreur chargement rapports", true);
+        }
+    }
+
+    // ==================== GAGNANTS ====================
+    async function loadWinners() {
+        try {
+            const data = await fetchAPI('/winners');
+            winningTickets = data.winners || [];
+            renderWinners();
+        } catch (err) {
+            console.error(err);
+            showMessage("Erreur chargement gagnants", true);
+        }
+    }
+
+    function renderWinners() {
+        const container = document.getElementById('winners-list');
+        if (!container) return;
+        if (!winningTickets.length) {
+            container.innerHTML = '<div class="empty-msg">Pa gen tikè genyen</div>';
+            return;
+        }
+        container.innerHTML = winningTickets.map((t, idx) => `
+            <div class="winner-item" data-idx="${idx}" data-ticket-id="${t.id}">
+                <strong>#${t.ticket_id || t.id}</strong> - ${t.draw_name || t.drawName} - ${t.win_amount} G
+                ${t.paid ? '<span style="color:#0f0"> Peye</span>' : '<span style="color:#f00"> Pa peye</span>'}
+            </div>
+        `).join('');
+        selectedWinnerIndex = -1;
+    }
+
+    async function markAsPaid(ticketId) {
+        try {
+            await fetchAPI(`/winners/pay/${ticketId}`, { method: 'POST' });
+            loadWinners();
+            showMessage("Tikè make kòm peye", false);
+        } catch (err) {
+            showMessage("Erè", true);
+        }
+    }
+
+    // ==================== RÉSULTATS ====================
+    async function loadResults() {
+        try {
+            const data = await fetchAPI('/winners/results');
+            winningResults = data.results || [];
+            renderResults();
+        } catch (err) {
+            console.error(err);
+            showMessage("Erreur chargement résultats", true);
+        }
+    }
+
+    function renderResults() {
+        const container = document.getElementById('results-list');
+        if (!container) return;
+        if (!winningResults.length) {
+            container.innerHTML = '<div class="empty-msg">Pa gen rezilta</div>';
+            return;
+        }
+        // Grouper par jour
+        const grouped = {};
+        winningResults.forEach(r => {
+            const day = new Date(r.date || r.published_at).toLocaleDateString('fr-FR');
+            if (!grouped[day]) grouped[day] = [];
+            grouped[day].push(r);
+        });
+        let html = '';
+        for (const [day, results] of Object.entries(grouped)) {
+            html += `<div class="result-group"><h3>${day}</h3>`;
+            results.forEach(r => {
+                const numbers = r.lotto3 ? `${r.lotto3} | ${r.numbers[1]} | ${r.numbers[2]}` : r.numbers.join(' - ');
+                html += `<div class="result-item">${r.name || 'Tiraj'} : ${numbers}</div>`;
+            });
+            html += `</div>`;
+        }
+        container.innerHTML = html;
+    }
+
+    // ==================== GESTION CLAVIER ====================
     let currentFocusIndex = 0;
     const focusableIds = ['num-input', 'amt-input', 'add-btn', 'print-btn'];
     function setFocusById(id) {
@@ -529,31 +1042,35 @@
     function setupKeyboardNavigation() {
         setFocusById('num-input');
         document.addEventListener('keydown', (e) => {
+            // Menu par touche '#' (ou Shift+3)
+            if (e.key === '#' || (e.code === 'Digit3' && e.shiftKey) || e.key === '*') {
+                e.preventDefault();
+                showGameMenu();
+                return;
+            }
+
+            // Tab / Shift+Tab
             if (e.key === 'Tab') {
                 e.preventDefault();
                 if (e.shiftKey) currentFocusIndex = (currentFocusIndex - 1 + focusableIds.length) % focusableIds.length;
                 else currentFocusIndex = (currentFocusIndex + 1) % focusableIds.length;
                 setFocusById(focusableIds[currentFocusIndex]);
-            }
-            const activeTag = document.activeElement.tagName;
-            if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && activeTag !== 'INPUT') {
-                e.preventDefault();
-                const drawItems = document.querySelectorAll('.draw-item');
-                let activeDraw = document.querySelector('.draw-item.active');
-                let idx = Array.from(drawItems).findIndex(el => el === activeDraw);
-                if (e.key === 'ArrowDown') idx = (idx + 1) % drawItems.length;
-                if (e.key === 'ArrowUp') idx = (idx - 1 + drawItems.length) % drawItems.length;
-                const newId = drawItems[idx].getAttribute('data-id');
-                updateDrawSelection(newId);
-                drawItems[idx].focus();
                 return;
             }
-            if (e.key === 'Enter') {
-                const activeId = document.activeElement.id;
-                if (activeId === 'add-btn') addBet();
-                else if (activeId === 'print-btn') processFinalTicket();
-                else if (activeId === 'num-input' || activeId === 'amt-input') addBet();
+
+            const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+
+            // Navigation dans les onglets (F9-F12)
+            if (e.key === 'F9') switchTab('history');
+            else if (e.key === 'F10') switchTab('reports');
+            else if (e.key === 'F11') switchTab('winners');
+            else if (e.key === 'F12') switchTab('results');
+            else if (e.key === 'Escape') {
+                if (activeTab !== 'sale') switchTab('sale');
+                return;
             }
+
+            // Changement de jeu avec F1-F8
             const gameMap = {
                 'F1': 'borlette', 'F2': 'lotto3', 'F3': 'lotto4', 'F4': 'lotto5',
                 'F5': 'mariage', 'F6': 'auto_marriage', 'F7': 'bo', 'F8': 'grap'
@@ -561,23 +1078,80 @@
             if (gameMap[e.key]) {
                 e.preventDefault();
                 selectGame(gameMap[e.key]);
+                showMessage(`Jwèt: ${gameMap[e.key].toUpperCase()}`, false);
+                return;
+            }
+
+            // Navigation spécifique selon l'onglet actif
+            if (activeTab === 'sale') {
+                // Flèches pour changer de tirage
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && document.activeElement.tagName !== 'INPUT') {
+                    e.preventDefault();
+                    const drawItems = document.querySelectorAll('.draw-item');
+                    let activeDraw = document.querySelector('.draw-item.active');
+                    let idx = Array.from(drawItems).findIndex(el => el === activeDraw);
+                    if (e.key === 'ArrowDown') idx = (idx + 1) % drawItems.length;
+                    if (e.key === 'ArrowUp') idx = (idx - 1 + drawItems.length) % drawItems.length;
+                    const newId = drawItems[idx].getAttribute('data-id');
+                    updateDrawSelection(newId);
+                    drawItems[idx].focus();
+                    return;
+                }
+                if (e.key === 'Enter') {
+                    const activeId = document.activeElement.id;
+                    if (activeId === 'add-btn') addBet();
+                    else if (activeId === 'print-btn') processFinalTicket();
+                    else if (activeId === 'num-input' || activeId === 'amt-input') addBet();
+                }
+            } else if (activeTab === 'history') {
+                const items = document.querySelectorAll('.ticket-item');
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (selectedHistoryIndex === -1) selectedHistoryIndex = 0;
+                    else if (e.key === 'ArrowDown') selectedHistoryIndex = (selectedHistoryIndex + 1) % items.length;
+                    else if (e.key === 'ArrowUp') selectedHistoryIndex = (selectedHistoryIndex - 1 + items.length) % items.length;
+                    items.forEach((it, i) => it.classList.toggle('active', i === selectedHistoryIndex));
+                    items[selectedHistoryIndex]?.focus();
+                } else if (e.key === 'Enter' && selectedHistoryIndex !== -1) {
+                    const ticketData = items[selectedHistoryIndex].dataset.ticketObj;
+                    if (ticketData) {
+                        const ticket = JSON.parse(ticketData);
+                        const action = prompt("Chwazi (1=detay, 2=reimprime, 3=efase)");
+                        if (action === '1') viewTicketDetails(ticket);
+                        else if (action === '2') reprintTicket(ticket);
+                        else if (action === '3') deleteTicket(ticket.id, ticket.date);
+                    }
+                }
+            } else if (activeTab === 'winners') {
+                const items = document.querySelectorAll('.winner-item');
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (selectedWinnerIndex === -1) selectedWinnerIndex = 0;
+                    else if (e.key === 'ArrowDown') selectedWinnerIndex = (selectedWinnerIndex + 1) % items.length;
+                    else if (e.key === 'ArrowUp') selectedWinnerIndex = (selectedWinnerIndex - 1 + items.length) % items.length;
+                    items.forEach((it, i) => it.classList.toggle('active', i === selectedWinnerIndex));
+                    items[selectedWinnerIndex]?.focus();
+                } else if (e.key === 'Enter' && selectedWinnerIndex !== -1) {
+                    const ticketId = items[selectedWinnerIndex].dataset.ticketId;
+                    if (confirm("Make tikè sa a kòm peye?")) markAsPaid(ticketId);
+                }
+            } else if (activeTab === 'reports') {
+                if (e.key === 'Enter' && document.activeElement.id === 'apply-reports') loadReports();
+            } else if (activeTab === 'results') {
+                const items = document.querySelectorAll('.result-item');
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (selectedResultIndex === -1) selectedResultIndex = 0;
+                    else if (e.key === 'ArrowDown') selectedResultIndex = (selectedResultIndex + 1) % items.length;
+                    else if (e.key === 'ArrowUp') selectedResultIndex = (selectedResultIndex - 1 + items.length) % items.length;
+                    items.forEach((it, i) => it.classList.toggle('active', i === selectedResultIndex));
+                    items[selectedResultIndex]?.focus();
+                }
             }
         });
     }
 
-    // ==================== INITIALISATION APRÈS CONNEXION ====================
-    async function initAfterLogin() {
-        await loadLotteryConfig();
-        agentNameSpan.innerText = agentName;
-        renderCart();
-        setInterval(() => {
-            document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('fr-FR');
-        }, 1000);
-        showMessage("Terminal prèt - Chwazi tiraj ak nimewo", false);
-        console.log("✅ Initialisation terminée");
-    }
-
-    // ==================== LOGIN ====================
+    // ==================== LOGIN ET INIT ====================
     async function login(username, password) {
         const loginMsg = document.getElementById('login-message');
         loginMsg.innerText = 'Koneksyon...';
@@ -599,10 +1173,16 @@
             await loadDraws();
             await loadBlockedNumbers();
             await loadNumberLimits();
+            await loadLotteryConfig();
 
             loginScreen.style.display = 'none';
             mainApp.style.display = 'flex';
-            await initAfterLogin();
+            agentNameSpan.innerText = agentName;
+            renderCart();
+            setInterval(() => {
+                document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('fr-FR');
+            }, 1000);
+            showMessage("Terminal prèt", false);
         } catch (err) {
             loginMsg.innerText = 'Erreur: ' + err.message;
             console.error(err);
@@ -636,7 +1216,11 @@
         loadDraws().then(() => {
             loginScreen.style.display = 'none';
             mainApp.style.display = 'flex';
-            initAfterLogin();
+            agentNameSpan.innerText = agentName;
+            renderCart();
+            setInterval(() => {
+                document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('fr-FR');
+            }, 1000);
         }).catch(() => {
             localStorage.removeItem('auth_token');
             localStorage.removeItem('agent_id');
@@ -647,17 +1231,28 @@
         mainApp.style.display = 'none';
     }
 
-    // Exposer les fonctions globales
+    // Gestion des onglets par clic
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    });
+
+    // Rapports : afficher/masquer date range
+    const periodSelect = document.getElementById('report-period');
+    const customRange = document.getElementById('custom-date-range');
+    periodSelect.addEventListener('change', () => {
+        customRange.style.display = periodSelect.value === 'custom' ? 'block' : 'none';
+    });
+    document.getElementById('apply-reports').addEventListener('click', loadReports);
+
+    // Exposer les fonctions globales pour les boutons onclick
+    window.removeBet = removeBet;
     window.addBet = addBet;
     window.processFinalTicket = processFinalTicket;
-    window.removeBet = removeBet;
     window.selectGame = selectGame;
 
     addBtn.addEventListener('click', addBet);
     printBtn.addEventListener('click', processFinalTicket);
     setupKeyboardNavigation();
-
-    // Initialisation du jeu par défaut
     selectGame('borlette');
 </script>
 </body>
