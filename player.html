@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LOTATO PRO - Espace Joueur</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', sans-serif; }
+        body { background:#0a0b1e; color:#fff; min-height:100vh; }
+        .app { max-width:500px; margin:0 auto; background:#0f1122; min-height:100vh; position:relative; }
+        header { background:linear-gradient(135deg,#1a1c3a,#0f1122); padding:15px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); }
+        .logo h1 { font-size:1.3rem; background:linear-gradient(135deg,#ad00f1,#ff007a); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        .user-info { text-align:right; }
+        .balance { background:rgba(0,241,144,0.2); padding:5px 12px; border-radius:20px; font-size:0.9rem; font-weight:bold; margin-top:5px; display:inline-block; }
+        .tabs { display:flex; background:#1a1c3a; padding:10px; gap:5px; border-bottom:1px solid rgba(255,255,255,0.1); }
+        .tab { flex:1; background:rgba(255,255,255,0.05); border:none; padding:12px; border-radius:12px; color:#fff; font-weight:600; cursor:pointer; transition:0.2s; }
+        .tab.active { background:linear-gradient(135deg,#ad00f1,#00d4ff); }
+        .tab-content { display:none; padding:20px; }
+        .tab-content.active { display:block; }
+        .section-title { font-size:1.2rem; margin-bottom:15px; display:flex; align-items:center; gap:8px; }
+        .draw-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:12px; margin-bottom:20px; }
+        .draw-card { background:rgba(255,255,255,0.05); border-radius:16px; padding:12px; text-align:center; cursor:pointer; transition:0.2s; border:1px solid transparent; }
+        .draw-card.selected { border-color:#00d4ff; background:rgba(0,212,255,0.1); }
+        .draw-name { font-weight:bold; font-size:0.9rem; }
+        .draw-time { font-size:0.7rem; opacity:0.7; }
+        .input-container { display:flex; gap:10px; margin:20px 0; }
+        .num-input, .amt-input { flex:1; padding:12px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#fff; font-size:1rem; }
+        .add-btn { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; padding:12px 20px; border-radius:12px; color:#fff; font-weight:bold; cursor:pointer; }
+        .cart-section { background:rgba(255,255,255,0.02); border-radius:20px; padding:15px; margin-top:20px; }
+        .cart-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+        .cart-total { font-size:1.2rem; font-weight:bold; }
+        .cart-list { max-height:300px; overflow-y:auto; }
+        .cart-item { display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .cart-item button { background:#ff4d4d; border:none; color:#fff; width:24px; height:24px; border-radius:50%; cursor:pointer; }
+        .print-btn { background:#00d4ff; border:none; padding:10px 20px; border-radius:30px; color:#000; font-weight:bold; margin-top:10px; width:100%; cursor:pointer; }
+        .empty-msg { text-align:center; padding:30px; opacity:0.6; }
+        .transaction, .history-item { display:flex; justify-content:space-between; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .profit { color:#00f190; }
+        .loss { color:#ff4d4d; }
+        .recharge-btn, .withdraw-btn { background:rgba(0,212,255,0.2); border:1px solid #00d4ff; padding:12px; border-radius:12px; width:100%; margin-bottom:10px; cursor:pointer; text-align:center; font-weight:bold; }
+        .recharge-form, .withdraw-form { margin-top:20px; }
+        .recharge-form input, .withdraw-form input, .recharge-form select, .withdraw-form select { width:100%; padding:12px; margin-bottom:10px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:12px; color:#fff; }
+        .warning-message { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; border-radius:12px; padding:10px; margin-bottom:15px; display:none; align-items:center; gap:10px; }
+        .btn-primary { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; border-radius:30px; padding:12px; color:white; font-weight:bold; cursor:pointer; width:100%; }
+        .btn-secondary { background:rgba(255,255,255,0.2); border:none; border-radius:30px; padding:10px; color:white; cursor:pointer; }
+        .code-display { background:rgba(0,0,0,0.5); padding:15px; border-radius:12px; text-align:center; margin:15px 0; font-size:1.5rem; font-weight:bold; letter-spacing:2px; }
+        .profile-info { background:rgba(255,255,255,0.05); border-radius:16px; padding:15px; margin-bottom:20px; }
+        .login-container { display:flex; flex-direction:column; justify-content:center; min-height:100vh; padding:20px; }
+        .login-card { background:rgba(255,255,255,0.05); border-radius:30px; padding:30px; text-align:center; }
+        .login-card input { width:100%; padding:12px; margin:10px 0; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#fff; }
+        .login-card button { margin-top:15px; }
+        .toggle-link { color:#00d4ff; cursor:pointer; margin-top:15px; display:inline-block; }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+    <!-- Page de connexion/inscription (visible si non connecté) -->
+    <div id="auth-container" style="display:flex;">
+        <div class="login-container">
+            <div class="login-card">
+                <h1>LOTATO PRO</h1>
+                <h2 id="auth-title">Connexion</h2>
+                <form id="login-form">
+                    <input type="tel" id="login-phone" placeholder="Numéro de téléphone" required>
+                    <input type="password" id="login-password" placeholder="Mot de passe" required>
+                    <button type="submit" class="btn-primary">Se connecter</button>
+                </form>
+                <form id="register-form" style="display:none;">
+                    <input type="text" id="reg-name" placeholder="Nom complet" required>
+                    <input type="tel" id="reg-phone" placeholder="Numéro de téléphone" required>
+                    <input type="password" id="reg-password" placeholder="Mot de passe" required>
+                    <input type="text" id="reg-zone" placeholder="Zone / Ville (optionnel)">
+                    <button type="submit" class="btn-primary">S'inscrire</button>
+                </form>
+                <div>
+                    <span id="toggle-auth" class="toggle-link">Pas de compte ? Créer un compte</span>
+                </div>
+                <div id="auth-message" style="margin-top:15px; color:#ffaa00;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interface principale (visible après connexion) -->
+    <div id="dashboard-container" style="display:none;">
+        <header>
+            <div class="logo"><h1>LOTATO PRO</h1></div>
+            <div class="user-info">
+                <div id="player-name"></div>
+                <div class="balance" id="balance-display">0 G</div>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="play">🎲 Jouer</button>
+            <button class="tab" data-tab="history">📜 Historique</button>
+            <button class="tab" data-tab="recharge">💰 Recharger</button>
+            <button class="tab" data-tab="profile">👤 Profil</button>
+        </div>
+
+        <!-- Onglet Jouer -->
+        <div id="play-tab" class="tab-content active">
+            <div id="draw-blocked-warning" class="warning-message">
+                <i class="fas fa-exclamation-triangle"></i> <span>Ce tirage se ferme dans 3 minutes. Vous ne pouvez plus ajouter de paris.</span>
+            </div>
+            <div class="section-title"><i class="fas fa-calendar-alt"></i> Choisissez un tirage</div>
+            <div class="draw-grid" id="draws-container"></div>
+
+            <div class="section-title"><i class="fas fa-gamepad"></i> Votre pari</div>
+            <div class="input-container">
+                <input type="text" id="num-input" placeholder="00" class="num-input" maxlength="5">
+                <input type="number" id="amt-input" placeholder="Montant (G)" class="amt-input">
+                <button id="add-bet-btn" class="add-btn"><i class="fas fa-plus"></i></button>
+            </div>
+
+            <div class="cart-section">
+                <div class="cart-header">
+                    <span>Panier (<span id="items-count">0</span> jeux)</span>
+                    <span class="cart-total" id="cart-total-display">0 G</span>
+                </div>
+                <div id="cart-display" class="cart-list"></div>
+                <button onclick="processFinalTicket()" class="print-btn"><i class="fas fa-print"></i> Enregistrer & Imprimer</button>
+            </div>
+        </div>
+
+        <!-- Onglet Historique -->
+        <div id="history-tab" class="tab-content">
+            <div id="history-container" class="cart-list"></div>
+        </div>
+
+        <!-- Onglet Recharger / Retrait -->
+        <div id="recharge-tab" class="tab-content">
+            <div class="section-title"><i class="fas fa-wallet"></i> Gestion du compte</div>
+            <div>
+                <button class="recharge-btn" onclick="showRechargeForm()">💵 Recharger mon compte</button>
+                <button class="recharge-btn" onclick="showWithdrawForm()">🏧 Retirer de l'argent</button>
+            </div>
+            <div id="recharge-form-container" class="recharge-form" style="display:none;">
+                <h3>Recharger</h3>
+                <select id="recharge-method">
+                    <option value="cash">En espèces (point de vente)</option>
+                    <option value="moncash">MonCash</option>
+                    <option value="natcash">NatCash</option>
+                </select>
+                <input type="number" id="recharge-amount" placeholder="Montant (Gdes)">
+                <button onclick="submitRecharge()" class="btn-primary">Confirmer</button>
+                <div id="recharge-result"></div>
+            </div>
+            <div id="withdraw-form-container" class="withdraw-form" style="display:none;">
+                <h3>Retirer</h3>
+                <select id="withdraw-method">
+                    <option value="cash">En espèces (point de vente)</option>
+                    <option value="moncash">MonCash</option>
+                    <option value="natcash">NatCash</option>
+                </select>
+                <input type="number" id="withdraw-amount" placeholder="Montant (Gdes)">
+                <button onclick="submitWithdraw()" class="btn-primary">Confirmer</button>
+                <div id="withdraw-result"></div>
+            </div>
+            <div id="transactions-list" style="margin-top:20px;">
+                <h3>Dernières transactions</h3>
+                <div id="transactions-container"></div>
+            </div>
+        </div>
+
+        <!-- Onglet Profil -->
+        <div id="profile-tab" class="tab-content">
+            <div class="profile-info">
+                <p><strong>Nom:</strong> <span id="profile-name"></span></p>
+                <p><strong>Téléphone:</strong> <span id="profile-phone"></span></p>
+                <p><strong>Zone:</strong> <span id="profile-zone"></span></p>
+                <p><strong>Solde actuel:</strong> <span id="profile-balance"></span></p>
+            </div>
+            <button onclick="logout()" class="btn-secondary">Déconnexion</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== CONFIGURATION ====================
+const API_URL = 'https://lotato1.onrender.com/api'; // À adapter
+
+// État de l'application
+let currentDraw = null;
+let currentDrawId = null;
+let currentCart = [];
+let draws = [];
+let playerId = null;
+let playerName = null;
+let playerPhone = null;
+let playerZone = null;
+let balance = 0;
+let authToken = null;
+
+// ==================== AUTHENTIFICATION ====================
+function showAuthForm(showLogin) {
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const authTitle = document.getElementById('auth-title');
+    const toggleText = document.getElementById('toggle-auth');
+    if (showLogin) {
+        loginForm.style.display = 'block';
+        registerForm.style.display = 'none';
+        authTitle.innerText = 'Connexion';
+        toggleText.innerText = 'Pas de compte ? Créer un compte';
+    } else {
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'block';
+        authTitle.innerText = 'Inscription';
+        toggleText.innerText = 'Déjà un compte ? Se connecter';
+    }
+}
+
+document.getElementById('toggle-auth').addEventListener('click', () => {
+    const isLoginVisible = document.getElementById('login-form').style.display !== 'none';
+    showAuthForm(!isLoginVisible);
+});
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const phone = document.getElementById('login-phone').value;
+    const password = document.getElementById('login-password').value;
+    const messageDiv = document.getElementById('auth-message');
+    messageDiv.innerText = 'Connexion en cours...';
+    try {
+        const res = await fetch(`${API_URL}/auth/player/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+            authToken = data.token;
+            playerId = data.playerId;
+            playerName = data.name;
+            playerPhone = phone;
+            balance = data.balance;
+            localStorage.setItem('player_token', authToken);
+            localStorage.setItem('player_id', playerId);
+            localStorage.setItem('player_name', playerName);
+            localStorage.setItem('player_phone', playerPhone);
+            localStorage.setItem('player_balance', balance);
+            initDashboard();
+        } else {
+            messageDiv.innerText = data.error || 'Échec de connexion';
+        }
+    } catch (err) {
+        messageDiv.innerText = 'Erreur réseau : ' + err.message;
+    }
+});
+
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('reg-name').value;
+    const phone = document.getElementById('reg-phone').value;
+    const password = document.getElementById('reg-password').value;
+    const zone = document.getElementById('reg-zone').value;
+    const messageDiv = document.getElementById('auth-message');
+    messageDiv.innerText = 'Inscription en cours...';
+    try {
+        const res = await fetch(`${API_URL}/auth/player/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, phone, password, zone })
+        });
+        const data = await res.json();
+        if (data.success) {
+            authToken = data.token;
+            playerId = data.playerId;
+            playerName = data.name;
+            playerPhone = phone;
+            balance = data.balance;
+            localStorage.setItem('player_token', authToken);
+            localStorage.setItem('player_id', playerId);
+            localStorage.setItem('player_name', playerName);
+            localStorage.setItem('player_phone', playerPhone);
+            localStorage.setItem('player_balance', balance);
+            initDashboard();
+        } else {
+            messageDiv.innerText = data.error || 'Échec inscription';
+        }
+    } catch (err) {
+        messageDiv.innerText = 'Erreur réseau : ' + err.message;
+    }
+});
+
+// Vérifier si déjà connecté
+const savedToken = localStorage.getItem('player_token');
+if (savedToken) {
+    authToken = savedToken;
+    playerId = localStorage.getItem('player_id');
+    playerName = localStorage.getItem('player_name');
+    playerPhone = localStorage.getItem('player_phone');
+    balance = parseFloat(localStorage.getItem('player_balance')) || 0;
+    initDashboard();
+} else {
+    document.getElementById('auth-container').style.display = 'flex';
+    document.getElementById('dashboard-container').style.display = 'none';
+    showAuthForm(true);
+}
+
+// ==================== DASHBOARD ====================
+async function initDashboard() {
+    document.getElementById('auth-container').style.display = 'none';
+    document.getElementById('dashboard-container').style.display = 'block';
+    document.getElementById('player-name').innerText = playerName;
+    updateBalanceDisplay();
+    await loadDraws();
+    await loadPlayerHistory();
+    await loadTransactions();
+    setupTabs();
+    setupInputEvents();
+    checkDrawBlocked();
+    setInterval(updateClock, 1000);
+    setInterval(checkDrawBlocked, 30000);
+    setInterval(refreshBalance, 60000);
+}
+
+async function refreshBalance() {
+    try {
+        const res = await fetch(`${API_URL}/player/balance`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json();
+        if (data.balance !== undefined) {
+            balance = data.balance;
+            localStorage.setItem('player_balance', balance);
+            updateBalanceDisplay();
+        }
+    } catch (err) { console.error(err); }
+}
+
+function updateBalanceDisplay() {
+    document.getElementById('balance-display').innerHTML = balance.toLocaleString() + ' G';
+    document.getElementById('profile-balance').innerHTML = balance.toLocaleString() + ' G';
+}
+
+async function loadDraws() {
+    const res = await fetch(`${API_URL}/draws`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const data = await res.json();
+    draws = data.draws;
+    if (draws.length > 0) {
+        currentDrawId = draws[0].id;
+        currentDraw = draws[0];
+        renderDraws();
+    }
+}
+
+function renderDraws() {
+    const container = document.getElementById('draws-container');
+    if (!container) return;
+    container.innerHTML = draws.map(draw => `
+        <div class="draw-card ${currentDrawId === draw.id ? 'selected' : ''}" onclick="selectDraw('${draw.id}')">
+            <div class="draw-name">${draw.name}</div>
+            <div class="draw-time">${draw.time}</div>
+        </div>
+    `).join('');
+}
+
+function selectDraw(drawId) {
+    currentDrawId = drawId;
+    currentDraw = draws.find(d => d.id === drawId);
+    renderDraws();
+    checkDrawBlocked();
+}
+
+async function checkDrawBlocked() {
+    const draw = draws.find(d => d.id === currentDrawId);
+    if (!draw) return;
+    const warning = document.getElementById('draw-blocked-warning');
+    if (!draw.active) {
+        warning.style.display = 'flex';
+    } else {
+        warning.style.display = 'none';
+    }
+}
+
+// ==================== PANIER ====================
+function addBet() {
+    if (!currentDrawId) { alert('Choisissez un tirage'); return; }
+    const num = document.getElementById('num-input').value.trim();
+    const amt = parseFloat(document.getElementById('amt-input').value);
+    if (isNaN(amt) || amt <= 0) { alert('Montant invalide'); return; }
+    if (num.length !== 2) { alert('Entrez un numéro à 2 chiffres'); return; }
+    const cleanNum = num.padStart(2, '0');
+    // Vérification solde (optionnelle, mais le backend vérifiera)
+    if (amt > balance) { alert('Solde insuffisant'); return; }
+    currentCart.push({
+        id: Date.now(),
+        game: 'borlette',
+        number: cleanNum,
+        cleanNumber: cleanNum,
+        amount: amt,
+        drawId: currentDrawId,
+        drawName: currentDraw.name
+    });
+    renderCart();
+    document.getElementById('num-input').value = '';
+    document.getElementById('amt-input').value = '';
+    document.getElementById('num-input').focus();
+}
+
+function removeBet(id) {
+    currentCart = currentCart.filter(b => b.id !== id);
+    renderCart();
+}
+
+function renderCart() {
+    const cartDisplay = document.getElementById('cart-display');
+    const totalEl = document.getElementById('cart-total-display');
+    const itemsCount = document.getElementById('items-count');
+    if (currentCart.length === 0) {
+        cartDisplay.innerHTML = '<div class="empty-msg">Panier vide</div>';
+        totalEl.innerText = '0 G';
+        itemsCount.innerText = '0';
+        return;
+    }
+    let total = 0;
+    cartDisplay.innerHTML = currentCart.map(bet => {
+        total += bet.amount;
+        return `
+            <div class="cart-item">
+                <span>${bet.game} ${bet.number}</span>
+                <span>${bet.amount} G</span>
+                <button onclick="removeBet(${bet.id})">✕</button>
+            </div>
+        `;
+    }).join('');
+    totalEl.innerText = total.toLocaleString() + ' G';
+    itemsCount.innerText = currentCart.length;
+}
+
+async function processFinalTicket() {
+    if (currentCart.length === 0) { alert('Panier vide'); return; }
+    const total = currentCart.reduce((s,b) => s + b.amount, 0);
+    if (total > balance) { alert('Solde insuffisant'); return; }
+    const payload = {
+        drawId: currentDrawId,
+        drawName: currentDraw.name,
+        bets: currentCart,
+        total: total,
+        playerId: playerId
+    };
+    try {
+        const res = await fetch(`${API_URL}/tickets/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            alert('Ticket enregistré avec succès !');
+            printThermalTicket(data.ticket);
+            currentCart = [];
+            renderCart();
+            await refreshBalance();
+            await loadPlayerHistory();
+            await loadTransactions();
+        } else {
+            alert('Erreur : ' + (data.error || 'Inconnue'));
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Erreur réseau');
+    }
+}
+
+function printThermalTicket(ticket) {
+    const win = window.open('', '_blank', 'width=500,height=700');
+    if (!win) { alert('Autorisez les pop-ups pour imprimer'); return; }
+    const html = generateTicketHTML(ticket);
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => win.print();
+}
+
+function generateTicketHTML(ticket) {
+    const cfg = { name: 'LOTATO PRO', slogan: '' };
+    const date = new Date(ticket.date).toLocaleString('fr-FR');
+    const betsHTML = (ticket.bets || []).map(b => `
+        <div class="bet-row">
+            <span>${b.game} ${b.number}</span>
+            <span>${b.amount} G</span>
+        </div>
+    `).join('');
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head><title>Ticket</title><style>
+            @page{size:80mm auto;margin:2mm}
+            body{font-family:'Courier New',monospace;font-size:32px;width:76mm;margin:0 auto;padding:4mm;background:white;color:black}
+            .header{text-align:center;border-bottom:2px dashed #000;margin-bottom:10px}
+            .bet-row{display:flex;justify-content:space-between;margin:5px 0}
+            .total-row{display:flex;justify-content:space-between;font-weight:bold;margin-top:10px;border-top:1px solid #000;padding-top:5px}
+            .footer{text-align:center;margin-top:20px;font-size:24px}
+        </style></head>
+        <body>
+            <div class="header"><h1>${cfg.name}</h1><div>${cfg.slogan}</div></div>
+            <div>Ticket: ${ticket.ticket_id}</div>
+            <div>Tirage: ${ticket.draw_name}</div>
+            <div>Date: ${date}</div>
+            <hr>${betsHTML}<hr>
+            <div class="total-row"><span>TOTAL</span><span>${ticket.total_amount} G</span></div>
+            <div class="footer">Merci de jouer responsable</div>
+        </body>
+        </html>
+    `;
+}
+
+// ==================== HISTORIQUE ====================
+async function loadPlayerHistory() {
+    const container = document.getElementById('history-container');
+    if (!container) return;
+    container.innerHTML = '<div class="empty-msg">Chargement...</div>';
+    try {
+        const res = await fetch(`${API_URL}/tickets?playerId=${playerId}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json();
+        const tickets = data.tickets || [];
+        if (tickets.length === 0) {
+            container.innerHTML = '<div class="empty-msg">Aucun ticket</div>';
+            return;
+        }
+        container.innerHTML = tickets.map(t => `
+            <div class="history-item">
+                <div>
+                    <strong>${t.draw_name}</strong><br>
+                    <small>${new Date(t.date).toLocaleString()}</small>
+                </div>
+                <div>
+                    ${t.total_amount} G<br>
+                    ${t.win_amount > 0 ? `<span class="profit">+${t.win_amount} G</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        container.innerHTML = '<div class="empty-msg">Erreur chargement</div>';
+    }
+}
+
+// ==================== TRANSACTIONS ====================
+async function loadTransactions() {
+    const container = document.getElementById('transactions-container');
+    if (!container) return;
+    container.innerHTML = '<div class="empty-msg">Chargement...</div>';
+    try {
+        const res = await fetch(`${API_URL}/player/transactions`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json();
+        const transactions = data.transactions || [];
+        if (transactions.length === 0) {
+            container.innerHTML = '<div class="empty-msg">Aucune transaction</div>';
+            return;
+        }
+        container.innerHTML = transactions.map(t => `
+            <div class="transaction">
+                <span>${new Date(t.created_at).toLocaleString()}</span>
+                <span class="${t.type === 'deposit' ? 'profit' : (t.type === 'bet' ? 'loss' : 'profit')}">
+                    ${t.type === 'deposit' ? '+' : (t.type === 'bet' ? '-' : '+')} ${t.amount} G
+                </span>
+                <span>${t.description || t.type}</span>
+            </div>
+        `).join('');
+    } catch (err) {
+        container.innerHTML = '<div class="empty-msg">Erreur chargement</div>';
+    }
+}
+
+// ==================== RECHARGE / RETRAIT (SIMULATION) ====================
+function showRechargeForm() {
+    document.getElementById('recharge-form-container').style.display = 'block';
+    document.getElementById('withdraw-form-container').style.display = 'none';
+    document.getElementById('recharge-result').innerHTML = '';
+}
+function showWithdrawForm() {
+    document.getElementById('withdraw-form-container').style.display = 'block';
+    document.getElementById('recharge-form-container').style.display = 'none';
+    document.getElementById('withdraw-result').innerHTML = '';
+}
+async function submitRecharge() {
+    const method = document.getElementById('recharge-method').value;
+    const amount = parseFloat(document.getElementById('recharge-amount').value);
+    const resultDiv = document.getElementById('recharge-result');
+    if (isNaN(amount) || amount <= 0) {
+        resultDiv.innerHTML = '<div class="loss">Montant invalide</div>';
+        return;
+    }
+    resultDiv.innerHTML = '<div class="empty-msg">Traitement en cours...</div>';
+    if (method === 'cash') {
+        // Générer un code que l'agent utilisera pour créditer le compte
+        const code = 'RECH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+        resultDiv.innerHTML = `
+            <div class="code-display">Code: ${code}</div>
+            <div>Montant: ${amount} G</div>
+            <div>Veuillez présenter ce code à un agent pour valider la recharge.</div>
+            <div class="profit">Le solde sera crédité après validation par l'agent.</div>
+        `;
+        // Ici on pourrait envoyer une demande au serveur pour créer une demande de recharge
+    } else {
+        // Simulation paiement MonCash/NatCash
+        resultDiv.innerHTML = `
+            <div class="code-display">🔄 Simulation paiement ${method.toUpperCase()}</div>
+            <div>Montant: ${amount} G</div>
+            <div class="profit">Paiement simulé réussi ! Solde crédité automatiquement (démo).</div>
+        `;
+        // Simuler crédit immédiat
+        balance += amount;
+        updateBalanceDisplay();
+        // Enregistrer transaction côté serveur
+        try {
+            const res = await fetch(`${API_URL}/player/deposit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                body: JSON.stringify({ playerId, amount, method })
+            });
+            if (res.ok) {
+                await loadTransactions();
+                await refreshBalance();
+            }
+        } catch (err) { console.error(err); }
+    }
+    document.getElementById('recharge-amount').value = '';
+}
+async function submitWithdraw() {
+    const method = document.getElementById('withdraw-method').value;
+    const amount = parseFloat(document.getElementById('withdraw-amount').value);
+    const resultDiv = document.getElementById('withdraw-result');
+    if (isNaN(amount) || amount <= 0) {
+        resultDiv.innerHTML = '<div class="loss">Montant invalide</div>';
+        return;
+    }
+    if (amount > balance) {
+        resultDiv.innerHTML = '<div class="loss">Solde insuffisant</div>';
+        return;
+    }
+    resultDiv.innerHTML = '<div class="empty-msg">Traitement en cours...</div>';
+    if (method === 'cash') {
+        const code = 'WDR-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+        resultDiv.innerHTML = `
+            <div class="code-display">Code retrait: ${code}</div>
+            <div>Montant: ${amount} G</div>
+            <div>Veuillez présenter ce code à un agent pour recevoir l'argent.</div>
+            <div class="loss">Le solde sera débité après validation par l'agent.</div>
+        `;
+        // Ici on pourrait envoyer une demande au serveur
+    } else {
+        // Simulation paiement MonCash/NatCash (retrait simulé)
+        resultDiv.innerHTML = `
+            <div class="code-display">🔄 Simulation retrait ${method.toUpperCase()}</div>
+            <div>Montant: ${amount} G</div>
+            <div class="loss">Retrait simulé effectué. Solde débité (démo).</div>
+        `;
+        // Simuler débit
+        balance -= amount;
+        updateBalanceDisplay();
+        // Enregistrer transaction
+        try {
+            const res = await fetch(`${API_URL}/player/withdraw`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                body: JSON.stringify({ playerId, amount, method })
+            });
+            if (res.ok) {
+                await loadTransactions();
+                await refreshBalance();
+            }
+        } catch (err) { console.error(err); }
+    }
+    document.getElementById('withdraw-amount').value = '';
+}
+
+// ==================== PROFIL ====================
+function updateProfile() {
+    document.getElementById('profile-name').innerText = playerName;
+    document.getElementById('profile-phone').innerText = playerPhone;
+    document.getElementById('profile-zone').innerText = playerZone || 'Non renseignée';
+    document.getElementById('profile-balance').innerHTML = balance.toLocaleString() + ' G';
+}
+
+// ==================== UTILITAIRES ====================
+function setupTabs() {
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabId = tab.dataset.tab;
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`${tabId}-tab`).classList.add('active');
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            if (tabId === 'history') loadPlayerHistory();
+            if (tabId === 'recharge') loadTransactions();
+            if (tabId === 'profile') updateProfile();
+        });
+    });
+}
+function setupInputEvents() {
+    document.getElementById('add-bet-btn').addEventListener('click', addBet);
+    document.getElementById('amt-input').addEventListener('keypress', e => { if(e.key === 'Enter') addBet(); });
+}
+function updateClock() {
+    const now = new Date();
+    // Optionnel: afficher l'heure quelque part
+}
+function logout() {
+    localStorage.clear();
+    window.location.reload();
+}
+
+// Exposer les fonctions globales nécessaires pour les onclick
+window.selectDraw = selectDraw;
+window.addBet = addBet;
+window.removeBet = removeBet;
+window.processFinalTicket = processFinalTicket;
+window.showRechargeForm = showRechargeForm;
+window.showWithdrawForm = showWithdrawForm;
+window.submitRecharge = submitRecharge;
+window.submitWithdraw = submitWithdraw;
+window.logout = logout;
+</script>
+</body>
+</html>
