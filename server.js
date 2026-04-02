@@ -17,18 +17,18 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 app.locals.upload = upload;
 
-// Import des routeurs
-const agentRoutes = require('./agentRoutes');
+// Routeurs
 const commonRoutes = require('./commonRoutes');
+const agentRoutes = require('./agentRoutes');
 const supervisorRoutes = require('./supervisorRoutes');
 const ownerRoutes = require('./ownerRoutes');
 const playerRoutes = require('./playerRoutes');
 
-app.use('/api', agentRoutes);
-app.use('/api', commonRoutes);
-app.use('/api', supervisorRoutes);
-app.use('/api', ownerRoutes);
-app.use('/api', playerRoutes);
+app.use('/api', commonRoutes);      // auth, draws, lottery-settings, tickets, etc.
+app.use('/api', agentRoutes);       // rapports agent, paiement, winners
+app.use('/api', supervisorRoutes);  // superviseur
+app.use('/api', ownerRoutes);       // propriétaire, superadmin, gestion joueurs
+app.use('/api', playerRoutes);      // joueurs (inscription, login, solde, etc.)
 
 initDatabase().then(() => {
   app.listen(port, '0.0.0.0', () => {

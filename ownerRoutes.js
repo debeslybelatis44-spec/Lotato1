@@ -5,7 +5,7 @@ const { authenticate, requireRole, requireSuperAdmin } = require('./auth');
 
 const router = express.Router();
 
-// ==================== Routes propriétaire ====================
+// ==================== ROUTES PROPRIÉTAIRE ====================
 router.get('/owner/messages', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
@@ -466,7 +466,7 @@ router.get('/owner/quota', authenticate, requireRole('owner'), async (req, res) 
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// ==================== Routes superadmin ====================
+// ==================== ROUTES SUPERADMIN ====================
 router.get('/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -570,7 +570,7 @@ router.get('/superadmin/reports/owners', authenticate, requireSuperAdmin, async 
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// ==================== Gestion des joueurs par le propriétaire ====================
+// ==================== GESTION DES JOUEURS PAR LE PROPRIÉTAIRE ====================
 router.get('/owner/players', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { search } = req.query;

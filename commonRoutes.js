@@ -1,10 +1,71 @@
 const express = require('express');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { authenticate, generateETag } = require('./auth');
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_securise';
 
-// Lottery settings
+// ==================== AUTHENTIFICATION ====================
+router.post('/auth/login', async (req, res) => {
+  const { username, password, role } = req.body;
+  try {
+    const result = await pool.query(
+      'SELECT id, name, username, password, role, owner_id FROM users WHERE username = $1 AND role = $2',
+      [username, role]
+    );
+    if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
+    const user = result.rows[0];
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+    const payload = { id: user.id, username: user.username, role: user.role, name: user.name };
+    if (user.role === 'agent' || user.role === 'supervisor') payload.ownerId = user.owner_id;
+    else if (user.role === 'owner') payload.ownerId = user.id;
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+    await pool.query(
+      'INSERT INTO activity_log (user_id, user_role, action, ip_address, user_agent) VALUES ($1,$2,$3,$4,$5)',
+      [user.id, user.role, 'login', req.ip, req.headers['user-agent']]
+    );
+    res.json({
+      success: true, token, name: user.name, role: user.role, ownerId: payload.ownerId,
+      agentId: user.role === 'agent' ? user.id : undefined,
+      supervisorId: user.role === 'supervisor' ? user.id : undefined
+    });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+router.post('/auth/superadmin-login', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const result = await pool.query(
+      'SELECT id, name, username, password, role FROM users WHERE username = $1 AND role = $2',
+      [username, 'superadmin']
+    );
+    if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
+    const user = result.rows[0];
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+    await pool.query(
+      'INSERT INTO activity_log (user_id, user_role, action, ip_address, user_agent) VALUES ($1,$2,$3,$4,$5)',
+      [user.id, user.role, 'login', req.ip, req.headers['user-agent']]
+    );
+    res.json({ success: true, token, name: user.name });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+router.get('/auth/verify', authenticate, (req, res) => { res.json({ valid: true, user: req.user }); });
+
+router.post('/auth/logout', authenticate, async (req, res) => {
+  await pool.query(
+    'INSERT INTO activity_log (user_id, user_role, action, ip_address) VALUES ($1,$2,$3,$4)',
+    [req.user.id, req.user.role, 'logout', req.ip]
+  );
+  res.json({ success: true, message: 'Déconnexion réussie' });
+});
+
+// ==================== ROUTES COMMUNES ====================
 router.get('/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -30,7 +91,6 @@ router.get('/lottery-settings', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Draws
 router.get('/draws', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   if (!ownerId) return res.status(403).json({ error: 'Propriétaire non identifié' });
@@ -48,7 +108,6 @@ router.get('/draws', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Blocked numbers global
 router.get('/blocked-numbers/global', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -57,7 +116,6 @@ router.get('/blocked-numbers/global', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Blocked numbers per draw
 router.get('/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   const { drawId } = req.params;
@@ -67,7 +125,6 @@ router.get('/blocked-numbers/draw/:drawId', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Number limits
 router.get('/number-limits', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -76,7 +133,7 @@ router.get('/number-limits', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Sauvegarde d'un ticket (version originale)
+// Sauvegarde d’un ticket (version originale)
 router.post('/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total } = req.body;
   const ownerId = req.user.ownerId;
@@ -85,6 +142,7 @@ router.post('/tickets/save', authenticate, async (req, res) => {
     const drawCheck = await pool.query('SELECT active FROM draws WHERE id=$1 AND owner_id=$2', [drawId, ownerId]);
     if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
 
+    // Récupérer blocages et limites (code identique à l’original)
     const globalBlocked = await pool.query('SELECT number FROM blocked_numbers WHERE owner_id=$1 AND global=true', [ownerId]);
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
     const drawBlocked = await pool.query('SELECT number FROM blocked_numbers WHERE owner_id=$1 AND draw_id=$2 AND global=false', [ownerId, drawId]);
@@ -177,7 +235,7 @@ router.get('/tickets', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur chargement tickets' }); }
 });
 
-// Suppression d'un ticket
+// Suppression d’un ticket
 router.delete('/tickets/:id', authenticate, async (req, res) => {
   const user = req.user;
   const ticketId = req.params.id;

@@ -94,7 +94,7 @@ router.get('/player/transactions', authenticate, requirePlayer, async (req, res)
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Recherche d'un joueur par téléphone (agent, etc.)
+// Recherche d’un joueur par téléphone (agent, etc.)
 router.get('/users/by-phone', authenticate, async (req, res) => {
   const { phone, role } = req.query;
   if (!phone) return res.status(400).json({ error: 'Téléphone requis' });
@@ -113,7 +113,7 @@ router.get('/users/by-phone', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Solde d'un joueur par ID (agent, etc.)
+// Solde d’un joueur par ID (agent, etc.)
 router.get('/player/balance-by-id', authenticate, async (req, res) => {
   const { playerId } = req.query;
   const allowedRoles = ['agent', 'supervisor', 'owner', 'superadmin'];
