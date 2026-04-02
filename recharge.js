@@ -3,9 +3,11 @@
     if (window.rechargeManagerReady) return;
     window.rechargeManagerReady = true;
 
+    // Utiliser l'API_URL définie dans config.js
+    const API_URL = window.API_URL || 'https://lotato1.onrender.com/api';
+
     // ==================== Création de l'UI ====================
     function createRechargeUI() {
-        // Vérifier si l'écran existe déjà
         if (document.getElementById('recharge-screen')) return;
 
         const main = document.querySelector('.content-area');
@@ -14,7 +16,6 @@
             return;
         }
 
-        // Créer l'écran de recharge
         const screen = document.createElement('section');
         screen.id = 'recharge-screen';
         screen.className = 'screen';
@@ -27,7 +28,6 @@
                     <button class="recharge-tab" data-tab="balance">Consulter solde</button>
                 </div>
 
-                <!-- Onglet Recharge -->
                 <div id="recharge-tab-content" class="recharge-tab-content active">
                     <div class="recharge-form">
                         <div class="form-group">
@@ -51,7 +51,6 @@
                     </div>
                 </div>
 
-                <!-- Onglet Retrait -->
                 <div id="withdraw-tab-content" class="recharge-tab-content">
                     <div class="recharge-form">
                         <div class="form-group">
@@ -75,7 +74,6 @@
                     </div>
                 </div>
 
-                <!-- Onglet Solde -->
                 <div id="balance-tab-content" class="recharge-tab-content">
                     <div class="recharge-form">
                         <div class="form-group">
@@ -90,7 +88,6 @@
         `;
         main.appendChild(screen);
 
-        // Ajouter les styles si non existants
         if (!document.getElementById('recharge-styles')) {
             const style = document.createElement('style');
             style.id = 'recharge-styles';
@@ -105,15 +102,15 @@
                 .recharge-tab {
                     background: none;
                     border: none;
-                    color: var(--text-dim);
+                    color: #aaa;
                     padding: 10px 20px;
                     cursor: pointer;
                     font-weight: 600;
                     transition: 0.2s;
                 }
                 .recharge-tab.active {
-                    color: var(--secondary);
-                    border-bottom: 2px solid var(--secondary);
+                    color: #00d4ff;
+                    border-bottom: 2px solid #00d4ff;
                 }
                 .recharge-tab-content {
                     display: none;
@@ -131,7 +128,7 @@
                 .form-group label {
                     display: block;
                     margin-bottom: 5px;
-                    color: var(--text-dim);
+                    color: #aaa;
                 }
                 .form-group input, .form-group select {
                     width: 100%;
@@ -179,7 +176,6 @@
             document.head.appendChild(style);
         }
 
-        // Ajouter l'onglet dans la barre de navigation s'il n'existe pas
         const nav = document.querySelector('.nav-bar');
         if (nav && !document.querySelector('.nav-item[data-tab="recharge"]')) {
             const tab = document.createElement('a');
@@ -189,17 +185,14 @@
             tab.innerHTML = '<i class="fas fa-wallet"></i><span>Recharger</span>';
             tab.addEventListener('click', function(e) {
                 e.preventDefault();
-                // Cacher tous les écrans
                 document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
                 document.getElementById('recharge-screen').classList.add('active');
-                // Retirer active de tous les onglets
                 document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
                 this.classList.add('active');
             });
             nav.appendChild(tab);
         }
 
-        // Gestion des onglets internes
         const tabs = document.querySelectorAll('.recharge-tab');
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
@@ -211,7 +204,6 @@
             });
         });
 
-        // Attacher les événements
         document.getElementById('btn-recharge')?.addEventListener('click', rechargePlayer);
         document.getElementById('btn-withdraw')?.addEventListener('click', withdrawPlayer);
         document.getElementById('btn-check-balance')?.addEventListener('click', checkPlayerBalance);
@@ -220,7 +212,7 @@
     // ==================== Fonctions API ====================
     async function getPlayerByPhone(phone) {
         const token = localStorage.getItem('auth_token');
-        const res = await fetch(`/api/users/by-phone?phone=${phone}&role=player`, {
+        const res = await fetch(`${API_URL}/users/by-phone?phone=${phone}&role=player`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) throw new Error('Joueur non trouvé');
@@ -243,7 +235,7 @@
         try {
             const player = await getPlayerByPhone(phone);
             const token = localStorage.getItem('auth_token');
-            const res = await fetch('/api/player/deposit', {
+            const res = await fetch(`${API_URL}/player/deposit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ playerId: player.id, amount, method })
@@ -277,7 +269,7 @@
         try {
             const player = await getPlayerByPhone(phone);
             const token = localStorage.getItem('auth_token');
-            const res = await fetch('/api/player/withdraw', {
+            const res = await fetch(`${API_URL}/player/withdraw`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ playerId: player.id, amount, method })
@@ -309,7 +301,7 @@
         try {
             const player = await getPlayerByPhone(phone);
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/player/balance-by-id?playerId=${player.id}`, {
+            const res = await fetch(`${API_URL}/player/balance-by-id?playerId=${player.id}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();

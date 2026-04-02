@@ -6,6 +6,7 @@
     <title>LOTATO PRO - Espace Joueur</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="player.js"></script> <!-- ou le script inline -->
     <style>
         * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', sans-serif; }
         body { background:#0a0b1e; color:#fff; min-height:100vh; }
@@ -53,6 +54,7 @@
         .login-card button { margin-top:15px; }
         .toggle-link { color:#00d4ff; cursor:pointer; margin-top:15px; display:inline-block; }
     </style>
+    <script src="config.js"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -178,8 +180,8 @@
 </div>
 
 <script>
-// ==================== CONFIGURATION ====================
-const API_URL = 'https://lotato1.onrender.com/api'; // À adapter
+// Utilise l'API_URL définie dans config.js
+const API_URL = window.API_URL || 'https://lotato1.onrender.com/api';
 
 // État de l'application
 let currentDraw = null;
@@ -386,7 +388,6 @@ function addBet() {
     if (isNaN(amt) || amt <= 0) { alert('Montant invalide'); return; }
     if (num.length !== 2) { alert('Entrez un numéro à 2 chiffres'); return; }
     const cleanNum = num.padStart(2, '0');
-    // Vérification solde (optionnelle, mais le backend vérifiera)
     if (amt > balance) { alert('Solde insuffisant'); return; }
     currentCart.push({
         id: Date.now(),
@@ -571,7 +572,7 @@ async function loadTransactions() {
     }
 }
 
-// ==================== RECHARGE / RETRAIT (SIMULATION) ====================
+// ==================== RECHARGE / RETRAIT ====================
 function showRechargeForm() {
     document.getElementById('recharge-form-container').style.display = 'block';
     document.getElementById('withdraw-form-container').style.display = 'none';
@@ -592,7 +593,6 @@ async function submitRecharge() {
     }
     resultDiv.innerHTML = '<div class="empty-msg">Traitement en cours...</div>';
     if (method === 'cash') {
-        // Générer un code que l'agent utilisera pour créditer le compte
         const code = 'RECH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
         resultDiv.innerHTML = `
             <div class="code-display">Code: ${code}</div>
@@ -600,18 +600,14 @@ async function submitRecharge() {
             <div>Veuillez présenter ce code à un agent pour valider la recharge.</div>
             <div class="profit">Le solde sera crédité après validation par l'agent.</div>
         `;
-        // Ici on pourrait envoyer une demande au serveur pour créer une demande de recharge
     } else {
-        // Simulation paiement MonCash/NatCash
         resultDiv.innerHTML = `
             <div class="code-display">🔄 Simulation paiement ${method.toUpperCase()}</div>
             <div>Montant: ${amount} G</div>
             <div class="profit">Paiement simulé réussi ! Solde crédité automatiquement (démo).</div>
         `;
-        // Simuler crédit immédiat
         balance += amount;
         updateBalanceDisplay();
-        // Enregistrer transaction côté serveur
         try {
             const res = await fetch(`${API_URL}/player/deposit`, {
                 method: 'POST',
@@ -647,18 +643,14 @@ async function submitWithdraw() {
             <div>Veuillez présenter ce code à un agent pour recevoir l'argent.</div>
             <div class="loss">Le solde sera débité après validation par l'agent.</div>
         `;
-        // Ici on pourrait envoyer une demande au serveur
     } else {
-        // Simulation paiement MonCash/NatCash (retrait simulé)
         resultDiv.innerHTML = `
             <div class="code-display">🔄 Simulation retrait ${method.toUpperCase()}</div>
             <div>Montant: ${amount} G</div>
             <div class="loss">Retrait simulé effectué. Solde débité (démo).</div>
         `;
-        // Simuler débit
         balance -= amount;
         updateBalanceDisplay();
-        // Enregistrer transaction
         try {
             const res = await fetch(`${API_URL}/player/withdraw`, {
                 method: 'POST',
@@ -703,15 +695,14 @@ function setupInputEvents() {
     document.getElementById('amt-input').addEventListener('keypress', e => { if(e.key === 'Enter') addBet(); });
 }
 function updateClock() {
-    const now = new Date();
-    // Optionnel: afficher l'heure quelque part
+    // optionnel
 }
 function logout() {
     localStorage.clear();
     window.location.reload();
 }
 
-// Exposer les fonctions globales nécessaires pour les onclick
+// Exposer les fonctions globales
 window.selectDraw = selectDraw;
 window.addBet = addBet;
 window.removeBet = removeBet;

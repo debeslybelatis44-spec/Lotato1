@@ -77,10 +77,10 @@ router.put('/owner/change-supervisor', authenticate, requireRole('owner'), async
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur' }); }
 });
 
+// Tirages globaux (sans owner_id)
 router.get('/owner/draws', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
   try {
-    const result = await pool.query('SELECT id, name, time, color, active FROM draws WHERE owner_id=$1 ORDER BY time', [ownerId]);
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
     res.json(result.rows);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur' }); }
 });
@@ -158,7 +158,7 @@ router.post('/owner/block-draw', authenticate, requireRole('owner'), async (req,
   const ownerId = req.user.id;
   const { drawId, block } = req.body;
   try {
-    await pool.query('UPDATE draws SET active=$1 WHERE id=$2 AND owner_id=$3', [!block, drawId, ownerId]);
+    await pool.query('UPDATE draws SET active=$1 WHERE id=$2', [!block, drawId]);
     res.json({ success: true });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur' }); }
 });
@@ -251,7 +251,7 @@ router.post('/owner/remove-number-limit', authenticate, requireRole('owner'), as
 router.get('/owner/blocked-draws', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   try {
-    const result = await pool.query('SELECT id as draw_id, name as draw_name FROM draws WHERE owner_id=$1 AND active=false', [ownerId]);
+    const result = await pool.query('SELECT id as draw_id, name as draw_name FROM draws WHERE active=false', []);
     res.json(result.rows);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur' }); }
 });

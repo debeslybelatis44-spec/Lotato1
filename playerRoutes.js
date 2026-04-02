@@ -7,7 +7,6 @@ const { authenticate, requirePlayer } = require('./auth');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_tres_long_et_securise';
 
-// Inscription joueur
 router.post('/auth/player/register', async (req, res) => {
   const { name, phone, password, zone } = req.body;
   if (!name || !phone || !password) return res.status(400).json({ error: 'Nom, téléphone et mot de passe requis' });
@@ -29,7 +28,6 @@ router.post('/auth/player/register', async (req, res) => {
   }
 });
 
-// Connexion joueur
 router.post('/auth/player/login', async (req, res) => {
   const { phone, password } = req.body;
   try {
@@ -43,7 +41,6 @@ router.post('/auth/player/login', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Solde joueur
 router.get('/player/balance', authenticate, requirePlayer, async (req, res) => {
   try {
     const result = await pool.query('SELECT balance FROM players WHERE id=$1', [req.user.id]);
@@ -51,7 +48,6 @@ router.get('/player/balance', authenticate, requirePlayer, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Dépôt (agent, superviseur, owner, superadmin)
 router.post('/player/deposit', authenticate, async (req, res) => {
   const { playerId, amount, method } = req.body;
   if (!playerId || !amount || amount <= 0) return res.status(400).json({ error: 'Données invalides' });
@@ -67,7 +63,6 @@ router.post('/player/deposit', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Retrait (agent, superviseur, owner, superadmin)
 router.post('/player/withdraw', authenticate, async (req, res) => {
   const { playerId, amount, method } = req.body;
   if (!playerId || !amount || amount <= 0) return res.status(400).json({ error: 'Données invalides' });
@@ -86,7 +81,6 @@ router.post('/player/withdraw', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Historique des transactions (joueur)
 router.get('/player/transactions', authenticate, requirePlayer, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM transactions WHERE player_id=$1 ORDER BY created_at DESC LIMIT 50', [req.user.id]);
@@ -94,7 +88,6 @@ router.get('/player/transactions', authenticate, requirePlayer, async (req, res)
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Recherche d’un joueur par téléphone (agent, etc.)
 router.get('/users/by-phone', authenticate, async (req, res) => {
   const { phone, role } = req.query;
   if (!phone) return res.status(400).json({ error: 'Téléphone requis' });
@@ -113,7 +106,6 @@ router.get('/users/by-phone', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Solde d’un joueur par ID (agent, etc.)
 router.get('/player/balance-by-id', authenticate, async (req, res) => {
   const { playerId } = req.query;
   const allowedRoles = ['agent', 'supervisor', 'owner', 'superadmin'];

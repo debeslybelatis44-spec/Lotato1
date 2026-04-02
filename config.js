@@ -1,6 +1,8 @@
-// config.js
+// config.js - Configuration globale pour tous les modules
+window.API_URL = 'https://lotato1.onrender.com/api'; // URL de votre backend
+
 const API_CONFIG = {
-    BASE_URL: 'https://lotato1.onrender.com/api', // À adapter
+    BASE_URL: window.API_URL,
     ENDPOINTS: {
         LOGIN: '/auth/login',
         SAVE_TICKET: '/tickets/save',
@@ -15,7 +17,7 @@ const API_CONFIG = {
         GET_DRAW_REPORT: '/reports/draw',
         GET_LOTTERY_CONFIG: '/lottery-settings',
         CHECK_WINNING_TICKETS: '/tickets/check-winners',
-        GET_LIMITS: '/number-limits' // nouvelle route
+        GET_LIMITS: '/number-limits'
     }
 };
 
@@ -72,5 +74,5 @@ let APP_STATE = {
     draws: null,
     globalBlockedNumbers: [],
     drawBlockedNumbers: {},
-    numberLimits: {} // nouvelle propriété { drawId_number: limitAmount }
+    numberLimits: {}
 };

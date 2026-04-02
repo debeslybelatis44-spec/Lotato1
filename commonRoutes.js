@@ -65,7 +65,7 @@ router.post('/auth/logout', authenticate, async (req, res) => {
   res.json({ success: true, message: 'Déconnexion réussie' });
 });
 
-// ==================== ROUTES COMMUNES ====================
+// ==================== ROUTES COMMUNES (tirages globaux) ====================
 router.get('/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -91,14 +91,10 @@ router.get('/lottery-settings', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// Tirages globaux (sans owner_id)
 router.get('/draws', authenticate, async (req, res) => {
-  const ownerId = req.user.ownerId;
-  if (!ownerId) return res.status(403).json({ error: 'Propriétaire non identifié' });
   try {
-    const result = await pool.query(
-      'SELECT id, name, time, color, active FROM draws WHERE owner_id = $1 ORDER BY time',
-      [ownerId]
-    );
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
     const data = { draws: result.rows };
     const etag = generateETag(data);
     if (req.headers['if-none-match'] === etag) return res.status(304).end();
@@ -133,16 +129,30 @@ router.get('/number-limits', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Sauvegarde d’un ticket (version originale)
+// Sauvegarde d'un ticket
 router.post('/tickets/save', authenticate, async (req, res) => {
-  const { agentId, agentName, drawId, drawName, bets, total } = req.body;
+  const { agentId, agentName, drawId, drawName, bets, total, playerId } = req.body;
   const ownerId = req.user.ownerId;
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
   try {
-    const drawCheck = await pool.query('SELECT active FROM draws WHERE id=$1 AND owner_id=$2', [drawId, ownerId]);
+    // Vérifier tirage actif (global)
+    const drawCheck = await pool.query('SELECT active FROM draws WHERE id=$1', [drawId]);
     if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
 
-    // Récupérer blocages et limites (code identique à l’original)
+    // Gestion du joueur (si fourni)
+    let playerName = null;
+    if (playerId) {
+      const playerRes = await pool.query('SELECT name, balance FROM players WHERE id=$1 AND owner_id=$2', [playerId, ownerId]);
+      if (playerRes.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
+      playerName = playerRes.rows[0].name;
+      const balance = parseFloat(playerRes.rows[0].balance);
+      if (balance < total) return res.status(403).json({ error: 'Solde insuffisant' });
+      await pool.query('UPDATE players SET balance = balance - $1 WHERE id = $2', [total, playerId]);
+      await pool.query('INSERT INTO transactions (player_id, type, amount, description) VALUES ($1,$2,$3,$4)',
+        [playerId, 'bet', total, `Pari sur tirage ${drawName} (Ticket ${ticketId})`]);
+    }
+
+    // Récupérer blocages et limites (code identique à l'original)
     const globalBlocked = await pool.query('SELECT number FROM blocked_numbers WHERE owner_id=$1 AND global=true', [ownerId]);
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
     const drawBlocked = await pool.query('SELECT number FROM blocked_numbers WHERE owner_id=$1 AND draw_id=$2 AND global=false', [ownerId, drawId]);
@@ -206,18 +216,18 @@ router.post('/tickets/save', authenticate, async (req, res) => {
     const finalBets = [...bets, ...newFreeBets];
     const finalTotal = finalBets.reduce((s,b) => s + (parseFloat(b.amount)||0), 0);
     const result = await pool.query(
-      `INSERT INTO tickets (owner_id, agent_id, agent_name, draw_id, draw_name, ticket_id, total_amount, bets, date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id`,
-      [ownerId, agentId, agentName, drawId, drawName, ticketId, finalTotal, JSON.stringify(finalBets)]
+      `INSERT INTO tickets (owner_id, agent_id, agent_name, player_id, player_name, draw_id, draw_name, ticket_id, total_amount, bets, date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING id`,
+      [ownerId, agentId, agentName, playerId || null, playerName, drawId, drawName, ticketId, finalTotal, JSON.stringify(finalBets)]
     );
     res.json({ success: true, ticket: { id: result.rows[0].id, ticket_id: ticketId, ...req.body } });
   } catch (err) { console.error('❌ Erreur sauvegarde ticket:', err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Liste des tickets (agent ne voit que les siens)
+// Liste des tickets (agent ne voit que les siens, optionnellement filtré par playerId)
 router.get('/tickets', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
-  const { agentId } = req.query;
+  const { agentId, playerId } = req.query;
   let query = 'SELECT * FROM tickets WHERE owner_id = $1';
   const params = [ownerId];
   if (req.user.role === 'agent') {
@@ -226,6 +236,9 @@ router.get('/tickets', authenticate, async (req, res) => {
   } else if (agentId) {
     query += ' AND agent_id = $2 ORDER BY date DESC';
     params.push(agentId);
+  } else if (playerId) {
+    query += ' AND player_id = $2 ORDER BY date DESC';
+    params.push(playerId);
   } else {
     query += ' ORDER BY date DESC';
   }
@@ -235,7 +248,6 @@ router.get('/tickets', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur chargement tickets' }); }
 });
 
-// Suppression d’un ticket
 router.delete('/tickets/:id', authenticate, async (req, res) => {
   const user = req.user;
   const ticketId = req.params.id;
