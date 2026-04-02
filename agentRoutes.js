@@ -4,7 +4,6 @@ const { authenticate, requireRole } = require('./auth');
 
 const router = express.Router();
 
-// Paiement d’un ticket gagnant (agent)
 router.post('/winners/pay/:ticketId', authenticate, requireRole('agent'), async (req, res) => {
   const ticketId = req.params.ticketId;
   const agentId = req.user.id;
@@ -17,7 +16,6 @@ router.post('/winners/pay/:ticketId', authenticate, requireRole('agent'), async 
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Rapport global agent (ventes du jour)
 router.get('/reports', authenticate, async (req, res) => {
   if (req.user.role !== 'agent') return res.status(403).json({ error: 'Accès réservé aux agents' });
   const agentId = req.user.id;
@@ -38,7 +36,6 @@ router.get('/reports', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Rapport agent par tirage
 router.get('/reports/draw', authenticate, async (req, res) => {
   if (req.user.role !== 'agent') return res.status(403).json({ error: 'Accès réservé aux agents' });
   const agentId = req.user.id;
@@ -61,7 +58,6 @@ router.get('/reports/draw', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Liste des tickets gagnants de l’agent
 router.get('/winners', authenticate, async (req, res) => {
   if (req.user.role !== 'agent') return res.status(403).json({ error: 'Accès réservé aux agents' });
   const agentId = req.user.id;
@@ -74,7 +70,6 @@ router.get('/winners', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Résultats des tirages (commun, mais l’agent y a accès)
 router.get('/winners/results', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {

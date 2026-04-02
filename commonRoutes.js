@@ -65,9 +65,10 @@ router.post('/auth/logout', authenticate, async (req, res) => {
   res.json({ success: true, message: 'Déconnexion réussie' });
 });
 
-// ==================== ROUTES COMMUNES (tirages globaux) ====================
+// ==================== ROUTES COMMUNES ====================
 router.get('/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
+  if (!ownerId) return res.status(403).json({ error: 'Propriétaire non identifié' });
   try {
     const result = await pool.query(
       'SELECT name, slogan, logo_url, multipliers, limits, updated_at FROM lottery_settings WHERE owner_id = $1',
@@ -129,17 +130,15 @@ router.get('/number-limits', authenticate, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// Sauvegarde d'un ticket
+// Sauvegarde d'un ticket (version originale + support joueur optionnel)
 router.post('/tickets/save', authenticate, async (req, res) => {
   const { agentId, agentName, drawId, drawName, bets, total, playerId } = req.body;
   const ownerId = req.user.ownerId;
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
   try {
-    // Vérifier tirage actif (global)
     const drawCheck = await pool.query('SELECT active FROM draws WHERE id=$1', [drawId]);
     if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
 
-    // Gestion du joueur (si fourni)
     let playerName = null;
     if (playerId) {
       const playerRes = await pool.query('SELECT name, balance FROM players WHERE id=$1 AND owner_id=$2', [playerId, ownerId]);
@@ -152,7 +151,7 @@ router.post('/tickets/save', authenticate, async (req, res) => {
         [playerId, 'bet', total, `Pari sur tirage ${drawName} (Ticket ${ticketId})`]);
     }
 
-    // Récupérer blocages et limites (code identique à l'original)
+    // Récupérer blocages et limites (code original)
     const globalBlocked = await pool.query('SELECT number FROM blocked_numbers WHERE owner_id=$1 AND global=true', [ownerId]);
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
     const drawBlocked = await pool.query('SELECT number FROM blocked_numbers WHERE owner_id=$1 AND draw_id=$2 AND global=false', [ownerId, drawId]);
