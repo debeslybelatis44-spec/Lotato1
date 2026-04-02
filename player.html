@@ -6,7 +6,6 @@
     <title>LOTATO PRO - Espace Joueur</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="player.js"></script> <!-- ou le script inline -->
     <style>
         * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', sans-serif; }
         body { background:#0a0b1e; color:#fff; min-height:100vh; }
@@ -50,7 +49,7 @@
         .profile-info { background:rgba(255,255,255,0.05); border-radius:16px; padding:15px; margin-bottom:20px; }
         .login-container { display:flex; flex-direction:column; justify-content:center; min-height:100vh; padding:20px; }
         .login-card { background:rgba(255,255,255,0.05); border-radius:30px; padding:30px; text-align:center; }
-        .login-card input { width:100%; padding:12px; margin:10px 0; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#fff; }
+        .login-card input, .login-card select { width:100%; padding:12px; margin:10px 0; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#fff; }
         .login-card button { margin-top:15px; }
         .toggle-link { color:#00d4ff; cursor:pointer; margin-top:15px; display:inline-block; }
     </style>
@@ -74,6 +73,9 @@
                     <input type="tel" id="reg-phone" placeholder="Numéro de téléphone" required>
                     <input type="password" id="reg-password" placeholder="Mot de passe" required>
                     <input type="text" id="reg-zone" placeholder="Zone / Ville (optionnel)">
+                    <select id="reg-owner" required>
+                        <option value="">Choisissez votre borlette</option>
+                    </select>
                     <button type="submit" class="btn-primary">S'inscrire</button>
                 </form>
                 <div>
@@ -192,6 +194,7 @@ let playerId = null;
 let playerName = null;
 let playerPhone = null;
 let playerZone = null;
+let playerOwnerId = null;
 let balance = 0;
 let authToken = null;
 
@@ -211,6 +214,28 @@ function showAuthForm(showLogin) {
         registerForm.style.display = 'block';
         authTitle.innerText = 'Inscription';
         toggleText.innerText = 'Déjà un compte ? Se connecter';
+        loadOwners(); // Charger la liste des propriétaires quand on affiche le formulaire d'inscription
+    }
+}
+
+// Charger la liste des propriétaires actifs (borlettes) pour l'inscription
+async function loadOwners() {
+    try {
+        const res = await fetch(`${API_URL}/owners/active`);
+        if (!res.ok) throw new Error('Erreur chargement des borlettes');
+        const owners = await res.json();
+        const select = document.getElementById('reg-owner');
+        select.innerHTML = '<option value="">Choisissez votre borlette</option>';
+        owners.forEach(owner => {
+            const option = document.createElement('option');
+            option.value = owner.id;
+            option.textContent = owner.name;
+            select.appendChild(option);
+        });
+    } catch (err) {
+        console.error('Erreur loadOwners:', err);
+        const select = document.getElementById('reg-owner');
+        select.innerHTML = '<option value="">Erreur de chargement, réessayez</option>';
     }
 }
 
@@ -237,11 +262,13 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             playerId = data.playerId;
             playerName = data.name;
             playerPhone = phone;
+            playerOwnerId = data.ownerId;
             balance = data.balance;
             localStorage.setItem('player_token', authToken);
             localStorage.setItem('player_id', playerId);
             localStorage.setItem('player_name', playerName);
             localStorage.setItem('player_phone', playerPhone);
+            localStorage.setItem('player_owner_id', playerOwnerId);
             localStorage.setItem('player_balance', balance);
             initDashboard();
         } else {
@@ -258,13 +285,20 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     const phone = document.getElementById('reg-phone').value;
     const password = document.getElementById('reg-password').value;
     const zone = document.getElementById('reg-zone').value;
+    const ownerId = document.getElementById('reg-owner').value;
     const messageDiv = document.getElementById('auth-message');
+    
+    if (!ownerId) {
+        messageDiv.innerText = 'Veuillez choisir une borlette.';
+        return;
+    }
+    
     messageDiv.innerText = 'Inscription en cours...';
     try {
         const res = await fetch(`${API_URL}/auth/player/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, phone, password, zone })
+            body: JSON.stringify({ name, phone, password, zone, ownerId })
         });
         const data = await res.json();
         if (data.success) {
@@ -272,11 +306,13 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
             playerId = data.playerId;
             playerName = data.name;
             playerPhone = phone;
+            playerOwnerId = ownerId;
             balance = data.balance;
             localStorage.setItem('player_token', authToken);
             localStorage.setItem('player_id', playerId);
             localStorage.setItem('player_name', playerName);
             localStorage.setItem('player_phone', playerPhone);
+            localStorage.setItem('player_owner_id', playerOwnerId);
             localStorage.setItem('player_balance', balance);
             initDashboard();
         } else {
@@ -294,6 +330,7 @@ if (savedToken) {
     playerId = localStorage.getItem('player_id');
     playerName = localStorage.getItem('player_name');
     playerPhone = localStorage.getItem('player_phone');
+    playerOwnerId = localStorage.getItem('player_owner_id');
     balance = parseFloat(localStorage.getItem('player_balance')) || 0;
     initDashboard();
 } else {
@@ -601,24 +638,8 @@ async function submitRecharge() {
             <div class="profit">Le solde sera crédité après validation par l'agent.</div>
         `;
     } else {
-        resultDiv.innerHTML = `
-            <div class="code-display">🔄 Simulation paiement ${method.toUpperCase()}</div>
-            <div>Montant: ${amount} G</div>
-            <div class="profit">Paiement simulé réussi ! Solde crédité automatiquement (démo).</div>
-        `;
-        balance += amount;
-        updateBalanceDisplay();
-        try {
-            const res = await fetch(`${API_URL}/player/deposit`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                body: JSON.stringify({ playerId, amount, method })
-            });
-            if (res.ok) {
-                await loadTransactions();
-                await refreshBalance();
-            }
-        } catch (err) { console.error(err); }
+        resultDiv.innerHTML = `<div class="code-display">⚠️ Les paiements par ${method.toUpperCase()} doivent être effectués auprès d’un agent.</div>`;
+        // Pas d'appel API, l'agent doit valider manuellement
     }
     document.getElementById('recharge-amount').value = '';
 }
@@ -644,24 +665,7 @@ async function submitWithdraw() {
             <div class="loss">Le solde sera débité après validation par l'agent.</div>
         `;
     } else {
-        resultDiv.innerHTML = `
-            <div class="code-display">🔄 Simulation retrait ${method.toUpperCase()}</div>
-            <div>Montant: ${amount} G</div>
-            <div class="loss">Retrait simulé effectué. Solde débité (démo).</div>
-        `;
-        balance -= amount;
-        updateBalanceDisplay();
-        try {
-            const res = await fetch(`${API_URL}/player/withdraw`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                body: JSON.stringify({ playerId, amount, method })
-            });
-            if (res.ok) {
-                await loadTransactions();
-                await refreshBalance();
-            }
-        } catch (err) { console.error(err); }
+        resultDiv.innerHTML = `<div class="code-display">⚠️ Les retraits par ${method.toUpperCase()} doivent être effectués auprès d’un agent.</div>`;
     }
     document.getElementById('withdraw-amount').value = '';
 }
