@@ -1732,6 +1732,151 @@ app.get('/api/owners/active', async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+// ==================== Routes superadmin complètes ====================
+// GET tous les agents (tous propriétaires confondus)
+app.get('/api/superadmin/agents', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.username as email, u.phone, u.role, u.blocked,
+             o.name as owner_name, u.owner_id
+      FROM users u
+      LEFT JOIN users o ON u.owner_id = o.id
+      WHERE u.role = 'agent'
+      ORDER BY o.name, u.name
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET tous les superviseurs (tous propriétaires confondus)
+app.get('/api/superadmin/supervisors', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.username as email, u.phone, u.role, u.blocked,
+             o.name as owner_name, u.owner_id
+      FROM users u
+      LEFT JOIN users o ON u.owner_id = o.id
+      WHERE u.role = 'supervisor'
+      ORDER BY o.name, u.name
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// PUT modifier un propriétaire (nom, email, téléphone, mot de passe)
+app.put('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, email, phone, password } = req.body;
+  try {
+    let query = 'UPDATE users SET name = $1, username = $2, phone = $3';
+    const params = [name, email, phone];
+    if (password && password.trim() !== '') {
+      const hashed = await bcrypt.hash(password, 10);
+      query += ', password = $4';
+      params.push(hashed);
+      query += ' WHERE id = $5 AND role = $6 RETURNING id';
+      params.push(id, 'owner');
+    } else {
+      query += ' WHERE id = $4 AND role = $5 RETURNING id';
+      params.push(id, 'owner');
+    }
+    const result = await pool.query(query, params);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Propriétaire non trouvé' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Email déjà utilisé' });
+    }
+    res.status(500).json({ error: 'Erreur mise à jour' });
+  }
+});
+
+// PUT modifier le quota d'un propriétaire
+app.put('/api/superadmin/owners/:id/quota', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { quota } = req.body;
+  if (quota === undefined || quota < 0) {
+    return res.status(400).json({ error: 'Quota invalide' });
+  }
+  try {
+    await pool.query('UPDATE users SET quota = $1 WHERE id = $2 AND role = $3', [quota, id, 'owner']);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur mise à jour quota' });
+  }
+});
+
+// PUT modifier un agent
+app.put('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, email, phone, password, ownerId } = req.body;
+  try {
+    let query = 'UPDATE users SET name = $1, username = $2, phone = $3, owner_id = $4';
+    const params = [name, email, phone, ownerId];
+    if (password && password.trim() !== '') {
+      const hashed = await bcrypt.hash(password, 10);
+      query += ', password = $5';
+      params.push(hashed);
+      query += ' WHERE id = $6 AND role = $7 RETURNING id';
+      params.push(id, 'agent');
+    } else {
+      query += ' WHERE id = $5 AND role = $6 RETURNING id';
+      params.push(id, 'agent');
+    }
+    const result = await pool.query(query, params);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Agent non trouvé' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Email déjà utilisé' });
+    }
+    res.status(500).json({ error: 'Erreur mise à jour' });
+  }
+});
+
+// PUT modifier un superviseur
+app.put('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, email, phone, password, ownerId } = req.body;
+  try {
+    let query = 'UPDATE users SET name = $1, username = $2, phone = $3, owner_id = $4';
+    const params = [name, email, phone, ownerId];
+    if (password && password.trim() !== '') {
+      const hashed = await bcrypt.hash(password, 10);
+      query += ', password = $5';
+      params.push(hashed);
+      query += ' WHERE id = $6 AND role = $7 RETURNING id';
+      params.push(id, 'supervisor');
+    } else {
+      query += ' WHERE id = $5 AND role = $6 RETURNING id';
+      params.push(id, 'supervisor');
+    }
+    const result = await pool.query(query, params);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Superviseur non trouvé' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Email déjà utilisé' });
+    }
+    res.status(500).json({ error: 'Erreur mise à jour' });
+  }
+});
 
 // ==================== Démarrage ====================
 async function checkDatabaseConnection() {
