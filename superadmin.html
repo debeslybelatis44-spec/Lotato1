@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LOTATO PRO · Super Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',sans-serif; }
         body { background:#0a0b1e; color:#fff; padding:20px; }
@@ -41,6 +42,8 @@
         .checkbox-group { display:flex; flex-wrap:wrap; gap:10px; max-height:200px; overflow-y:auto; border:1px solid #333; padding:10px; border-radius:8px; }
         .checkbox-item { display:flex; align-items:center; gap:5px; width:200px; }
         .checkbox-item input[type="checkbox"] { width:auto; margin-right:5px; }
+        .profit { color:#00f190; }
+        .loss { color:#ff4d4d; }
     </style>
 </head>
 <body>
@@ -99,7 +102,7 @@
         <div id="tab-agents" class="tab-content">
             <div class="section-title"><i class="fas fa-users"></i> Liste des agents</div>
             <div id="agents-list-container" class="list-container">
-                <table>
+                <table style="width:100%">
                     <thead>
                         <tr>
                             <th>ID</th>
@@ -111,14 +114,14 @@
                         </tr>
                     </thead>
                     <tbody id="agents-table-body">
-                        <!-- chargement dynamique -->
+                        <tr><td colspan="6">Chargement...</td></tr>
                     </tbody>
                 </table>
             </div>
 
             <div class="section-title" style="margin-top:30px;"><i class="fas fa-user-tie"></i> Liste des superviseurs</div>
             <div id="supervisors-list-container" class="list-container">
-                <table>
+                <table style="width:100%">
                     <thead>
                         <tr>
                             <th>ID</th>
@@ -130,7 +133,7 @@
                         </tr>
                     </thead>
                     <tbody id="supervisors-table-body">
-                        <!-- chargement dynamique -->
+                        <tr><td colspan="6">Chargement...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -148,7 +151,7 @@
                         <button class="btn-secondary" onclick="deselectAllOwners()">Désélectionner tous</button>
                     </div>
                     <div id="owners-checkbox-list" class="checkbox-group">
-                        <!-- Les propriétaires avec cases à cocher seront chargés ici -->
+                        Chargement...
                     </div>
                 </div>
                 <div class="form-group">
@@ -167,28 +170,15 @@
         </div>
     </div>
 
-    <!-- Modals d'édition -->
-    <!-- Modal pour modifier un propriétaire -->
+    <!-- Modals -->
     <div id="edit-owner-modal" class="modal" onclick="if(event.target===this) closeEditOwnerModal()">
         <div class="modal-content">
             <h3 style="margin-bottom:20px;">Modifier le propriétaire</h3>
             <input type="hidden" id="edit-owner-id">
-            <div class="form-group">
-                <label>Nom</label>
-                <input type="text" id="edit-owner-name" placeholder="Nom">
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" id="edit-owner-email" placeholder="Email">
-            </div>
-            <div class="form-group">
-                <label>Téléphone</label>
-                <input type="text" id="edit-owner-phone" placeholder="Téléphone">
-            </div>
-            <div class="form-group">
-                <label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>
-                <input type="password" id="edit-owner-password" placeholder="********">
-            </div>
+            <div class="form-group"><label>Nom</label><input type="text" id="edit-owner-name"></div>
+            <div class="form-group"><label>Email</label><input type="email" id="edit-owner-email"></div>
+            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-owner-phone"></div>
+            <div class="form-group"><label>Mot de passe (laisser vide)</label><input type="password" id="edit-owner-password"></div>
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
                 <button class="btn-primary" onclick="saveOwnerEdit()">Enregistrer</button>
                 <button class="btn-danger" onclick="closeEditOwnerModal()">Annuler</button>
@@ -196,31 +186,15 @@
         </div>
     </div>
 
-    <!-- Modal pour modifier un agent -->
     <div id="edit-agent-modal" class="modal" onclick="if(event.target===this) closeEditAgentModal()">
         <div class="modal-content">
-            <h3 style="margin-bottom:20px;">Modifier l'agent</h3>
+            <h3>Modifier l'agent</h3>
             <input type="hidden" id="edit-agent-id">
-            <div class="form-group">
-                <label>Nom</label>
-                <input type="text" id="edit-agent-name" placeholder="Nom">
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" id="edit-agent-email" placeholder="Email">
-            </div>
-            <div class="form-group">
-                <label>Téléphone</label>
-                <input type="text" id="edit-agent-phone" placeholder="Téléphone">
-            </div>
-            <div class="form-group">
-                <label>Propriétaire</label>
-                <select id="edit-agent-owner"></select>
-            </div>
-            <div class="form-group">
-                <label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>
-                <input type="password" id="edit-agent-password" placeholder="********">
-            </div>
+            <div class="form-group"><label>Nom</label><input type="text" id="edit-agent-name"></div>
+            <div class="form-group"><label>Email</label><input type="email" id="edit-agent-email"></div>
+            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-agent-phone"></div>
+            <div class="form-group"><label>Propriétaire</label><select id="edit-agent-owner"></select></div>
+            <div class="form-group"><label>Mot de passe</label><input type="password" id="edit-agent-password"></div>
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
                 <button class="btn-primary" onclick="saveAgentEdit()">Enregistrer</button>
                 <button class="btn-danger" onclick="closeEditAgentModal()">Annuler</button>
@@ -228,31 +202,15 @@
         </div>
     </div>
 
-    <!-- Modal pour modifier un superviseur (optionnel, similaire à agent) -->
     <div id="edit-supervisor-modal" class="modal" onclick="if(event.target===this) closeEditSupervisorModal()">
         <div class="modal-content">
-            <h3 style="margin-bottom:20px;">Modifier le superviseur</h3>
+            <h3>Modifier le superviseur</h3>
             <input type="hidden" id="edit-supervisor-id">
-            <div class="form-group">
-                <label>Nom</label>
-                <input type="text" id="edit-supervisor-name" placeholder="Nom">
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" id="edit-supervisor-email" placeholder="Email">
-            </div>
-            <div class="form-group">
-                <label>Téléphone</label>
-                <input type="text" id="edit-supervisor-phone" placeholder="Téléphone">
-            </div>
-            <div class="form-group">
-                <label>Propriétaire</label>
-                <select id="edit-supervisor-owner"></select>
-            </div>
-            <div class="form-group">
-                <label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>
-                <input type="password" id="edit-supervisor-password" placeholder="********">
-            </div>
+            <div class="form-group"><label>Nom</label><input type="text" id="edit-supervisor-name"></div>
+            <div class="form-group"><label>Email</label><input type="email" id="edit-supervisor-email"></div>
+            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-supervisor-phone"></div>
+            <div class="form-group"><label>Propriétaire</label><select id="edit-supervisor-owner"></select></div>
+            <div class="form-group"><label>Mot de passe</label><input type="password" id="edit-supervisor-password"></div>
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
                 <button class="btn-primary" onclick="saveSupervisorEdit()">Enregistrer</button>
                 <button class="btn-danger" onclick="closeEditSupervisorModal()">Annuler</button>
@@ -261,7 +219,8 @@
     </div>
 
     <script>
-        const API_BASE = '';
+        // Utiliser la config de config.js
+        const API_BASE = window.API_URL || 'https://lotato1.onrender.com/api';
         let token = localStorage.getItem('superadmin_token');
         let adminName = localStorage.getItem('superadmin_name') || '';
 
@@ -270,7 +229,7 @@
             document.getElementById('main-section').style.display = 'block';
             document.getElementById('admin-name').innerText = adminName;
             loadOwners();
-            loadOwnerSelect(); // pour la liste des propriétaires dans l'onglet messages
+            loadOwnerSelect();
             loadAgents();
             loadSupervisors();
             loadReports();
@@ -279,12 +238,16 @@
         async function superAdminLogin() {
             const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
+            const errorDiv = document.getElementById('login-error');
+            
             if (!username || !password) {
-                showLoginError('Veuillez saisir identifiant et mot de passe');
+                errorDiv.style.display = 'block';
+                errorDiv.innerText = 'Veuillez saisir identifiant et mot de passe';
                 return;
             }
+            
             try {
-                const res = await fetch(`${API_BASE}/api/auth/superadmin-login`, {
+                const res = await fetch(`${API_BASE}/auth/superadmin-login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
@@ -304,17 +267,13 @@
                     loadSupervisors();
                     loadReports();
                 } else {
-                    showLoginError(data.error || 'Identifiants incorrects');
+                    errorDiv.style.display = 'block';
+                    errorDiv.innerText = data.error || 'Identifiants incorrects';
                 }
             } catch (e) {
-                showLoginError('Erreur réseau');
+                errorDiv.style.display = 'block';
+                errorDiv.innerText = 'Erreur réseau: ' + e.message;
             }
-        }
-
-        function showLoginError(msg) {
-            const el = document.getElementById('login-error');
-            el.style.display = 'block';
-            el.innerText = msg;
         }
 
         function logout() {
@@ -329,20 +288,14 @@
             document.querySelector(`.tab[onclick*="${tabId}"]`).classList.add('active');
             document.getElementById(`tab-${tabId}`).classList.add('active');
             if (tabId === 'owners') loadOwners();
-            if (tabId === 'agents') {
-                loadAgents();
-                loadSupervisors();
-            }
+            if (tabId === 'agents') { loadAgents(); loadSupervisors(); }
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
         }
 
         async function fetchWithToken(url, options = {}) {
-            const headers = {
-                'Authorization': `Bearer ${token}`,
-                ...options.headers
-            };
-            const res = await fetch(url, { ...options, headers });
+            const headers = { 'Authorization': `Bearer ${token}`, ...options.headers };
+            const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
             if (res.status === 401) {
                 alert('Session expirée, veuillez vous reconnecter');
                 logout();
@@ -351,13 +304,9 @@
             return res;
         }
 
-        // ========== UTILITAIRES ==========
-        function escapeJS(str) {
-            return str ? str.replace(/'/g, "\\'") : '';
-        }
-
         function showMessage(elId, text, isSuccess) {
             const el = document.getElementById(elId);
+            if (!el) return;
             el.style.display = 'block';
             el.className = isSuccess ? 'alert alert-success' : 'alert alert-danger';
             el.innerText = text;
@@ -366,7 +315,7 @@
 
         // ========== GESTION PROPRIÉTAIRES ==========
         async function loadOwners() {
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
+            const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
             let html = '';
@@ -378,19 +327,15 @@
                 if (remaining <= 0) quotaClass = 'badge-danger';
                 else if (remaining <= Math.ceil(quota * 0.2)) quotaClass = 'badge-warning';
                 html += `<div class="item-row">
-                    <span><strong>${o.name}</strong> (${o.email})</span>
+                    <span><strong>${escapeHtml(o.name)}</strong> (${o.email})</span>
                     <span class="${o.active ? 'badge-success' : 'badge-danger'}">${o.active ? 'Actif' : 'Bloqué'}</span>
-                    <span class="${quotaClass}">${used}/${quota} utilisé${remaining > 0 ? ` (reste ${remaining})` : ''}</span>
+                    <span class="${quotaClass}">${used}/${quota} utilisé</span>
                     <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                        <input type="number" id="quota-input-${o.id}" value="${quota}" min="${used}" style="width:80px; padding:4px; border-radius:6px; border:1px solid #444; background:#222; color:white;">
+                        <input type="number" id="quota-input-${o.id}" value="${quota}" min="${used}" style="width:80px; padding:4px; border-radius:6px; background:#222; color:white;">
                         <button class="btn-primary" style="padding:4px 10px;" onclick="updateQuota(${o.id})">Modifier quota</button>
-                        <button class="btn-primary" style="padding:4px 10px;" onclick="openEditOwnerModal(${o.id}, '${escapeJS(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
-                        <button class="btn-primary" style="padding:4px 10px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">
-                            ${o.active ? 'Bloquer' : 'Débloquer'}
-                        </button>
-                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteOwner(${o.id})">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="openEditOwnerModal(${o.id}, '${escapeHtml(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Bloquer' : 'Débloquer'}</button>
+                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>`;
             });
@@ -403,11 +348,13 @@
             const phone = document.getElementById('owner-phone').value;
             const password = document.getElementById('owner-password').value;
             const quota = parseInt(document.getElementById('owner-quota').value) || 10;
+            
             if (!name || !email || !password) {
                 showMessage('owner-create-message', 'Veuillez remplir tous les champs', false);
                 return;
             }
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`, {
+            
+            const res = await fetchWithToken('/superadmin/owners', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, email, password, phone, quota })
@@ -417,7 +364,7 @@
             if (data.success) {
                 showMessage('owner-create-message', '✅ Propriétaire créé', true);
                 loadOwners();
-                loadOwnerSelect(); // rafraîchir la liste des propriétaires pour les messages
+                loadOwnerSelect();
                 document.getElementById('owner-name').value = '';
                 document.getElementById('owner-email').value = '';
                 document.getElementById('owner-phone').value = '';
@@ -429,47 +376,32 @@
         }
 
         async function toggleBlockOwner(id, currentActive) {
-            const block = currentActive;
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${id}/block`, {
+            const res = await fetchWithToken(`/superadmin/owners/${id}/block`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ block })
+                body: JSON.stringify({ block: currentActive })
             });
             if (res && res.ok) loadOwners();
         }
 
         async function deleteOwner(id) {
             if (!confirm('Supprimer définitivement ce propriétaire ?')) return;
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${id}`, {
-                method: 'DELETE'
-            });
-            if (res && res.ok) {
-                loadOwners();
-                loadOwnerSelect();
-            }
+            const res = await fetchWithToken(`/superadmin/owners/${id}`, { method: 'DELETE' });
+            if (res && res.ok) { loadOwners(); loadOwnerSelect(); }
         }
 
         async function updateQuota(ownerId) {
             const newQuota = parseInt(document.getElementById(`quota-input-${ownerId}`).value);
-            if (isNaN(newQuota) || newQuota < 0) {
-                alert('Veuillez saisir un nombre valide');
-                return;
-            }
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${ownerId}/quota`, {
+            if (isNaN(newQuota) || newQuota < 0) { alert('Valeur invalide'); return; }
+            const res = await fetchWithToken(`/superadmin/owners/${ownerId}/quota`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ quota: newQuota })
             });
-            if (res && res.ok) {
-                alert('Quota mis à jour avec succès');
-                loadOwners();
-            } else {
-                const error = await res.json();
-                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
-            }
+            if (res && res.ok) { alert('Quota mis à jour'); loadOwners(); }
+            else alert('Erreur mise à jour');
         }
 
-        // --- Édition propriétaire ---
         function openEditOwnerModal(id, name, email, phone) {
             document.getElementById('edit-owner-id').value = id;
             document.getElementById('edit-owner-name').value = name;
@@ -489,42 +421,36 @@
             const email = document.getElementById('edit-owner-email').value;
             const phone = document.getElementById('edit-owner-phone').value;
             const password = document.getElementById('edit-owner-password').value;
-            if (!name || !email) {
-                alert('Nom et email requis');
-                return;
-            }
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners/${id}`, {
+            if (!name || !email) { alert('Nom et email requis'); return; }
+            const res = await fetchWithToken(`/superadmin/owners/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, email, phone, password })
             });
             if (res && res.ok) {
-                alert('Propriétaire modifié avec succès');
+                alert('Propriétaire modifié');
                 closeEditOwnerModal();
                 loadOwners();
                 loadOwnerSelect();
-            } else {
-                const error = await res.json();
-                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
-            }
+            } else alert('Erreur modification');
         }
 
         // ========== GESTION AGENTS ==========
         async function loadAgents() {
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/agents`);
+            const res = await fetchWithToken('/superadmin/agents');
             if (!res) return;
             const agents = await res.json();
             let html = '';
             agents.forEach(a => {
                 html += `<tr>
                     <td>${a.id}</td>
-                    <td>${a.name}</td>
+                    <td>${escapeHtml(a.name)}</td>
                     <td>${a.email}</td>
                     <td>${a.phone || '-'}</td>
-                    <td>${a.owner_name || 'N/A'} (ID: ${a.owner_id || '?'})</td>
+                    <td>${a.owner_name || 'N/A'}</td>
                     <td>
-                        <button class="btn-primary" style="padding:4px 10px; margin-right:5px;" onclick="openEditAgentModal(${a.id}, '${escapeJS(a.name)}', '${a.email}', '${a.phone || ''}', ${a.owner_id})">Modifier</button>
-                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteAgent(${a.id})"><i class="fas fa-trash"></i> Supprimer</button>
+                        <button class="btn-primary" style="padding:4px 10px; margin-right:5px;" onclick="openEditAgentModal(${a.id}, '${escapeHtml(a.name)}', '${a.email}', '${a.phone || ''}', ${a.owner_id})">Modifier</button>
+                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteAgent(${a.id})"><i class="fas fa-trash"></i></button>
                     </td>
                 </tr>`;
             });
@@ -532,45 +458,23 @@
         }
 
         async function deleteAgent(id) {
-            if (!confirm(`Supprimer définitivement l'agent ID ${id} ?`)) return;
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/agents/${id}`, {
-                method: 'DELETE'
-            });
-            if (!res) return;
-            const data = await res.json();
-            if (res.ok) {
-                showMessage('delete-message', '✅ Agent supprimé avec succès', true);
-                loadAgents();
-            } else {
-                showMessage('delete-message', '❌ ' + (data.error || 'Erreur'), false);
-            }
+            if (!confirm(`Supprimer l'agent ?`)) return;
+            const res = await fetchWithToken(`/superadmin/agents/${id}`, { method: 'DELETE' });
+            if (res && res.ok) { showMessage('delete-message', '✅ Agent supprimé', true); loadAgents(); }
+            else showMessage('delete-message', '❌ Erreur suppression', false);
         }
 
-        // --- Édition agent ---
         function openEditAgentModal(id, name, email, phone, ownerId) {
             document.getElementById('edit-agent-id').value = id;
             document.getElementById('edit-agent-name').value = name;
             document.getElementById('edit-agent-email').value = email;
             document.getElementById('edit-agent-phone').value = phone || '';
             document.getElementById('edit-agent-password').value = '';
-            loadOwnersSelectForAgent(ownerId);
+            loadOwnersSelect('edit-agent-owner', ownerId);
             document.getElementById('edit-agent-modal').style.display = 'flex';
         }
 
-        async function loadOwnersSelectForAgent(selectedOwnerId) {
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
-            if (!res) return;
-            const owners = await res.json();
-            let opts = '<option value="">Sélectionner un propriétaire</option>';
-            owners.forEach(o => {
-                opts += `<option value="${o.id}" ${o.id == selectedOwnerId ? 'selected' : ''}>${o.name}</option>`;
-            });
-            document.getElementById('edit-agent-owner').innerHTML = opts;
-        }
-
-        function closeEditAgentModal() {
-            document.getElementById('edit-agent-modal').style.display = 'none';
-        }
+        function closeEditAgentModal() { document.getElementById('edit-agent-modal').style.display = 'none'; }
 
         async function saveAgentEdit() {
             const id = document.getElementById('edit-agent-id').value;
@@ -579,41 +483,32 @@
             const phone = document.getElementById('edit-agent-phone').value;
             const password = document.getElementById('edit-agent-password').value;
             const ownerId = document.getElementById('edit-agent-owner').value;
-            if (!name || !email) {
-                alert('Nom et email requis');
-                return;
-            }
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/agents/${id}`, {
+            if (!name || !email) { alert('Nom et email requis'); return; }
+            const res = await fetchWithToken(`/superadmin/agents/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, email, phone, password, ownerId: ownerId || null })
             });
-            if (res && res.ok) {
-                alert('Agent modifié avec succès');
-                closeEditAgentModal();
-                loadAgents();
-            } else {
-                const error = await res.json();
-                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
-            }
+            if (res && res.ok) { alert('Agent modifié'); closeEditAgentModal(); loadAgents(); }
+            else alert('Erreur modification');
         }
 
         // ========== GESTION SUPERVISEURS ==========
         async function loadSupervisors() {
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/supervisors`);
+            const res = await fetchWithToken('/superadmin/supervisors');
             if (!res) return;
             const supervisors = await res.json();
             let html = '';
             supervisors.forEach(s => {
                 html += `<tr>
                     <td>${s.id}</td>
-                    <td>${s.name}</td>
+                    <td>${escapeHtml(s.name)}</td>
                     <td>${s.email}</td>
                     <td>${s.phone || '-'}</td>
-                    <td>${s.owner_name || 'N/A'} (ID: ${s.owner_id || '?'})</td>
+                    <td>${s.owner_name || 'N/A'}</td>
                     <td>
-                        <button class="btn-primary" style="padding:4px 10px; margin-right:5px;" onclick="openEditSupervisorModal(${s.id}, '${escapeJS(s.name)}', '${s.email}', '${s.phone || ''}', ${s.owner_id})">Modifier</button>
-                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteSupervisor(${s.id})"><i class="fas fa-trash"></i> Supprimer</button>
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="openEditSupervisorModal(${s.id}, '${escapeHtml(s.name)}', '${s.email}', '${s.phone || ''}', ${s.owner_id})">Modifier</button>
+                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteSupervisor(${s.id})"><i class="fas fa-trash"></i></button>
                     </td>
                 </tr>`;
             });
@@ -621,45 +516,23 @@
         }
 
         async function deleteSupervisor(id) {
-            if (!confirm(`Supprimer définitivement le superviseur ID ${id} ?`)) return;
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/supervisors/${id}`, {
-                method: 'DELETE'
-            });
-            if (!res) return;
-            const data = await res.json();
-            if (res.ok) {
-                showMessage('delete-message', '✅ Superviseur supprimé avec succès', true);
-                loadSupervisors();
-            } else {
-                showMessage('delete-message', '❌ ' + (data.error || 'Erreur'), false);
-            }
+            if (!confirm('Supprimer ce superviseur ?')) return;
+            const res = await fetchWithToken(`/superadmin/supervisors/${id}`, { method: 'DELETE' });
+            if (res && res.ok) { showMessage('delete-message', '✅ Superviseur supprimé', true); loadSupervisors(); }
+            else showMessage('delete-message', '❌ Erreur suppression', false);
         }
 
-        // --- Édition superviseur ---
         function openEditSupervisorModal(id, name, email, phone, ownerId) {
             document.getElementById('edit-supervisor-id').value = id;
             document.getElementById('edit-supervisor-name').value = name;
             document.getElementById('edit-supervisor-email').value = email;
             document.getElementById('edit-supervisor-phone').value = phone || '';
             document.getElementById('edit-supervisor-password').value = '';
-            loadOwnersSelectForSupervisor(ownerId);
+            loadOwnersSelect('edit-supervisor-owner', ownerId);
             document.getElementById('edit-supervisor-modal').style.display = 'flex';
         }
 
-        async function loadOwnersSelectForSupervisor(selectedOwnerId) {
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
-            if (!res) return;
-            const owners = await res.json();
-            let opts = '<option value="">Sélectionner un propriétaire</option>';
-            owners.forEach(o => {
-                opts += `<option value="${o.id}" ${o.id == selectedOwnerId ? 'selected' : ''}>${o.name}</option>`;
-            });
-            document.getElementById('edit-supervisor-owner').innerHTML = opts;
-        }
-
-        function closeEditSupervisorModal() {
-            document.getElementById('edit-supervisor-modal').style.display = 'none';
-        }
+        function closeEditSupervisorModal() { document.getElementById('edit-supervisor-modal').style.display = 'none'; }
 
         async function saveSupervisorEdit() {
             const id = document.getElementById('edit-supervisor-id').value;
@@ -668,35 +541,37 @@
             const phone = document.getElementById('edit-supervisor-phone').value;
             const password = document.getElementById('edit-supervisor-password').value;
             const ownerId = document.getElementById('edit-supervisor-owner').value;
-            if (!name || !email) {
-                alert('Nom et email requis');
-                return;
-            }
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/supervisors/${id}`, {
+            if (!name || !email) { alert('Nom et email requis'); return; }
+            const res = await fetchWithToken(`/superadmin/supervisors/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, email, phone, password, ownerId: ownerId || null })
             });
-            if (res && res.ok) {
-                alert('Superviseur modifié avec succès');
-                closeEditSupervisorModal();
-                loadSupervisors();
-            } else {
-                const error = await res.json();
-                alert('Erreur : ' + (error.error || 'Mise à jour échouée'));
-            }
+            if (res && res.ok) { alert('Superviseur modifié'); closeEditSupervisorModal(); loadSupervisors(); }
+            else alert('Erreur modification');
+        }
+
+        async function loadOwnersSelect(selectId, selectedId) {
+            const res = await fetchWithToken('/superadmin/owners');
+            if (!res) return;
+            const owners = await res.json();
+            let opts = '<option value="">Sélectionner un propriétaire</option>';
+            owners.forEach(o => {
+                opts += `<option value="${o.id}" ${o.id == selectedId ? 'selected' : ''}>${escapeHtml(o.name)}</option>`;
+            });
+            document.getElementById(selectId).innerHTML = opts;
         }
 
         // ========== MESSAGES ==========
         async function loadOwnerSelect() {
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/owners`);
+            const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
             let html = '';
             owners.forEach(o => {
                 html += `<div class="checkbox-item">
                     <input type="checkbox" id="owner-${o.id}" value="${o.id}">
-                    <label for="owner-${o.id}">${o.name}</label>
+                    <label for="owner-${o.id}">${escapeHtml(o.name)}</label>
                 </div>`;
             });
             document.getElementById('owners-checkbox-list').innerHTML = html || '<p>Aucun propriétaire</p>';
@@ -712,49 +587,38 @@
 
         async function sendMessageToSelected() {
             const selected = [];
-            document.querySelectorAll('#owners-checkbox-list input[type="checkbox"]:checked').forEach(cb => {
-                selected.push(cb.value);
-            });
+            document.querySelectorAll('#owners-checkbox-list input[type="checkbox"]:checked').forEach(cb => selected.push(cb.value));
             const message = document.getElementById('message-text').value;
-            if (selected.length === 0) {
-                showMessage('message-result', 'Veuillez sélectionner au moins un propriétaire', false);
-                return;
-            }
-            if (!message) {
-                showMessage('message-result', 'Veuillez saisir un message', false);
-                return;
-            }
-
-            // Envoyer un message à chaque propriétaire sélectionné
+            if (selected.length === 0) { showMessage('message-result', 'Sélectionnez au moins un propriétaire', false); return; }
+            if (!message) { showMessage('message-result', 'Saisissez un message', false); return; }
             let successCount = 0;
             for (const ownerId of selected) {
-                const res = await fetchWithToken(`${API_BASE}/api/superadmin/messages`, {
+                const res = await fetchWithToken('/superadmin/messages', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ownerId, message })
                 });
                 if (res && res.ok) successCount++;
             }
-
             if (successCount === selected.length) {
                 showMessage('message-result', `✅ Message envoyé à ${successCount} propriétaire(s)`, true);
                 document.getElementById('message-text').value = '';
                 deselectAllOwners();
             } else {
-                showMessage('message-result', `❌ Échec pour certains destinataires (${successCount}/${selected.length} réussis)`, false);
+                showMessage('message-result', `❌ ${successCount}/${selected.length} réussis`, false);
             }
         }
 
         // ========== RAPPORTS ==========
         async function loadReports() {
-            const res = await fetchWithToken(`${API_BASE}/api/superadmin/reports/owners`);
+            const res = await fetchWithToken('/superadmin/reports/owners');
             if (!res) return;
             const reports = await res.json();
             let html = '<table><thead><tr><th>Propriétaire</th><th>Agents</th><th>Tickets</th><th>Mises (G)</th><th>Gains (G)</th><th>Résultat net</th></tr></thead><tbody>';
             reports.forEach(r => {
                 const netClass = r.net_result >= 0 ? 'profit' : 'loss';
                 html += `<tr>
-                    <td>${r.name}</td>
+                    <td>${escapeHtml(r.name)}</td>
                     <td>${r.agent_count}</td>
                     <td>${r.ticket_count}</td>
                     <td>${parseFloat(r.total_bets).toLocaleString()}</td>
@@ -766,7 +630,17 @@
             document.getElementById('owners-reports').innerHTML = html || '<p>Aucune donnée</p>';
         }
 
-        // Exposer les fonctions globalement
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        // Expositions globales
         window.switchTab = switchTab;
         window.superAdminLogin = superAdminLogin;
         window.logout = logout;

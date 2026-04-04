@@ -6,6 +6,7 @@
     <title>LOTATO PRO - Espace Joueur</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="config.js"></script>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', sans-serif; }
         body { background:#0a0b1e; color:#fff; min-height:100vh; }
@@ -52,17 +53,18 @@
         .login-card input, .login-card select { width:100%; padding:12px; margin:10px 0; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#fff; }
         .login-card button { margin-top:15px; }
         .toggle-link { color:#00d4ff; cursor:pointer; margin-top:15px; display:inline-block; }
+        .error-message { color:#ff4d4d; margin-top:10px; font-size:0.9rem; }
     </style>
-    <script src="config.js"></script>
 </head>
 <body>
 <div class="app" id="app">
-    <!-- Page de connexion/inscription (visible si non connecté) -->
+    <!-- Page de connexion/inscription -->
     <div id="auth-container" style="display:flex;">
         <div class="login-container">
             <div class="login-card">
                 <h1>LOTATO PRO</h1>
                 <h2 id="auth-title">Connexion</h2>
+                <div id="auth-message" class="error-message"></div>
                 <form id="login-form">
                     <input type="tel" id="login-phone" placeholder="Numéro de téléphone" required>
                     <input type="password" id="login-password" placeholder="Mot de passe" required>
@@ -81,12 +83,11 @@
                 <div>
                     <span id="toggle-auth" class="toggle-link">Pas de compte ? Créer un compte</span>
                 </div>
-                <div id="auth-message" style="margin-top:15px; color:#ffaa00;"></div>
             </div>
         </div>
     </div>
 
-    <!-- Interface principale (visible après connexion) -->
+    <!-- Interface principale -->
     <div id="dashboard-container" style="display:none;">
         <header>
             <div class="logo"><h1>LOTATO PRO</h1></div>
@@ -204,6 +205,9 @@ function showAuthForm(showLogin) {
     const registerForm = document.getElementById('register-form');
     const authTitle = document.getElementById('auth-title');
     const toggleText = document.getElementById('toggle-auth');
+    const authMessage = document.getElementById('auth-message');
+    authMessage.innerHTML = '';
+    
     if (showLogin) {
         loginForm.style.display = 'block';
         registerForm.style.display = 'none';
@@ -214,11 +218,10 @@ function showAuthForm(showLogin) {
         registerForm.style.display = 'block';
         authTitle.innerText = 'Inscription';
         toggleText.innerText = 'Déjà un compte ? Se connecter';
-        loadOwners(); // Charger la liste des propriétaires quand on affiche le formulaire d'inscription
+        loadOwners();
     }
 }
 
-// Charger la liste des propriétaires actifs (borlettes) pour l'inscription
 async function loadOwners() {
     try {
         const res = await fetch(`${API_URL}/owners/active`);
@@ -249,7 +252,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const phone = document.getElementById('login-phone').value;
     const password = document.getElementById('login-password').value;
     const messageDiv = document.getElementById('auth-message');
-    messageDiv.innerText = 'Connexion en cours...';
+    messageDiv.innerHTML = 'Connexion en cours...';
+    messageDiv.style.color = '#00d4ff';
+    
     try {
         const res = await fetch(`${API_URL}/auth/player/login`, {
             method: 'POST',
@@ -272,10 +277,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             localStorage.setItem('player_balance', balance);
             initDashboard();
         } else {
-            messageDiv.innerText = data.error || 'Échec de connexion';
+            messageDiv.innerHTML = data.error || 'Échec de connexion';
+            messageDiv.style.color = '#ff4d4d';
         }
     } catch (err) {
-        messageDiv.innerText = 'Erreur réseau : ' + err.message;
+        messageDiv.innerHTML = 'Erreur réseau : ' + err.message;
+        messageDiv.style.color = '#ff4d4d';
     }
 });
 
@@ -289,11 +296,14 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     const messageDiv = document.getElementById('auth-message');
     
     if (!ownerId) {
-        messageDiv.innerText = 'Veuillez choisir une borlette.';
+        messageDiv.innerHTML = 'Veuillez choisir une borlette.';
+        messageDiv.style.color = '#ffaa00';
         return;
     }
     
-    messageDiv.innerText = 'Inscription en cours...';
+    messageDiv.innerHTML = 'Inscription en cours...';
+    messageDiv.style.color = '#00d4ff';
+    
     try {
         const res = await fetch(`${API_URL}/auth/player/register`, {
             method: 'POST',
@@ -316,10 +326,12 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
             localStorage.setItem('player_balance', balance);
             initDashboard();
         } else {
-            messageDiv.innerText = data.error || 'Échec inscription';
+            messageDiv.innerHTML = data.error || 'Échec inscription';
+            messageDiv.style.color = '#ff4d4d';
         }
     } catch (err) {
-        messageDiv.innerText = 'Erreur réseau : ' + err.message;
+        messageDiv.innerHTML = 'Erreur réseau : ' + err.message;
+        messageDiv.style.color = '#ff4d4d';
     }
 });
 
@@ -357,6 +369,7 @@ async function initDashboard() {
 }
 
 async function refreshBalance() {
+    if (!authToken) return;
     try {
         const res = await fetch(`${API_URL}/player/balance`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
@@ -376,21 +389,32 @@ function updateBalanceDisplay() {
 }
 
 async function loadDraws() {
-    const res = await fetch(`${API_URL}/draws`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-    const data = await res.json();
-    draws = data.draws;
-    if (draws.length > 0) {
-        currentDrawId = draws[0].id;
-        currentDraw = draws[0];
-        renderDraws();
+    if (!authToken) return;
+    try {
+        const res = await fetch(`${API_URL}/draws`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (!res.ok) throw new Error('Erreur chargement tirages');
+        const data = await res.json();
+        draws = data.draws || [];
+        if (draws.length > 0) {
+            currentDrawId = draws[0].id;
+            currentDraw = draws[0];
+            renderDraws();
+        }
+    } catch (err) {
+        console.error('Erreur loadDraws:', err);
+        draws = [];
     }
 }
 
 function renderDraws() {
     const container = document.getElementById('draws-container');
     if (!container) return;
+    if (draws.length === 0) {
+        container.innerHTML = '<div class="empty-msg">Aucun tirage disponible</div>';
+        return;
+    }
     container.innerHTML = draws.map(draw => `
         <div class="draw-card ${currentDrawId === draw.id ? 'selected' : ''}" onclick="selectDraw('${draw.id}')">
             <div class="draw-name">${draw.name}</div>
@@ -475,17 +499,23 @@ async function processFinalTicket() {
     if (currentCart.length === 0) { alert('Panier vide'); return; }
     const total = currentCart.reduce((s,b) => s + b.amount, 0);
     if (total > balance) { alert('Solde insuffisant'); return; }
+    if (!authToken) { alert('Session expirée, reconnectez-vous'); return; }
+    
     const payload = {
         drawId: currentDrawId,
         drawName: currentDraw.name,
         bets: currentCart,
         total: total,
-        playerId: playerId
+        playerId: playerId,
+        playerName: playerName
     };
     try {
         const res = await fetch(`${API_URL}/tickets/save`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${authToken}`
+            },
             body: JSON.stringify(payload)
         });
         const data = await res.json();
@@ -518,12 +548,13 @@ function printThermalTicket(ticket) {
 function generateTicketHTML(ticket) {
     const cfg = { name: 'LOTATO PRO', slogan: '' };
     const date = new Date(ticket.date).toLocaleString('fr-FR');
-    const betsHTML = (ticket.bets || []).map(b => `
+    const bets = ticket.bets || [];
+    const betsHTML = Array.isArray(bets) ? bets.map(b => `
         <div class="bet-row">
             <span>${b.game} ${b.number}</span>
             <span>${b.amount} G</span>
         </div>
-    `).join('');
+    `).join('') : '';
     return `
         <!DOCTYPE html>
         <html>
@@ -552,6 +583,8 @@ function generateTicketHTML(ticket) {
 async function loadPlayerHistory() {
     const container = document.getElementById('history-container');
     if (!container) return;
+    if (!authToken) return;
+    
     container.innerHTML = '<div class="empty-msg">Chargement...</div>';
     try {
         const res = await fetch(`${API_URL}/tickets?playerId=${playerId}`, {
@@ -576,6 +609,7 @@ async function loadPlayerHistory() {
             </div>
         `).join('');
     } catch (err) {
+        console.error(err);
         container.innerHTML = '<div class="empty-msg">Erreur chargement</div>';
     }
 }
@@ -584,6 +618,8 @@ async function loadPlayerHistory() {
 async function loadTransactions() {
     const container = document.getElementById('transactions-container');
     if (!container) return;
+    if (!authToken) return;
+    
     container.innerHTML = '<div class="empty-msg">Chargement...</div>';
     try {
         const res = await fetch(`${API_URL}/player/transactions`, {
@@ -605,6 +641,7 @@ async function loadTransactions() {
             </div>
         `).join('');
     } catch (err) {
+        console.error(err);
         container.innerHTML = '<div class="empty-msg">Erreur chargement</div>';
     }
 }
@@ -629,6 +666,7 @@ async function submitRecharge() {
         return;
     }
     resultDiv.innerHTML = '<div class="empty-msg">Traitement en cours...</div>';
+    
     if (method === 'cash') {
         const code = 'RECH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
         resultDiv.innerHTML = `
@@ -639,7 +677,6 @@ async function submitRecharge() {
         `;
     } else {
         resultDiv.innerHTML = `<div class="code-display">⚠️ Les paiements par ${method.toUpperCase()} doivent être effectués auprès d’un agent.</div>`;
-        // Pas d'appel API, l'agent doit valider manuellement
     }
     document.getElementById('recharge-amount').value = '';
 }
@@ -695,12 +732,12 @@ function setupTabs() {
     });
 }
 function setupInputEvents() {
-    document.getElementById('add-bet-btn').addEventListener('click', addBet);
-    document.getElementById('amt-input').addEventListener('keypress', e => { if(e.key === 'Enter') addBet(); });
+    const addBtn = document.getElementById('add-bet-btn');
+    if (addBtn) addBtn.addEventListener('click', addBet);
+    const amtInput = document.getElementById('amt-input');
+    if (amtInput) amtInput.addEventListener('keypress', e => { if(e.key === 'Enter') addBet(); });
 }
-function updateClock() {
-    // optionnel
-}
+function updateClock() {}
 function logout() {
     localStorage.clear();
     window.location.reload();
