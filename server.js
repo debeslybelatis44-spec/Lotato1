@@ -1685,329 +1685,7 @@ app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
-// ==================== ROUTES POUR LES JOUEURS ====================
-
-// Inscription d'un nouveau joueur (public)
-app.post('/api/auth/player/register', async (req, res) => {
-    const { name, phone, password, zone, ownerId } = req.body;
-    if (!name || !phone || !password || !ownerId) {
-        return res.status(400).json({ error: 'Nom, téléphone, mot de passe et propriétaire requis' });
-    }
-    try {
-        // Vérifier que le propriétaire existe et est actif
-        const ownerCheck = await pool.query(
-            'SELECT id FROM users WHERE id = $1 AND role = $2 AND blocked = false',
-            [ownerId, 'owner']
-        );
-        if (ownerCheck.rows.length === 0) {
-            return res.status(404).json({ error: 'Borlette invalide ou inactive' });
-        }
-
-        // Vérifier si le téléphone existe déjà
-        const existing = await pool.query('SELECT id FROM players WHERE phone = $1', [phone]);
-        if (existing.rows.length > 0) {
-            return res.status(400).json({ error: 'Ce numéro de téléphone est déjà utilisé' });
-        }
-
-        const hashed = await bcrypt.hash(password, 10);
-        const result = await pool.query(
-            `INSERT INTO players (name, phone, password, zone, owner_id)
-             VALUES ($1, $2, $3, $4, $5) RETURNING id, name, phone, balance`,
-            [name, phone, hashed, zone || null, ownerId]
-        );
-        const player = result.rows[0];
-
-        // Générer un token JWT pour le joueur
-        const token = jwt.sign(
-            { id: player.id, role: 'player', name: player.name, phone: player.phone, ownerId },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-        );
-
-        res.json({
-            success: true,
-            token,
-            playerId: player.id,
-            name: player.name,
-            balance: parseFloat(player.balance)
-        });
-    } catch (err) {
-        console.error('Erreur inscription joueur:', err);
-        if (err.code === '23505') {
-            return res.status(400).json({ error: 'Ce numéro de téléphone est déjà utilisé' });
-        }
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Connexion d'un joueur
-app.post('/api/auth/player/login', async (req, res) => {
-    const { phone, password } = req.body;
-    if (!phone || !password) {
-        return res.status(400).json({ error: 'Téléphone et mot de passe requis' });
-    }
-    try {
-        const result = await pool.query(
-            'SELECT id, name, phone, password, balance, owner_id FROM players WHERE phone = $1',
-            [phone]
-        );
-        if (result.rows.length === 0) {
-            return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
-        }
-        const player = result.rows[0];
-        const valid = await bcrypt.compare(password, player.password);
-        if (!valid) {
-            return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
-        }
-
-        const token = jwt.sign(
-            {
-                id: player.id,
-                role: 'player',
-                name: player.name,
-                phone: player.phone,
-                ownerId: player.owner_id
-            },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-        );
-
-        res.json({
-            success: true,
-            token,
-            playerId: player.id,
-            name: player.name,
-            balance: parseFloat(player.balance)
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Middleware spécifique joueur
-const requirePlayer = (req, res, next) => {
-    if (req.user.role !== 'player') {
-        return res.status(403).json({ error: 'Accès réservé aux joueurs' });
-    }
-    next();
-};
-
-// Obtenir le solde du joueur connecté
-app.get('/api/player/balance', authenticate, requirePlayer, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT balance FROM players WHERE id = $1', [req.user.id]);
-        res.json({ balance: parseFloat(result.rows[0].balance) });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Dépôt d'argent (agent, superviseur, propriétaire)
-app.post('/api/player/deposit', authenticate, async (req, res) => {
-    const { playerId, amount, method } = req.body;
-    if (!playerId || !amount || amount <= 0) {
-        return res.status(400).json({ error: 'Données invalides' });
-    }
-    const allowedRoles = ['agent', 'supervisor', 'owner', 'superadmin'];
-    if (!allowedRoles.includes(req.user.role)) {
-        return res.status(403).json({ error: 'Accès interdit' });
-    }
-    try {
-        // Vérifier que le joueur appartient au même propriétaire
-        const playerOwner = await pool.query('SELECT owner_id FROM players WHERE id = $1', [playerId]);
-        if (playerOwner.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
-        if (playerOwner.rows[0].owner_id !== req.user.ownerId) {
-            return res.status(403).json({ error: 'Joueur non autorisé pour ce compte' });
-        }
-
-        const updateRes = await pool.query(
-            'UPDATE players SET balance = balance + $1, updated_at = NOW() WHERE id = $2 RETURNING balance',
-            [amount, playerId]
-        );
-        const newBalance = parseFloat(updateRes.rows[0].balance);
-        await pool.query(
-            'INSERT INTO transactions (player_id, type, amount, method, description) VALUES ($1, $2, $3, $4, $5)',
-            [playerId, 'deposit', amount, method || 'cash', `Dépôt par ${req.user.role} ${req.user.name}`]
-        );
-        res.json({ success: true, balance: newBalance });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Retrait d'argent (agent, superviseur, propriétaire)
-app.post('/api/player/withdraw', authenticate, async (req, res) => {
-    const { playerId, amount, method } = req.body;
-    if (!playerId || !amount || amount <= 0) {
-        return res.status(400).json({ error: 'Données invalides' });
-    }
-    const allowedRoles = ['agent', 'supervisor', 'owner', 'superadmin'];
-    if (!allowedRoles.includes(req.user.role)) {
-        return res.status(403).json({ error: 'Accès interdit' });
-    }
-    try {
-        const playerOwner = await pool.query('SELECT owner_id, balance FROM players WHERE id = $1', [playerId]);
-        if (playerOwner.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
-        if (playerOwner.rows[0].owner_id !== req.user.ownerId) {
-            return res.status(403).json({ error: 'Joueur non autorisé' });
-        }
-        const currentBalance = parseFloat(playerOwner.rows[0].balance);
-        if (currentBalance < amount) {
-            return res.status(400).json({ error: 'Solde insuffisant' });
-        }
-        const updateRes = await pool.query(
-            'UPDATE players SET balance = balance - $1, updated_at = NOW() WHERE id = $2 RETURNING balance',
-            [amount, playerId]
-        );
-        const newBalance = parseFloat(updateRes.rows[0].balance);
-        await pool.query(
-            'INSERT INTO transactions (player_id, type, amount, method, description) VALUES ($1, $2, $3, $4, $5)',
-            [playerId, 'withdraw', amount, method || 'cash', `Retrait par ${req.user.role} ${req.user.name}`]
-        );
-        res.json({ success: true, balance: newBalance });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Historique des transactions d'un joueur (pour le joueur lui-même)
-app.get('/api/player/transactions', authenticate, requirePlayer, async (req, res) => {
-    try {
-        const result = await pool.query(
-            'SELECT * FROM transactions WHERE player_id = $1 ORDER BY created_at DESC LIMIT 50',
-            [req.user.id]
-        );
-        res.json({ transactions: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// ==================== ROUTES PROPRIÉTAIRE POUR GÉRER LES JOUEURS ====================
-// Lister les joueurs d'un propriétaire
-app.get('/api/owner/players', authenticate, requireRole('owner'), async (req, res) => {
-    const ownerId = req.user.id;
-    const { search } = req.query;
-    let query = `SELECT id, name, phone, zone, balance, created_at FROM players WHERE owner_id = $1`;
-    const params = [ownerId];
-    if (search) {
-        query += ` AND (name ILIKE $2 OR phone ILIKE $2)`;
-        params.push(`%${search}%`);
-    }
-    query += ` ORDER BY name LIMIT 100`;
-    try {
-        const result = await pool.query(query, params);
-        res.json({ players: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Créer un joueur (par le propriétaire)
-app.post('/api/owner/players', authenticate, requireRole('owner'), async (req, res) => {
-    const ownerId = req.user.id;
-    const { name, phone, password, zone } = req.body;
-    if (!name || !phone || !password) {
-        return res.status(400).json({ error: 'Nom, téléphone et mot de passe requis' });
-    }
-    try {
-        const hashed = await bcrypt.hash(password, 10);
-        const result = await pool.query(
-            `INSERT INTO players (name, phone, password, zone, owner_id)
-             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [name, phone, hashed, zone || null, ownerId]
-        );
-        res.json({ success: true, playerId: result.rows[0].id });
-    } catch (err) {
-        if (err.code === '23505') return res.status(400).json({ error: 'Ce numéro de téléphone existe déjà' });
-        console.error(err);
-        res.status(500).json({ error: 'Erreur création joueur' });
-    }
-});
-
-// Modifier un joueur
-app.put('/api/owner/players/:id', authenticate, requireRole('owner'), async (req, res) => {
-    const { id } = req.params;
-    const ownerId = req.user.id;
-    const { name, phone, zone, password } = req.body;
-    try {
-        let query = 'UPDATE players SET name = $1, phone = $2, zone = $3, updated_at = NOW()';
-        const params = [name, phone, zone];
-        if (password && password.trim() !== '') {
-            const hashed = await bcrypt.hash(password, 10);
-            query += ', password = $4';
-            params.push(hashed);
-            query += ` WHERE id = $${params.length + 1} AND owner_id = $${params.length + 2} RETURNING id`;
-            params.push(id, ownerId);
-        } else {
-            query += ` WHERE id = $${params.length + 1} AND owner_id = $${params.length + 2} RETURNING id`;
-            params.push(id, ownerId);
-        }
-        const result = await pool.query(query, params);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
-        res.json({ success: true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur mise à jour' });
-    }
-});
-
-// Supprimer un joueur
-app.delete('/api/owner/players/:id', authenticate, requireRole('owner'), async (req, res) => {
-    const { id } = req.params;
-    const ownerId = req.user.id;
-    try {
-        await pool.query('DELETE FROM players WHERE id = $1 AND owner_id = $2', [id, ownerId]);
-        res.json({ success: true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur suppression' });
-    }
-});
-
-// Obtenir les statistiques globales des joueurs pour un propriétaire
-app.get('/api/owner/player-stats', authenticate, requireRole('owner'), async (req, res) => {
-    const ownerId = req.user.id;
-    try {
-        const result = await pool.query(`
-            SELECT 
-                COALESCE(SUM(t.total_amount), 0) as totalBets,
-                COALESCE(SUM(t.win_amount), 0) as totalWins
-            FROM tickets t
-            WHERE t.owner_id = $1 AND t.player_id IS NOT NULL
-        `, [ownerId]);
-        res.json(result.rows[0]);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Tickets d'un joueur spécifique (pour propriétaire)
-app.get('/api/owner/player-tickets/:playerId', authenticate, requireRole('owner'), async (req, res) => {
-    const ownerId = req.user.id;
-    const { playerId } = req.params;
-    try {
-        const result = await pool.query(`
-            SELECT * FROM tickets
-            WHERE owner_id = $1 AND player_id = $2
-            ORDER BY date DESC
-        `, [ownerId, playerId]);
-        res.json({ tickets: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-// ==================== AJOUT UNIFIÉ : JOUEURS + SUPERADMIN ====================
-const path = require('path');
-
+// ==================== AJOUT UNIFIÉ CORRIGÉ (sans redéclaration de 'path') ====================
 // 1. Création des tables joueurs (si absentes)
 (async () => {
   try {
@@ -2042,11 +1720,18 @@ const path = require('path');
   }
 })();
 
-// 2. Middleware pour les joueurs (à placer après les middlewares existants)
-const requirePlayer = (req, res, next) => {
+// 2. Middleware pour les joueurs (s'il n'existe pas déjà)
+if (typeof requirePlayer === 'undefined') {
+  const requirePlayer = (req, res, next) => {
+    if (req.user.role !== 'player') return res.status(403).json({ error: 'Accès réservé aux joueurs' });
+    next();
+  };
+  global.requirePlayer = requirePlayer;
+}
+const requirePlayerFn = global.requirePlayer || ((req, res, next) => {
   if (req.user.role !== 'player') return res.status(403).json({ error: 'Accès réservé aux joueurs' });
   next();
-};
+});
 
 // 3. Route publique : liste des propriétaires actifs (pour inscription joueur)
 app.get('/api/owners/active', async (req, res) => {
@@ -2119,7 +1804,7 @@ app.post('/api/auth/player/login', async (req, res) => {
 });
 
 // 5. Routes joueurs protégées
-app.get('/api/player/balance', authenticate, requirePlayer, async (req, res) => {
+app.get('/api/player/balance', authenticate, requirePlayerFn, async (req, res) => {
   try {
     const result = await pool.query('SELECT balance FROM players WHERE id = $1', [req.user.id]);
     res.json({ balance: parseFloat(result.rows[0].balance) });
@@ -2128,7 +1813,7 @@ app.get('/api/player/balance', authenticate, requirePlayer, async (req, res) => 
   }
 });
 
-app.get('/api/player/tickets', authenticate, requirePlayer, async (req, res) => {
+app.get('/api/player/tickets', authenticate, requirePlayerFn, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM tickets WHERE player_id = $1 ORDER BY date DESC LIMIT 50',
@@ -2140,7 +1825,7 @@ app.get('/api/player/tickets', authenticate, requirePlayer, async (req, res) => 
   }
 });
 
-app.get('/api/player/transactions', authenticate, requirePlayer, async (req, res) => {
+app.get('/api/player/transactions', authenticate, requirePlayerFn, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM transactions WHERE player_id = $1 ORDER BY created_at DESC LIMIT 50',
@@ -2152,7 +1837,7 @@ app.get('/api/player/transactions', authenticate, requirePlayer, async (req, res
   }
 });
 
-app.post('/api/player/tickets/save', authenticate, requirePlayer, async (req, res) => {
+app.post('/api/player/tickets/save', authenticate, requirePlayerFn, async (req, res) => {
   const { drawId, drawName, bets, total } = req.body;
   const playerId = req.user.id;
   const ownerId = req.user.ownerId;
@@ -2259,12 +1944,20 @@ app.post('/api/auth/superadmin-login', async (req, res) => {
   }
 });
 
-const requireSuperAdmin = (req, res, next) => {
+// Middleware superadmin (s'il n'existe pas déjà)
+if (typeof requireSuperAdmin === 'undefined') {
+  const requireSuperAdmin = (req, res, next) => {
+    if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Accès interdit' });
+    next();
+  };
+  global.requireSuperAdmin = requireSuperAdmin;
+}
+const requireSuperAdminFn = global.requireSuperAdmin || ((req, res, next) => {
   if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Accès interdit' });
   next();
-};
+});
 
-app.get('/api/superadmin/agents', authenticate, requireSuperAdmin, async (req, res) => {
+app.get('/api/superadmin/agents', authenticate, requireSuperAdminFn, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT u.id, u.name, u.username as email, u.phone, u.owner_id, o.name as owner_name
@@ -2274,7 +1967,7 @@ app.get('/api/superadmin/agents', authenticate, requireSuperAdmin, async (req, r
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-app.get('/api/superadmin/supervisors', authenticate, requireSuperAdmin, async (req, res) => {
+app.get('/api/superadmin/supervisors', authenticate, requireSuperAdminFn, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT u.id, u.name, u.username as email, u.phone, u.owner_id, o.name as owner_name
@@ -2284,7 +1977,7 @@ app.get('/api/superadmin/supervisors', authenticate, requireSuperAdmin, async (r
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-app.put('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (req, res) => {
+app.put('/api/superadmin/owners/:id', authenticate, requireSuperAdminFn, async (req, res) => {
   const { id } = req.params;
   const { name, email, phone, password } = req.body;
   try {
@@ -2300,7 +1993,7 @@ app.put('/api/superadmin/owners/:id', authenticate, requireSuperAdmin, async (re
   } catch (err) { res.status(500).json({ error: 'Erreur mise à jour' }); }
 });
 
-app.put('/api/superadmin/owners/:id/quota', authenticate, requireSuperAdmin, async (req, res) => {
+app.put('/api/superadmin/owners/:id/quota', authenticate, requireSuperAdminFn, async (req, res) => {
   const { id } = req.params;
   const { quota } = req.body;
   try {
@@ -2309,7 +2002,7 @@ app.put('/api/superadmin/owners/:id/quota', authenticate, requireSuperAdmin, asy
   } catch (err) { res.status(500).json({ error: 'Erreur mise à jour quota' }); }
 });
 
-app.put('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (req, res) => {
+app.put('/api/superadmin/agents/:id', authenticate, requireSuperAdminFn, async (req, res) => {
   const { id } = req.params;
   const { name, email, phone, password, ownerId } = req.body;
   try {
@@ -2325,7 +2018,7 @@ app.put('/api/superadmin/agents/:id', authenticate, requireSuperAdmin, async (re
   } catch (err) { res.status(500).json({ error: 'Erreur mise à jour agent' }); }
 });
 
-app.put('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, async (req, res) => {
+app.put('/api/superadmin/supervisors/:id', authenticate, requireSuperAdminFn, async (req, res) => {
   const { id } = req.params;
   const { name, email, phone, password, ownerId } = req.body;
   try {
@@ -2341,7 +2034,7 @@ app.put('/api/superadmin/supervisors/:id', authenticate, requireSuperAdmin, asyn
   } catch (err) { res.status(500).json({ error: 'Erreur mise à jour superviseur' }); }
 });
 
-app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async (req, res) => {
+app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdminFn, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT u.id, u.name, u.username as email,
@@ -2362,7 +2055,6 @@ app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async
 });
 
 // Fin du bloc d'ajout
-
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
   app.listen(port, '0.0.0.0', () => {
