@@ -1696,29 +1696,47 @@ app.post('/api/player/tickets/save', authenticate, requirePlayer, async (req, re
   const { drawId, drawName, bets, total } = req.body;
   const playerId = req.user.id;
   const ownerId = req.user.ownerId;
-  const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
-  if (!drawId || !bets || !total || total <= 0) return res.status(400).json({ error: 'Données invalides' });
+  const ticketId = 'P' + Date.now() + Math.floor(Math.random() * 1000);
+
+  if (!drawId || !bets || !total || total <= 0) {
+    return res.status(400).json({ error: 'Données invalides' });
+  }
+
   try {
     const playerRes = await pool.query('SELECT balance FROM players WHERE id = $1', [playerId]);
+    if (playerRes.rows.length === 0) return res.status(404).json({ error: 'Joueur non trouvé' });
     const currentBalance = parseFloat(playerRes.rows[0].balance);
     if (currentBalance < total) return res.status(400).json({ error: 'Solde insuffisant' });
+
     const drawCheck = await pool.query('SELECT active FROM draws WHERE id = $1', [drawId]);
-    if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
+    if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) {
+      return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
+    }
+
     await pool.query('UPDATE players SET balance = balance - $1, updated_at = NOW() WHERE id = $2', [total, playerId]);
+
     const result = await pool.query(
       `INSERT INTO tickets (owner_id, player_id, draw_id, draw_name, ticket_id, total_amount, bets, date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       RETURNING id, ticket_id, total_amount, draw_name, date`,
       [ownerId, playerId, drawId, drawName, ticketId, total, JSON.stringify(bets)]
     );
-    await pool.query('INSERT INTO transactions (player_id, type, amount, description) VALUES ($1, $2, $3, $4)', [playerId, 'bet', total, `Ticket ${ticketId} - ${drawName}`]);
-    res.json({ success: true, ticket: { id: result.rows[0].id, ticket_id: ticketId, total_amount: total } });
+
+    await pool.query(
+      'INSERT INTO transactions (player_id, type, amount, description) VALUES ($1, $2, $3, $4)',
+      [playerId, 'bet', total, `Ticket ${ticketId} - ${drawName}`]
+    );
+
+    const ticket = result.rows[0];
+    ticket.bets = bets;
+
+    res.json({ success: true, ticket });
   } catch (err) {
-    console.error('Erreur sauvegarde ticket joueur:', err);
+    console.error('❌ Erreur sauvegarde ticket joueur:', err);
     await pool.query('UPDATE players SET balance = balance + $1 WHERE id = $2', [total, playerId]).catch(() => {});
-    res.status(500).json({ error: 'Erreur serveur' });
+    res.status(500).json({ error: err.message });
   }
 });
-
 app.post('/api/player/deposit', authenticate, requireStaff, async (req, res) => {
   const { playerId, amount, method } = req.body;
   if (!playerId || !amount || amount <= 0) return res.status(400).json({ error: 'Données invalides' });
