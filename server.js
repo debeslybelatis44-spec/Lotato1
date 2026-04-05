@@ -435,6 +435,19 @@ app.post('/api/auth/player/login', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.get('/api/owners/active', async (req, res) => {
+  try {
+    // Inclure les propriétaires avec blocked = false ou NULL (non défini)
+    const result = await pool.query(
+      "SELECT id, name FROM users WHERE role = 'owner' AND (blocked = false OR blocked IS NULL) ORDER BY name"
+    );
+    console.log("✅ Propriétaires actifs trouvés:", result.rows.length);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("❌ Erreur /api/owners/active:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 // ==================== Routes communes (draws, limites, etc.) ====================
 app.get('/api/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
