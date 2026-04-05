@@ -1861,6 +1861,97 @@ app.get('/api/player/balance-by-id', authenticate, requireStaff, async (req, res
     res.status(500).json({ error: err.message });
   }
 });
+// Trouver un joueur par téléphone (pour les agents)
+app.get('/api/player/by-phone', authenticate, requireStaff, async (req, res) => {
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ error: 'Téléphone requis' });
+  try {
+    const result = await pool.query(
+      'SELECT id, name, phone, balance FROM players WHERE phone = $1 AND owner_id = $2',
+      [phone, req.user.ownerId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Joueur non trouvé' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Erreur /player/by-phone:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dépôt d'argent pour un joueur (corrigé)
+app.post('/api/player/deposit', authenticate, requireStaff, async (req, res) => {
+  const { playerId, amount, method } = req.body;
+  console.log("📥 Dépôt reçu:", { playerId, amount, method, agentId: req.user.id });
+
+  if (!playerId || !amount || amount <= 0) {
+    return res.status(400).json({ error: 'Montant invalide' });
+  }
+
+  try {
+    // Vérifier que le joueur existe et appartient au même propriétaire
+    const playerOwner = await pool.query('SELECT owner_id FROM players WHERE id = $1', [playerId]);
+    if (playerOwner.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
+    if (playerOwner.rows[0].owner_id !== req.user.ownerId) {
+      return res.status(403).json({ error: 'Joueur non autorisé' });
+    }
+
+    // Mise à jour du solde
+    const update = await pool.query(
+      'UPDATE players SET balance = balance + $1, updated_at = NOW() WHERE id = $2 RETURNING balance',
+      [amount, playerId]
+    );
+    const newBalance = parseFloat(update.rows[0].balance);
+
+    // Enregistrement de la transaction
+    await pool.query(
+      `INSERT INTO transactions (player_id, type, amount, method, description)
+       VALUES ($1, 'deposit', $2, $3, $4)`,
+      [playerId, amount, method || 'cash', `Dépôt par ${req.user.role} ${req.user.name}`]
+    );
+
+    console.log(`✅ Dépôt effectué: joueur ${playerId}, montant ${amount}, nouveau solde ${newBalance}`);
+    res.json({ success: true, balance: newBalance });
+  } catch (err) {
+    console.error('❌ Erreur dépôt:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Retrait d'argent pour un joueur (corrigé)
+app.post('/api/player/withdraw', authenticate, requireStaff, async (req, res) => {
+  const { playerId, amount, method } = req.body;
+  console.log("📤 Retrait reçu:", { playerId, amount, method, agentId: req.user.id });
+
+  if (!playerId || !amount || amount <= 0) {
+    return res.status(400).json({ error: 'Montant invalide' });
+  }
+
+  try {
+    const playerOwner = await pool.query('SELECT owner_id, balance FROM players WHERE id = $1', [playerId]);
+    if (playerOwner.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
+    if (playerOwner.rows[0].owner_id !== req.user.ownerId) return res.status(403).json({ error: 'Joueur non autorisé' });
+    const currentBalance = parseFloat(playerOwner.rows[0].balance);
+    if (currentBalance < amount) return res.status(400).json({ error: 'Solde insuffisant' });
+
+    const update = await pool.query(
+      'UPDATE players SET balance = balance - $1, updated_at = NOW() WHERE id = $2 RETURNING balance',
+      [amount, playerId]
+    );
+    const newBalance = parseFloat(update.rows[0].balance);
+
+    await pool.query(
+      `INSERT INTO transactions (player_id, type, amount, method, description)
+       VALUES ($1, 'withdraw', $2, $3, $4)`,
+      [playerId, amount, method || 'cash', `Retrait par ${req.user.role} ${req.user.name}`]
+    );
+
+    console.log(`✅ Retrait effectué: joueur ${playerId}, montant ${amount}, nouveau solde ${newBalance}`);
+    res.json({ success: true, balance: newBalance });
+  } catch (err) {
+    console.error('❌ Erreur retrait:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
