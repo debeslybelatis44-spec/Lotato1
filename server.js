@@ -388,7 +388,7 @@ app.post('/api/auth/player/register', async (req, res) => {
   } catch (err) {
     console.error('❌ ERREUR DÉTAILLÉE inscription joueur:', err);
     console.error('Stack:', err.stack);
-    // Renvoyer le message d'erreur exact (important pour le débogage)
+    // Renvoyer le message d'erreur exact
     res.status(500).json({ error: err.message, details: err.toString() });
   }
 });
