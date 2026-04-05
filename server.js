@@ -1970,6 +1970,28 @@ app.post('/api/player/withdraw', authenticate, requireStaff, async (req, res) =>
     res.status(500).json({ error: err.message });
   }
 });
+// Récupérer les paramètres d'un propriétaire par son ID (public pour les joueurs)
+app.get('/api/owner-settings/:ownerId', async (req, res) => {
+  const { ownerId } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT name, slogan, logo_url FROM lottery_settings WHERE owner_id = $1',
+      [ownerId]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '' });
+    }
+    const row = result.rows[0];
+    res.json({
+      name: row.name,
+      slogan: row.slogan,
+      logoUrl: row.logo_url
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
