@@ -2045,6 +2045,102 @@ app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async
     res.status(500).json({ error: 'Erreur serveur' }); 
   }
 });
+// ==================== ROUTES DÉDIÉES AUX JOUEURS ====================
+// Ces routes sont appelées par player.html après modification des URLs.
+// Le HTML doit appeler /api/player/tickets au lieu de /api/tickets,
+// et /api/player/tickets/save au lieu de /api/tickets/save.
+
+// 1. Historique des tickets du joueur
+app.get('/api/player/tickets', authenticate, requirePlayer, async (req, res) => {
+  const playerId = req.user.id;
+  try {
+    const result = await pool.query(
+      `SELECT t.*, d.name as draw_name 
+       FROM tickets t 
+       LEFT JOIN draws d ON t.draw_id = d.id
+       WHERE t.player_id = $1 
+       ORDER BY t.date DESC 
+       LIMIT 50`,
+      [playerId]
+    );
+    res.json({ tickets: result.rows });
+  } catch (err) {
+    console.error('Erreur chargement tickets joueur:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// 2. Sauvegarde d'un ticket par un joueur (débit automatique)
+app.post('/api/player/tickets/save', authenticate, requirePlayer, async (req, res) => {
+  const playerId = req.user.id;
+  const ownerId = req.user.ownerId;
+  const { drawId, drawName, bets, total } = req.body;
+  const ticketId = 'P' + Date.now() + Math.floor(Math.random() * 1000);
+
+  if (!drawId || !bets || !total || total <= 0) {
+    return res.status(400).json({ error: 'Données invalides' });
+  }
+
+  try {
+    // Vérifier le solde
+    const playerRes = await pool.query('SELECT balance FROM players WHERE id = $1', [playerId]);
+    if (playerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Joueur non trouvé' });
+    }
+    const currentBalance = parseFloat(playerRes.rows[0].balance);
+    if (currentBalance < total) {
+      return res.status(400).json({ error: 'Solde insuffisant' });
+    }
+
+    // Vérifier que le tirage est actif
+    const drawCheck = await pool.query('SELECT active FROM draws WHERE id = $1', [drawId]);
+    if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) {
+      return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
+    }
+
+    // (Optionnel) Ajouter ici les vérifications de blocages/limites si besoin
+    // ...
+
+    // Débiter le solde
+    await pool.query('UPDATE players SET balance = balance - $1, updated_at = NOW() WHERE id = $2', [total, playerId]);
+
+    // Insérer le ticket
+    const result = await pool.query(
+      `INSERT INTO tickets (owner_id, player_id, draw_id, draw_name, ticket_id, total_amount, bets, date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id`,
+      [ownerId, playerId, drawId, drawName, ticketId, total, JSON.stringify(bets)]
+    );
+
+    // Enregistrer la transaction
+    await pool.query(
+      'INSERT INTO transactions (player_id, type, amount, description) VALUES ($1, $2, $3, $4)',
+      [playerId, 'bet', total, `Ticket ${ticketId} - ${drawName}`]
+    );
+
+    res.json({
+      success: true,
+      ticket: {
+        id: result.rows[0].id,
+        ticket_id: ticketId,
+        total_amount: total,
+        bets: bets,
+        draw_name: drawName,
+        date: new Date()
+      }
+    });
+  } catch (err) {
+    console.error('Erreur sauvegarde ticket joueur:', err);
+    // Rembourser en cas d'erreur
+    await pool.query('UPDATE players SET balance = balance + $1 WHERE id = $2', [total, playerId]).catch(() => {});
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// 3. Solde du joueur (déjà existante, mais on la garde pour cohérence)
+// La route /api/player/balance existe déjà, on ne la réécrit pas.
+
+// 4. Transactions du joueur (déjà existante, mais on la garde)
+// La route /api/player/transactions existe déjà.
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
   app.listen(port, '0.0.0.0', () => {

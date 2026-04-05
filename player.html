@@ -510,7 +510,8 @@ async function processFinalTicket() {
         playerName: playerName
     };
     try {
-        const res = await fetch(`${API_URL}/tickets/save`, {
+        // ✅ URL MODIFIÉE pour utiliser la route dédiée joueur
+        const res = await fetch(`${API_URL}/player/tickets/save`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json', 
@@ -587,7 +588,8 @@ async function loadPlayerHistory() {
     
     container.innerHTML = '<div class="empty-msg">Chargement...</div>';
     try {
-        const res = await fetch(`${API_URL}/tickets?playerId=${playerId}`, {
+        // ✅ URL MODIFIÉE pour utiliser la route dédiée joueur
+        const res = await fetch(`${API_URL}/player/tickets`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const data = await res.json();
