@@ -26,11 +26,24 @@
         .draw-card.selected { border-color:#00d4ff; background:rgba(0,212,255,0.1); }
         .draw-name { font-weight:bold; font-size:0.9rem; }
         .draw-time { font-size:0.7rem; opacity:0.7; }
-        .input-container { display:flex; gap:10px; margin:20px 0; }
-        .num-input, .amt-input { flex:1; padding:12px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#fff; font-size:1rem; }
+
+        /* Styles pour la sélection des jeux */
+        .game-selector { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; }
+        .chip { background:rgba(255,255,255,0.1); border:none; padding:8px 16px; border-radius:30px; color:#fff; font-weight:500; cursor:pointer; transition:0.2s; }
+        .chip.active { background:linear-gradient(135deg,#ad00f1,#00d4ff); }
+        .numeric-chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; }
+        .sub-game-btn { background:rgba(255,255,255,0.1); border:none; padding:8px 12px; border-radius:20px; color:#fff; margin:2px; cursor:pointer; }
+        .sub-game-btn.active { background:#00d4ff; color:#000; }
+        .lotto-options { display:flex; gap:10px; margin:10px 0; flex-wrap:wrap; }
+        .option-chip { background:rgba(255,255,255,0.1); padding:5px 12px; border-radius:20px; cursor:pointer; display:flex; align-items:center; gap:5px; }
+        .option-chip.active { background:#00d4ff; color:#000; }
+        .warning-message { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; border-radius:12px; padding:10px; margin-bottom:15px; display:none; align-items:center; gap:10px; }
+
+        .input-container { display:flex; gap:10px; margin:20px 0; flex-wrap:wrap; }
+        .num-input, .amt-input { flex:1; padding:12px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#fff; font-size:1rem; text-align:center; min-width:100px; }
         .add-btn { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; padding:12px 20px; border-radius:12px; color:#fff; font-weight:bold; cursor:pointer; }
         .cart-section { background:rgba(255,255,255,0.02); border-radius:20px; padding:15px; margin-top:20px; }
-        .cart-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+        .cart-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:10px; }
         .cart-total { font-size:1.2rem; font-weight:bold; }
         .cart-list { max-height:300px; overflow-y:auto; }
         .cart-item { display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid rgba(255,255,255,0.05); }
@@ -43,7 +56,6 @@
         .recharge-btn, .withdraw-btn { background:rgba(0,212,255,0.2); border:1px solid #00d4ff; padding:12px; border-radius:12px; width:100%; margin-bottom:10px; cursor:pointer; text-align:center; font-weight:bold; }
         .recharge-form, .withdraw-form { margin-top:20px; }
         .recharge-form input, .withdraw-form input, .recharge-form select, .withdraw-form select { width:100%; padding:12px; margin-bottom:10px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:12px; color:#fff; }
-        .warning-message { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; border-radius:12px; padding:10px; margin-bottom:15px; display:none; align-items:center; gap:10px; }
         .btn-primary { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; border-radius:30px; padding:12px; color:white; font-weight:bold; cursor:pointer; width:100%; }
         .btn-secondary { background:rgba(255,255,255,0.2); border:none; border-radius:30px; padding:10px; color:white; cursor:pointer; }
         .code-display { background:rgba(0,0,0,0.5); padding:15px; border-radius:12px; text-align:center; margin:15px 0; font-size:1.5rem; font-weight:bold; letter-spacing:2px; }
@@ -75,14 +87,10 @@
                     <input type="tel" id="reg-phone" placeholder="Numéro de téléphone" required>
                     <input type="password" id="reg-password" placeholder="Mot de passe" required>
                     <input type="text" id="reg-zone" placeholder="Zone / Ville (optionnel)">
-                    <select id="reg-owner" required>
-                        <option value="">Choisissez votre borlette</option>
-                    </select>
+                    <select id="reg-owner" required><option value="">Choisissez votre borlette</option></select>
                     <button type="submit" class="btn-primary">S'inscrire</button>
                 </form>
-                <div>
-                    <span id="toggle-auth" class="toggle-link">Pas de compte ? Créer un compte</span>
-                </div>
+                <div><span id="toggle-auth" class="toggle-link">Pas de compte ? Créer un compte</span></div>
             </div>
         </div>
     </div>
@@ -104,15 +112,56 @@
             <button class="tab" data-tab="profile">👤 Profil</button>
         </div>
 
-        <!-- Onglet Jouer -->
+        <!-- Onglet Jouer (avec tous les jeux) -->
         <div id="play-tab" class="tab-content active">
-            <div id="draw-blocked-warning" class="warning-message">
-                <i class="fas fa-exclamation-triangle"></i> <span>Ce tirage se ferme dans 3 minutes. Vous ne pouvez plus ajouter de paris.</span>
-            </div>
+            <div id="draw-blocked-warning" class="warning-message"><i class="fas fa-exclamation-triangle"></i> <span>Ce tirage se ferme dans 3 minutes.</span></div>
             <div class="section-title"><i class="fas fa-calendar-alt"></i> Choisissez un tirage</div>
             <div class="draw-grid" id="draws-container"></div>
 
-            <div class="section-title"><i class="fas fa-gamepad"></i> Votre pari</div>
+            <div class="section-title"><i class="fas fa-gamepad"></i> Type de jeu</div>
+            <div class="game-selector" id="game-types">
+                <button class="chip active" data-game="borlette" onclick="selectMainGame('borlette')">Borlette</button>
+                <button class="chip" data-game="lotto" onclick="selectMainGame('lotto')">Lotto</button>
+                <button class="chip" data-game="special" onclick="selectMainGame('special')">Spéciaux</button>
+                <button class="chip" onclick="toggleNumericChips()">NX</button>
+            </div>
+            <div id="numeric-chips" class="numeric-chips" style="display:none;">
+                <button class="chip numeric-chip" onclick="selectGame('n0')">N0</button>
+                <button class="chip numeric-chip" onclick="selectGame('n1')">N1</button>
+                <button class="chip numeric-chip" onclick="selectGame('n2')">N2</button>
+                <button class="chip numeric-chip" onclick="selectGame('n3')">N3</button>
+                <button class="chip numeric-chip" onclick="selectGame('n4')">N4</button>
+                <button class="chip numeric-chip" onclick="selectGame('n5')">N5</button>
+                <button class="chip numeric-chip" onclick="selectGame('n6')">N6</button>
+                <button class="chip numeric-chip" onclick="selectGame('n7')">N7</button>
+                <button class="chip numeric-chip" onclick="selectGame('n8')">N8</button>
+                <button class="chip numeric-chip" onclick="selectGame('n9')">N9</button>
+            </div>
+            <div id="lotto-games" style="display:none;">
+                <button class="sub-game-btn" onclick="selectGame('lotto3')">Lotto 3</button>
+                <button class="sub-game-btn" onclick="selectGame('lotto4')">Lotto 4</button>
+                <button class="sub-game-btn" onclick="selectGame('lotto5')">Lotto 5</button>
+                <button class="sub-game-btn" onclick="selectGame('auto_lotto4')">Lotto 4 Auto</button>
+                <button class="sub-game-btn" onclick="selectGame('auto_lotto5')">Lotto 5 Auto</button>
+            </div>
+            <div id="special-games" style="display:none;">
+                <button class="sub-game-btn" onclick="selectGame('bo')">BO</button>
+                <button class="sub-game-btn" onclick="selectGame('grap')">GRAP</button>
+                <button class="sub-game-btn" onclick="selectGame('mariage')">Mariage</button>
+                <button class="sub-game-btn" onclick="selectGame('auto_marriage')">Mariage Auto</button>
+            </div>
+            <div id="lotto4-options" class="lotto-options" style="display:none;">
+                <div class="option-chip" data-option="1" onclick="toggleLottoOption(4,1)">Option 1</div>
+                <div class="option-chip" data-option="2" onclick="toggleLottoOption(4,2)">Option 2</div>
+                <div class="option-chip" data-option="3" onclick="toggleLottoOption(4,3)">Option 3</div>
+            </div>
+            <div id="lotto5-options" class="lotto-options" style="display:none;">
+                <div class="option-chip" data-option="1" onclick="toggleLottoOption(5,1)">Option 1</div>
+                <div class="option-chip" data-option="2" onclick="toggleLottoOption(5,2)">Option 2</div>
+                <div class="option-chip" data-option="3" onclick="toggleLottoOption(5,3)">Option 3</div>
+            </div>
+
+            <div class="section-title"><i class="fas fa-dice"></i> Votre pari</div>
             <div class="input-container">
                 <input type="text" id="num-input" placeholder="00" class="num-input" maxlength="5">
                 <input type="number" id="amt-input" placeholder="Montant (G)" class="amt-input">
@@ -137,36 +186,23 @@
         <!-- Onglet Recharger / Retrait -->
         <div id="recharge-tab" class="tab-content">
             <div class="section-title"><i class="fas fa-wallet"></i> Gestion du compte</div>
-            <div>
-                <button class="recharge-btn" onclick="showRechargeForm()">💵 Recharger mon compte</button>
-                <button class="recharge-btn" onclick="showWithdrawForm()">🏧 Retirer de l'argent</button>
-            </div>
+            <div><button class="recharge-btn" onclick="showRechargeForm()">💵 Recharger mon compte</button>
+            <button class="recharge-btn" onclick="showWithdrawForm()">🏧 Retirer de l'argent</button></div>
             <div id="recharge-form-container" class="recharge-form" style="display:none;">
                 <h3>Recharger</h3>
-                <select id="recharge-method">
-                    <option value="cash">En espèces (point de vente)</option>
-                    <option value="moncash">MonCash</option>
-                    <option value="natcash">NatCash</option>
-                </select>
+                <select id="recharge-method"><option value="cash">En espèces (point de vente)</option><option value="moncash">MonCash</option><option value="natcash">NatCash</option></select>
                 <input type="number" id="recharge-amount" placeholder="Montant (Gdes)">
                 <button onclick="submitRecharge()" class="btn-primary">Confirmer</button>
                 <div id="recharge-result"></div>
             </div>
             <div id="withdraw-form-container" class="withdraw-form" style="display:none;">
                 <h3>Retirer</h3>
-                <select id="withdraw-method">
-                    <option value="cash">En espèces (point de vente)</option>
-                    <option value="moncash">MonCash</option>
-                    <option value="natcash">NatCash</option>
-                </select>
+                <select id="withdraw-method"><option value="cash">En espèces (point de vente)</option><option value="moncash">MonCash</option><option value="natcash">NatCash</option></select>
                 <input type="number" id="withdraw-amount" placeholder="Montant (Gdes)">
                 <button onclick="submitWithdraw()" class="btn-primary">Confirmer</button>
                 <div id="withdraw-result"></div>
             </div>
-            <div id="transactions-list" style="margin-top:20px;">
-                <h3>Dernières transactions</h3>
-                <div id="transactions-container"></div>
-            </div>
+            <div id="transactions-list" style="margin-top:20px;"><h3>Dernières transactions</h3><div id="transactions-container"></div></div>
         </div>
 
         <!-- Onglet Profil -->
@@ -183,21 +219,17 @@
 </div>
 
 <script>
-// Utilise l'API_URL définie dans config.js
+// ==================== CONFIGURATION ====================
 const API_URL = window.API_URL || 'https://lotato1.onrender.com/api';
-
-// État de l'application
-let currentDraw = null;
-let currentDrawId = null;
-let currentCart = [];
-let draws = [];
-let playerId = null;
-let playerName = null;
-let playerPhone = null;
-let playerZone = null;
-let playerOwnerId = null;
-let balance = 0;
 let authToken = null;
+let playerId = null, playerName = null, playerPhone = null, playerZone = null, playerOwnerId = null;
+let balance = 0;
+let draws = [];
+let currentDrawId = null, currentDraw = null;
+let currentCart = [];
+let selectedGame = 'borlette';
+let lotto4Options = [true, true, true];
+let lotto5Options = [true, true, true];
 
 // ==================== AUTHENTIFICATION ====================
 function showAuthForm(showLogin) {
@@ -205,9 +237,7 @@ function showAuthForm(showLogin) {
     const registerForm = document.getElementById('register-form');
     const authTitle = document.getElementById('auth-title');
     const toggleText = document.getElementById('toggle-auth');
-    const authMessage = document.getElementById('auth-message');
-    authMessage.innerHTML = '';
-    
+    document.getElementById('auth-message').innerHTML = '';
     if (showLogin) {
         loginForm.style.display = 'block';
         registerForm.style.display = 'none';
@@ -225,7 +255,7 @@ function showAuthForm(showLogin) {
 async function loadOwners() {
     try {
         const res = await fetch(`${API_URL}/owners/active`);
-        if (!res.ok) throw new Error('Erreur chargement des borlettes');
+        if (!res.ok) throw new Error();
         const owners = await res.json();
         const select = document.getElementById('reg-owner');
         select.innerHTML = '<option value="">Choisissez votre borlette</option>';
@@ -236,9 +266,7 @@ async function loadOwners() {
             select.appendChild(option);
         });
     } catch (err) {
-        console.error('Erreur loadOwners:', err);
-        const select = document.getElementById('reg-owner');
-        select.innerHTML = '<option value="">Erreur de chargement, réessayez</option>';
+        document.getElementById('reg-owner').innerHTML = '<option value="">Erreur de chargement</option>';
     }
 }
 
@@ -251,10 +279,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const phone = document.getElementById('login-phone').value;
     const password = document.getElementById('login-password').value;
-    const messageDiv = document.getElementById('auth-message');
-    messageDiv.innerHTML = 'Connexion en cours...';
-    messageDiv.style.color = '#00d4ff';
-    
+    const msgDiv = document.getElementById('auth-message');
+    msgDiv.innerHTML = 'Connexion...';
+    msgDiv.style.color = '#00d4ff';
     try {
         const res = await fetch(`${API_URL}/auth/player/login`, {
             method: 'POST',
@@ -277,12 +304,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             localStorage.setItem('player_balance', balance);
             initDashboard();
         } else {
-            messageDiv.innerHTML = data.error || 'Échec de connexion';
-            messageDiv.style.color = '#ff4d4d';
+            msgDiv.innerHTML = data.error || 'Échec connexion';
+            msgDiv.style.color = '#ff4d4d';
         }
     } catch (err) {
-        messageDiv.innerHTML = 'Erreur réseau : ' + err.message;
-        messageDiv.style.color = '#ff4d4d';
+        msgDiv.innerHTML = 'Erreur réseau';
+        msgDiv.style.color = '#ff4d4d';
     }
 });
 
@@ -293,17 +320,14 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     const password = document.getElementById('reg-password').value;
     const zone = document.getElementById('reg-zone').value;
     const ownerId = document.getElementById('reg-owner').value;
-    const messageDiv = document.getElementById('auth-message');
-    
+    const msgDiv = document.getElementById('auth-message');
     if (!ownerId) {
-        messageDiv.innerHTML = 'Veuillez choisir une borlette.';
-        messageDiv.style.color = '#ffaa00';
+        msgDiv.innerHTML = 'Choisissez une borlette';
+        msgDiv.style.color = '#ffaa00';
         return;
     }
-    
-    messageDiv.innerHTML = 'Inscription en cours...';
-    messageDiv.style.color = '#00d4ff';
-    
+    msgDiv.innerHTML = 'Inscription...';
+    msgDiv.style.color = '#00d4ff';
     try {
         const res = await fetch(`${API_URL}/auth/player/register`, {
             method: 'POST',
@@ -326,16 +350,15 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
             localStorage.setItem('player_balance', balance);
             initDashboard();
         } else {
-            messageDiv.innerHTML = data.error || 'Échec inscription';
-            messageDiv.style.color = '#ff4d4d';
+            msgDiv.innerHTML = data.error || 'Échec inscription';
+            msgDiv.style.color = '#ff4d4d';
         }
     } catch (err) {
-        messageDiv.innerHTML = 'Erreur réseau : ' + err.message;
-        messageDiv.style.color = '#ff4d4d';
+        msgDiv.innerHTML = 'Erreur réseau';
+        msgDiv.style.color = '#ff4d4d';
     }
 });
 
-// Vérifier si déjà connecté
 const savedToken = localStorage.getItem('player_token');
 if (savedToken) {
     authToken = savedToken;
@@ -361,26 +384,22 @@ async function initDashboard() {
     await loadPlayerHistory();
     await loadTransactions();
     setupTabs();
-    setupInputEvents();
-    checkDrawBlocked();
-    setInterval(updateClock, 1000);
-    setInterval(checkDrawBlocked, 30000);
+    document.getElementById('add-bet-btn').addEventListener('click', addBet);
+    document.getElementById('amt-input').addEventListener('keypress', e => { if(e.key === 'Enter') addBet(); });
     setInterval(refreshBalance, 60000);
 }
 
 async function refreshBalance() {
     if (!authToken) return;
     try {
-        const res = await fetch(`${API_URL}/player/balance`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
+        const res = await fetch(`${API_URL}/player/balance`, { headers: { 'Authorization': `Bearer ${authToken}` } });
         const data = await res.json();
         if (data.balance !== undefined) {
             balance = data.balance;
             localStorage.setItem('player_balance', balance);
             updateBalanceDisplay();
         }
-    } catch (err) { console.error(err); }
+    } catch(e) {}
 }
 
 function updateBalanceDisplay() {
@@ -391,10 +410,7 @@ function updateBalanceDisplay() {
 async function loadDraws() {
     if (!authToken) return;
     try {
-        const res = await fetch(`${API_URL}/draws`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
-        if (!res.ok) throw new Error('Erreur chargement tirages');
+        const res = await fetch(`${API_URL}/draws`, { headers: { 'Authorization': `Bearer ${authToken}` } });
         const data = await res.json();
         draws = data.draws || [];
         if (draws.length > 0) {
@@ -402,19 +418,13 @@ async function loadDraws() {
             currentDraw = draws[0];
             renderDraws();
         }
-    } catch (err) {
-        console.error('Erreur loadDraws:', err);
-        draws = [];
-    }
+    } catch(e) { draws = []; }
 }
 
 function renderDraws() {
     const container = document.getElementById('draws-container');
     if (!container) return;
-    if (draws.length === 0) {
-        container.innerHTML = '<div class="empty-msg">Aucun tirage disponible</div>';
-        return;
-    }
+    if (draws.length === 0) { container.innerHTML = '<div class="empty-msg">Aucun tirage</div>'; return; }
     container.innerHTML = draws.map(draw => `
         <div class="draw-card ${currentDrawId === draw.id ? 'selected' : ''}" onclick="selectDraw('${draw.id}')">
             <div class="draw-name">${draw.name}</div>
@@ -424,41 +434,220 @@ function renderDraws() {
 }
 
 function selectDraw(drawId) {
-    currentDrawId = drawId;
-    currentDraw = draws.find(d => d.id === drawId);
+    const id = parseInt(drawId, 10);
+    currentDrawId = id;
+    currentDraw = draws.find(d => d.id === id);
     renderDraws();
-    checkDrawBlocked();
+    document.getElementById('draw-blocked-warning').style.display = (currentDraw && !currentDraw.active) ? 'flex' : 'none';
 }
 
-async function checkDrawBlocked() {
-    const draw = draws.find(d => d.id === currentDrawId);
-    if (!draw) return;
-    const warning = document.getElementById('draw-blocked-warning');
-    if (!draw.active) {
-        warning.style.display = 'flex';
+// ==================== GESTION DES JEUX ====================
+function selectMainGame(game) {
+    document.querySelectorAll('#game-types .chip').forEach(c => c.classList.remove('active'));
+    document.querySelector(`#game-types .chip[data-game="${game}"]`).classList.add('active');
+    document.getElementById('numeric-chips').style.display = 'none';
+    document.getElementById('lotto-games').style.display = 'none';
+    document.getElementById('special-games').style.display = 'none';
+    if (game === 'lotto') {
+        document.getElementById('lotto-games').style.display = 'flex';
+        document.getElementById('special-games').style.display = 'none';
+        selectGame('lotto3');
+    } else if (game === 'special') {
+        document.getElementById('special-games').style.display = 'flex';
+        document.getElementById('lotto-games').style.display = 'none';
+        selectGame('bo');
     } else {
-        warning.style.display = 'none';
+        selectGame('borlette');
+    }
+}
+
+function toggleNumericChips() {
+    const container = document.getElementById('numeric-chips');
+    const isVisible = container.style.display === 'flex';
+    container.style.display = isVisible ? 'none' : 'flex';
+    if (!isVisible) {
+        document.getElementById('lotto-games').style.display = 'none';
+        document.getElementById('special-games').style.display = 'none';
+        selectGame('n0');
+    }
+}
+
+function selectGame(game) {
+    selectedGame = game;
+    document.querySelectorAll('.sub-game-btn, .numeric-chip').forEach(btn => btn.classList.remove('active'));
+    if (game.startsWith('n')) {
+        document.querySelector(`.numeric-chip[onclick="selectGame('${game}')"]`).classList.add('active');
+    } else {
+        const btns = document.querySelectorAll(`.sub-game-btn[onclick="selectGame('${game}')"]`);
+        if (btns.length) btns[0].classList.add('active');
+    }
+    const numInput = document.getElementById('num-input');
+    const autoGames = ['auto_marriage', 'auto_lotto4', 'auto_lotto5', 'bo', 'grap'];
+    if (autoGames.includes(game) || game.startsWith('n')) {
+        numInput.disabled = true;
+        numInput.value = '';
+        numInput.placeholder = 'Auto-généré';
+    } else {
+        numInput.disabled = false;
+        let placeholder = '00';
+        if (game === 'lotto3') placeholder = '000';
+        else if (game === 'lotto4' || game === 'mariage') placeholder = '0000';
+        else if (game === 'lotto5') placeholder = '00000';
+        numInput.placeholder = placeholder;
+        numInput.focus();
+    }
+    // Afficher options lotto4/5
+    document.getElementById('lotto4-options').style.display = (game === 'lotto4' || game === 'auto_lotto4') ? 'flex' : 'none';
+    document.getElementById('lotto5-options').style.display = (game === 'lotto5' || game === 'auto_lotto5') ? 'flex' : 'none';
+}
+
+function toggleLottoOption(gameType, option) {
+    if (gameType === 4) {
+        lotto4Options[option-1] = !lotto4Options[option-1];
+        const chip = document.querySelector(`#lotto4-options .option-chip[data-option="${option}"]`);
+        if (chip) chip.classList.toggle('active');
+    } else if (gameType === 5) {
+        lotto5Options[option-1] = !lotto5Options[option-1];
+        const chip = document.querySelector(`#lotto5-options .option-chip[data-option="${option}"]`);
+        if (chip) chip.classList.toggle('active');
     }
 }
 
 // ==================== PANIER ====================
+function getCleanNumber(num) {
+    return num.toString().replace(/[-&]/g, '');
+}
+
 function addBet() {
     if (!currentDrawId) { alert('Choisissez un tirage'); return; }
-    const num = document.getElementById('num-input').value.trim();
     const amt = parseFloat(document.getElementById('amt-input').value);
     if (isNaN(amt) || amt <= 0) { alert('Montant invalide'); return; }
-    if (num.length !== 2) { alert('Entrez un numéro à 2 chiffres'); return; }
-    const cleanNum = num.padStart(2, '0');
     if (amt > balance) { alert('Solde insuffisant'); return; }
-    currentCart.push({
-        id: Date.now(),
-        game: 'borlette',
-        number: cleanNum,
-        cleanNumber: cleanNum,
-        amount: amt,
-        drawId: currentDrawId,
-        drawName: currentDraw.name
-    });
+
+    // Jeux spéciaux auto
+    if (selectedGame === 'auto_marriage' || selectedGame === 'auto_lotto4' || selectedGame === 'auto_lotto5' || selectedGame === 'bo' || selectedGame === 'grap' || selectedGame.startsWith('n')) {
+        let autoBets = [];
+        if (selectedGame === 'auto_marriage') {
+            const borletteNumbers = currentCart.filter(b => b.game === 'borlette' && getCleanNumber(b.number).length === 2).map(b => getCleanNumber(b.number));
+            const unique = [...new Set(borletteNumbers)];
+            for (let i = 0; i < unique.length; i++) {
+                for (let j = i+1; j < unique.length; j++) {
+                    autoBets.push({ game: 'mariage', number: unique[i]+'&'+unique[j], cleanNumber: unique[i]+unique[j], amount: amt });
+                }
+            }
+        } else if (selectedGame === 'auto_lotto4') {
+            const borletteNumbers = currentCart.filter(b => b.game === 'borlette' && getCleanNumber(b.number).length === 2).map(b => getCleanNumber(b.number));
+            const unique = [...new Set(borletteNumbers)];
+            for (let i = 0; i < unique.length; i++) {
+                for (let j = 0; j < unique.length; j++) {
+                    if (i !== j) autoBets.push({ game: 'lotto4', number: unique[i]+'-'+unique[j], cleanNumber: unique[i]+unique[j], amount: amt });
+                }
+            }
+        } else if (selectedGame === 'auto_lotto5') {
+            const lotto3Numbers = currentCart.filter(b => b.game === 'lotto3' && getCleanNumber(b.number).length === 3).map(b => getCleanNumber(b.number));
+            const unique = [...new Set(lotto3Numbers)];
+            for (let i = 0; i < unique.length; i++) {
+                for (let j = 0; j < unique.length; j++) {
+                    if (i !== j) autoBets.push({ game: 'lotto5', number: unique[i]+'-'+unique[j].slice(-2), cleanNumber: unique[i]+unique[j].slice(-2), amount: amt });
+                }
+            }
+        } else if (selectedGame === 'bo') {
+            for (let i = 0; i < 100; i++) {
+                const num = i.toString().padStart(2,'0');
+                if (num[0] === num[1]) autoBets.push({ game: 'borlette', number: num, cleanNumber: num, amount: amt });
+            }
+        } else if (selectedGame === 'grap') {
+            for (let i = 0; i < 10; i++) {
+                const num = i.toString().repeat(3);
+                autoBets.push({ game: 'lotto3', number: num, cleanNumber: num, amount: amt });
+            }
+        } else if (selectedGame.startsWith('n')) {
+            const digit = parseInt(selectedGame[1]);
+            for (let i = 0; i < 100; i++) {
+                const num = i.toString().padStart(2,'0');
+                if (parseInt(num[1]) === digit) autoBets.push({ game: 'borlette', number: num, cleanNumber: num, amount: amt });
+            }
+        }
+        if (autoBets.length === 0) { alert('Aucune combinaison générée'); return; }
+        for (let bet of autoBets) {
+            currentCart.push({
+                id: Date.now()+Math.random(),
+                ...bet,
+                drawId: currentDrawId,
+                drawName: currentDraw.name,
+                timestamp: new Date().toISOString()
+            });
+        }
+        renderCart();
+        document.getElementById('amt-input').value = '';
+        document.getElementById('num-input').focus();
+        return;
+    }
+
+    // Jeux normaux avec saisie manuelle
+    let num = document.getElementById('num-input').value.trim();
+    if (!num) { alert('Entrez un numéro'); return; }
+    let clean = getCleanNumber(num);
+    let isValid = false;
+    if (selectedGame === 'borlette') isValid = /^\d{2}$/.test(clean);
+    else if (selectedGame === 'lotto3') isValid = /^\d{3}$/.test(clean);
+    else if (selectedGame === 'lotto4') isValid = /^\d{4}$/.test(clean);
+    else if (selectedGame === 'lotto5') isValid = /^\d{5}$/.test(clean);
+    else if (selectedGame === 'mariage') isValid = /^\d{4}$/.test(clean);
+    if (!isValid) { alert('Format invalide pour ce jeu'); return; }
+
+    // Pour lotto4/5, gérer les options
+    if (selectedGame === 'lotto4') {
+        for (let i = 0; i < 3; i++) {
+            if (lotto4Options[i]) {
+                currentCart.push({
+                    id: Date.now()+Math.random()+i,
+                    game: 'lotto4',
+                    number: clean.slice(0,2)+'-'+clean.slice(2,4),
+                    cleanNumber: clean,
+                    amount: amt,
+                    option: i+1,
+                    drawId: currentDrawId,
+                    drawName: currentDraw.name
+                });
+            }
+        }
+    } else if (selectedGame === 'lotto5') {
+        for (let i = 0; i < 3; i++) {
+            if (lotto5Options[i]) {
+                currentCart.push({
+                    id: Date.now()+Math.random()+i,
+                    game: 'lotto5',
+                    number: clean.slice(0,3)+'-'+clean.slice(3,5),
+                    cleanNumber: clean,
+                    amount: amt,
+                    option: i+1,
+                    drawId: currentDrawId,
+                    drawName: currentDraw.name
+                });
+            }
+        }
+    } else if (selectedGame === 'mariage') {
+        currentCart.push({
+            id: Date.now(),
+            game: 'mariage',
+            number: clean.slice(0,2)+'&'+clean.slice(2,4),
+            cleanNumber: clean,
+            amount: amt,
+            drawId: currentDrawId,
+            drawName: currentDraw.name
+        });
+    } else {
+        currentCart.push({
+            id: Date.now(),
+            game: selectedGame,
+            number: clean,
+            cleanNumber: clean,
+            amount: amt,
+            drawId: currentDrawId,
+            drawName: currentDraw.name
+        });
+    }
     renderCart();
     document.getElementById('num-input').value = '';
     document.getElementById('amt-input').value = '';
@@ -471,21 +660,23 @@ function removeBet(id) {
 }
 
 function renderCart() {
-    const cartDisplay = document.getElementById('cart-display');
+    const container = document.getElementById('cart-display');
     const totalEl = document.getElementById('cart-total-display');
     const itemsCount = document.getElementById('items-count');
     if (currentCart.length === 0) {
-        cartDisplay.innerHTML = '<div class="empty-msg">Panier vide</div>';
+        container.innerHTML = '<div class="empty-msg">Panier vide</div>';
         totalEl.innerText = '0 G';
         itemsCount.innerText = '0';
         return;
     }
     let total = 0;
-    cartDisplay.innerHTML = currentCart.map(bet => {
+    container.innerHTML = currentCart.map(bet => {
         total += bet.amount;
+        let displayNumber = bet.number;
+        if (bet.game === 'mariage') displayNumber = bet.number.replace('&', '*');
         return `
             <div class="cart-item">
-                <span>${bet.game} ${bet.number}</span>
+                <span>${bet.game} ${displayNumber}</span>
                 <span>${bet.amount} G</span>
                 <button onclick="removeBet(${bet.id})">✕</button>
             </div>
@@ -495,12 +686,13 @@ function renderCart() {
     itemsCount.innerText = currentCart.length;
 }
 
+// ==================== ENREGISTREMENT TICKET ====================
 async function processFinalTicket() {
     if (currentCart.length === 0) { alert('Panier vide'); return; }
     const total = currentCart.reduce((s,b) => s + b.amount, 0);
     if (total > balance) { alert('Solde insuffisant'); return; }
-    if (!authToken) { alert('Session expirée, reconnectez-vous'); return; }
-    
+    if (!authToken) { alert('Session expirée'); return; }
+
     const payload = {
         drawId: currentDrawId,
         drawName: currentDraw.name,
@@ -510,18 +702,14 @@ async function processFinalTicket() {
         playerName: playerName
     };
     try {
-        // ✅ URL MODIFIÉE pour utiliser la route dédiée joueur
         const res = await fetch(`${API_URL}/player/tickets/save`, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${authToken}`
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
             body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (res.ok) {
-            alert('Ticket enregistré avec succès !');
+            alert('Ticket enregistré !');
             printThermalTicket(data.ticket);
             currentCart = [];
             renderCart();
@@ -529,17 +717,16 @@ async function processFinalTicket() {
             await loadPlayerHistory();
             await loadTransactions();
         } else {
-            alert('Erreur : ' + (data.error || 'Inconnue'));
+            alert('Erreur: ' + (data.error || 'Inconnue'));
         }
     } catch (err) {
-        console.error(err);
         alert('Erreur réseau');
     }
 }
 
 function printThermalTicket(ticket) {
     const win = window.open('', '_blank', 'width=500,height=700');
-    if (!win) { alert('Autorisez les pop-ups pour imprimer'); return; }
+    if (!win) { alert('Autorisez les pop-ups'); return; }
     const html = generateTicketHTML(ticket);
     win.document.write(html);
     win.document.close();
@@ -547,169 +734,92 @@ function printThermalTicket(ticket) {
 }
 
 function generateTicketHTML(ticket) {
-    const cfg = { name: 'LOTATO PRO', slogan: '' };
     const date = new Date(ticket.date).toLocaleString('fr-FR');
-    const bets = ticket.bets || [];
-    const betsHTML = Array.isArray(bets) ? bets.map(b => `
-        <div class="bet-row">
-            <span>${b.game} ${b.number}</span>
-            <span>${b.amount} G</span>
-        </div>
-    `).join('') : '';
+    const betsHTML = (ticket.bets || []).map(b => `<div style="display:flex;justify-content:space-between;"><span>${b.game} ${b.number}</span><span>${b.amount} G</span></div>`).join('');
     return `
         <!DOCTYPE html>
-        <html>
-        <head><title>Ticket</title><style>
+        <html><head><title>Ticket</title><style>
             @page{size:80mm auto;margin:2mm}
             body{font-family:'Courier New',monospace;font-size:32px;width:76mm;margin:0 auto;padding:4mm;background:white;color:black}
             .header{text-align:center;border-bottom:2px dashed #000;margin-bottom:10px}
-            .bet-row{display:flex;justify-content:space-between;margin:5px 0}
             .total-row{display:flex;justify-content:space-between;font-weight:bold;margin-top:10px;border-top:1px solid #000;padding-top:5px}
-            .footer{text-align:center;margin-top:20px;font-size:24px}
         </style></head>
         <body>
-            <div class="header"><h1>${cfg.name}</h1><div>${cfg.slogan}</div></div>
+            <div class="header"><h1>LOTATO PRO</h1></div>
             <div>Ticket: ${ticket.ticket_id}</div>
             <div>Tirage: ${ticket.draw_name}</div>
             <div>Date: ${date}</div>
             <hr>${betsHTML}<hr>
             <div class="total-row"><span>TOTAL</span><span>${ticket.total_amount} G</span></div>
             <div class="footer">Merci de jouer responsable</div>
-        </body>
-        </html>
+        </body></html>
     `;
 }
 
-// ==================== HISTORIQUE ====================
+// ==================== HISTORIQUE & TRANSACTIONS ====================
 async function loadPlayerHistory() {
     const container = document.getElementById('history-container');
-    if (!container) return;
-    if (!authToken) return;
-    
-    container.innerHTML = '<div class="empty-msg">Chargement...</div>';
+    if (!container || !authToken) return;
+    container.innerHTML = 'Chargement...';
     try {
-        // ✅ URL MODIFIÉE pour utiliser la route dédiée joueur
-        const res = await fetch(`${API_URL}/player/tickets`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
+        const res = await fetch(`${API_URL}/player/tickets`, { headers: { 'Authorization': `Bearer ${authToken}` } });
         const data = await res.json();
         const tickets = data.tickets || [];
-        if (tickets.length === 0) {
-            container.innerHTML = '<div class="empty-msg">Aucun ticket</div>';
-            return;
-        }
+        if (tickets.length === 0) { container.innerHTML = '<div class="empty-msg">Aucun ticket</div>'; return; }
         container.innerHTML = tickets.map(t => `
             <div class="history-item">
-                <div>
-                    <strong>${t.draw_name}</strong><br>
-                    <small>${new Date(t.date).toLocaleString()}</small>
-                </div>
-                <div>
-                    ${t.total_amount} G<br>
-                    ${t.win_amount > 0 ? `<span class="profit">+${t.win_amount} G</span>` : ''}
-                </div>
+                <div><strong>${t.draw_name}</strong><br><small>${new Date(t.date).toLocaleString()}</small></div>
+                <div>${t.total_amount} G<br>${t.win_amount > 0 ? `<span class="profit">+${t.win_amount} G</span>` : ''}</div>
             </div>
         `).join('');
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = '<div class="empty-msg">Erreur chargement</div>';
-    }
+    } catch(e) { container.innerHTML = '<div class="empty-msg">Erreur chargement</div>'; }
 }
 
-// ==================== TRANSACTIONS ====================
 async function loadTransactions() {
     const container = document.getElementById('transactions-container');
-    if (!container) return;
-    if (!authToken) return;
-    
-    container.innerHTML = '<div class="empty-msg">Chargement...</div>';
+    if (!container || !authToken) return;
+    container.innerHTML = 'Chargement...';
     try {
-        const res = await fetch(`${API_URL}/player/transactions`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
+        const res = await fetch(`${API_URL}/player/transactions`, { headers: { 'Authorization': `Bearer ${authToken}` } });
         const data = await res.json();
         const transactions = data.transactions || [];
-        if (transactions.length === 0) {
-            container.innerHTML = '<div class="empty-msg">Aucune transaction</div>';
-            return;
-        }
+        if (transactions.length === 0) { container.innerHTML = '<div class="empty-msg">Aucune transaction</div>'; return; }
         container.innerHTML = transactions.map(t => `
             <div class="transaction">
                 <span>${new Date(t.created_at).toLocaleString()}</span>
-                <span class="${t.type === 'deposit' ? 'profit' : (t.type === 'bet' ? 'loss' : 'profit')}">
-                    ${t.type === 'deposit' ? '+' : (t.type === 'bet' ? '-' : '+')} ${t.amount} G
-                </span>
+                <span class="${t.type === 'deposit' ? 'profit' : 'loss'}">${t.type === 'deposit' ? '+' : '-'} ${t.amount} G</span>
                 <span>${t.description || t.type}</span>
             </div>
         `).join('');
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = '<div class="empty-msg">Erreur chargement</div>';
-    }
+    } catch(e) { container.innerHTML = '<div class="empty-msg">Erreur chargement</div>'; }
 }
 
-// ==================== RECHARGE / RETRAIT ====================
+// ==================== RECHARGE / RETRAIT (simulé) ====================
 function showRechargeForm() {
     document.getElementById('recharge-form-container').style.display = 'block';
     document.getElementById('withdraw-form-container').style.display = 'none';
-    document.getElementById('recharge-result').innerHTML = '';
 }
 function showWithdrawForm() {
     document.getElementById('withdraw-form-container').style.display = 'block';
     document.getElementById('recharge-form-container').style.display = 'none';
-    document.getElementById('withdraw-result').innerHTML = '';
 }
-async function submitRecharge() {
-    const method = document.getElementById('recharge-method').value;
+function submitRecharge() {
     const amount = parseFloat(document.getElementById('recharge-amount').value);
-    const resultDiv = document.getElementById('recharge-result');
-    if (isNaN(amount) || amount <= 0) {
-        resultDiv.innerHTML = '<div class="loss">Montant invalide</div>';
-        return;
-    }
-    resultDiv.innerHTML = '<div class="empty-msg">Traitement en cours...</div>';
-    
-    if (method === 'cash') {
-        const code = 'RECH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-        resultDiv.innerHTML = `
-            <div class="code-display">Code: ${code}</div>
-            <div>Montant: ${amount} G</div>
-            <div>Veuillez présenter ce code à un agent pour valider la recharge.</div>
-            <div class="profit">Le solde sera crédité après validation par l'agent.</div>
-        `;
-    } else {
-        resultDiv.innerHTML = `<div class="code-display">⚠️ Les paiements par ${method.toUpperCase()} doivent être effectués auprès d’un agent.</div>`;
-    }
+    if (isNaN(amount) || amount <= 0) { alert('Montant invalide'); return; }
+    const code = 'RECH-' + Date.now() + '-' + Math.random().toString(36).substr(2,6).toUpperCase();
+    document.getElementById('recharge-result').innerHTML = `<div class="code-display">Code: ${code}</div><div>Présentez ce code à un agent pour recharger ${amount} G.</div>`;
     document.getElementById('recharge-amount').value = '';
 }
-async function submitWithdraw() {
-    const method = document.getElementById('withdraw-method').value;
+function submitWithdraw() {
     const amount = parseFloat(document.getElementById('withdraw-amount').value);
-    const resultDiv = document.getElementById('withdraw-result');
-    if (isNaN(amount) || amount <= 0) {
-        resultDiv.innerHTML = '<div class="loss">Montant invalide</div>';
-        return;
-    }
-    if (amount > balance) {
-        resultDiv.innerHTML = '<div class="loss">Solde insuffisant</div>';
-        return;
-    }
-    resultDiv.innerHTML = '<div class="empty-msg">Traitement en cours...</div>';
-    if (method === 'cash') {
-        const code = 'WDR-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-        resultDiv.innerHTML = `
-            <div class="code-display">Code retrait: ${code}</div>
-            <div>Montant: ${amount} G</div>
-            <div>Veuillez présenter ce code à un agent pour recevoir l'argent.</div>
-            <div class="loss">Le solde sera débité après validation par l'agent.</div>
-        `;
-    } else {
-        resultDiv.innerHTML = `<div class="code-display">⚠️ Les retraits par ${method.toUpperCase()} doivent être effectués auprès d’un agent.</div>`;
-    }
+    if (isNaN(amount) || amount <= 0) { alert('Montant invalide'); return; }
+    if (amount > balance) { alert('Solde insuffisant'); return; }
+    const code = 'WDR-' + Date.now() + '-' + Math.random().toString(36).substr(2,6).toUpperCase();
+    document.getElementById('withdraw-result').innerHTML = `<div class="code-display">Code: ${code}</div><div>Présentez ce code à un agent pour retirer ${amount} G.</div>`;
     document.getElementById('withdraw-amount').value = '';
 }
 
-// ==================== PROFIL ====================
+// ==================== PROFIL & ONGLETS ====================
 function updateProfile() {
     document.getElementById('profile-name').innerText = playerName;
     document.getElementById('profile-phone').innerText = playerPhone;
@@ -717,7 +827,6 @@ function updateProfile() {
     document.getElementById('profile-balance').innerHTML = balance.toLocaleString() + ' G';
 }
 
-// ==================== UTILITAIRES ====================
 function setupTabs() {
     const tabs = document.querySelectorAll('.tab');
     tabs.forEach(tab => {
@@ -733,20 +842,18 @@ function setupTabs() {
         });
     });
 }
-function setupInputEvents() {
-    const addBtn = document.getElementById('add-bet-btn');
-    if (addBtn) addBtn.addEventListener('click', addBet);
-    const amtInput = document.getElementById('amt-input');
-    if (amtInput) amtInput.addEventListener('keypress', e => { if(e.key === 'Enter') addBet(); });
-}
-function updateClock() {}
+
 function logout() {
     localStorage.clear();
     window.location.reload();
 }
 
-// Exposer les fonctions globales
+// Expositions globales pour les appels onclick
 window.selectDraw = selectDraw;
+window.selectMainGame = selectMainGame;
+window.toggleNumericChips = toggleNumericChips;
+window.selectGame = selectGame;
+window.toggleLottoOption = toggleLottoOption;
 window.addBet = addBet;
 window.removeBet = removeBet;
 window.processFinalTicket = processFinalTicket;
