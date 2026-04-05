@@ -343,14 +343,26 @@ app.post('/api/auth/logout', authenticate, async (req, res) => {
 // ==================== Inscription joueur (publique) ====================
 app.post('/api/auth/player/register', async (req, res) => {
   const { name, phone, password, zone, ownerId } = req.body;
+  console.log("=== INSCRIPTION JOUEUR ===");
+  console.log("Données reçues:", { name, phone, password: password ? "***" : undefined, zone, ownerId });
+
   if (!name || !phone || !password || !ownerId) {
     return res.status(400).json({ error: 'Nom, téléphone, mot de passe et propriétaire requis' });
   }
+
   try {
+    // Vérifier que le propriétaire existe et est actif
     const ownerCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2 AND blocked = false', [ownerId, 'owner']);
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Borlette invalide ou inactive' });
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Borlette invalide ou inactive' });
+    }
+
+    // Vérifier l'unicité du téléphone
     const existing = await pool.query('SELECT id FROM players WHERE phone = $1', [phone]);
-    if (existing.rows.length > 0) return res.status(400).json({ error: 'Ce numéro est déjà utilisé' });
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Ce numéro est déjà utilisé' });
+    }
+
     const hashed = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO players (name, phone, password, zone, owner_id, balance, created_at, updated_at)
@@ -358,41 +370,28 @@ app.post('/api/auth/player/register', async (req, res) => {
        RETURNING id, name, phone, balance`,
       [name, phone, hashed, zone || null, ownerId]
     );
+
     const player = result.rows[0];
-    const token = jwt.sign({ id: player.id, role: 'player', name: player.name, phone: player.phone, ownerId }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ success: true, token, playerId: player.id, name: player.name, balance: parseFloat(player.balance) });
+    const token = jwt.sign(
+      { id: player.id, role: 'player', name: player.name, phone: player.phone, ownerId },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      playerId: player.id,
+      name: player.name,
+      balance: parseFloat(player.balance)
+    });
   } catch (err) {
-    console.error('❌ Erreur inscription joueur:', err);
-    res.status(500).json({ error: err.message });
+    console.error('❌ ERREUR DÉTAILLÉE inscription joueur:', err);
+    console.error('Stack:', err.stack);
+    // Renvoyer le message d'erreur exact (important pour le débogage)
+    res.status(500).json({ error: err.message, details: err.toString() });
   }
 });
-
-app.post('/api/auth/player/login', async (req, res) => {
-  const { phone, password } = req.body;
-  if (!phone || !password) return res.status(400).json({ error: 'Téléphone et mot de passe requis' });
-  try {
-    const result = await pool.query('SELECT id, name, phone, password, balance, owner_id FROM players WHERE phone = $1', [phone]);
-    if (result.rows.length === 0) return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
-    const player = result.rows[0];
-    const valid = await bcrypt.compare(password, player.password);
-    if (!valid) return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
-    const token = jwt.sign({ id: player.id, role: 'player', name: player.name, phone: player.phone, ownerId: player.owner_id }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ success: true, token, playerId: player.id, name: player.name, balance: parseFloat(player.balance) });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-app.get('/api/owners/active', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT id, name FROM users WHERE role = $1 AND blocked = false ORDER BY name', ['owner']);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
 // ==================== Routes communes (draws, limites, etc.) ====================
 app.get('/api/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
