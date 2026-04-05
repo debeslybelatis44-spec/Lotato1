@@ -392,6 +392,49 @@ app.post('/api/auth/player/register', async (req, res) => {
     res.status(500).json({ error: err.message, details: err.toString() });
   }
 });
+// Connexion joueur
+app.post('/api/auth/player/login', async (req, res) => {
+  const { phone, password } = req.body;
+  console.log("🔐 Login joueur:", { phone });
+
+  if (!phone || !password) {
+    return res.status(400).json({ error: 'Téléphone et mot de passe requis' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT id, name, phone, password, balance, owner_id FROM players WHERE phone = $1',
+      [phone]
+    );
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
+    }
+
+    const player = result.rows[0];
+    const valid = await bcrypt.compare(password, player.password);
+    if (!valid) {
+      return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
+    }
+
+    const token = jwt.sign(
+      { id: player.id, role: 'player', name: player.name, phone: player.phone, ownerId: player.owner_id },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      playerId: player.id,
+      name: player.name,
+      balance: parseFloat(player.balance),
+      ownerId: player.owner_id
+    });
+  } catch (err) {
+    console.error('❌ Erreur login joueur:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 // ==================== Routes communes (draws, limites, etc.) ====================
 app.get('/api/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
