@@ -1822,6 +1822,45 @@ app.get('/api/owner/player-tickets/:playerId', authenticate, requireRole('owner'
     res.json({ tickets: result.rows });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
+// ==================== Routes pour agents (recherche joueurs) ====================
+// Récupérer un joueur par téléphone
+app.get('/api/users/by-phone', authenticate, requireStaff, async (req, res) => {
+  const { phone, role } = req.query;
+  if (!phone || role !== 'player') {
+    return res.status(400).json({ error: 'Téléphone et role=player requis' });
+  }
+  try {
+    const result = await pool.query(
+      'SELECT id, name, phone, zone, balance FROM players WHERE phone = $1',
+      [phone]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Joueur non trouvé' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Obtenir le solde d'un joueur par son ID
+app.get('/api/player/balance-by-id', authenticate, requireStaff, async (req, res) => {
+  const { playerId } = req.query;
+  if (!playerId) {
+    return res.status(400).json({ error: 'playerId requis' });
+  }
+  try {
+    const result = await pool.query('SELECT balance FROM players WHERE id = $1', [playerId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Joueur non trouvé' });
+    }
+    res.json({ balance: parseFloat(result.rows[0].balance) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
