@@ -1992,6 +1992,62 @@ app.get('/api/owner-settings/:ownerId', async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+// Statistiques individuelles d'un joueur (mises totales, gains)
+app.get('/api/owner/player-stats/:playerId', authenticate, requireRole('owner'), async (req, res) => {
+  const { playerId } = req.params;
+  const ownerId = req.user.id;
+  try {
+    const result = await pool.query(
+      `SELECT 
+         COALESCE(SUM(t.total_amount), 0) as totalBets,
+         COALESCE(SUM(t.win_amount), 0) as totalWins
+       FROM tickets t
+       WHERE t.owner_id = $1 AND t.player_id = $2`,
+      [ownerId, playerId]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Récupérer les messages envoyés à un joueur
+app.get('/api/owner/player-messages/:playerId', authenticate, requireRole('owner'), async (req, res) => {
+  const { playerId } = req.params;
+  const ownerId = req.user.id;
+  try {
+    // Table à créer si elle n'existe pas (player_messages)
+    const result = await pool.query(
+      'SELECT * FROM player_messages WHERE player_id = $1 AND owner_id = $2 ORDER BY created_at DESC',
+      [playerId, ownerId]
+    );
+    res.json({ messages: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Envoyer un message à un joueur
+app.post('/api/owner/send-player-message', authenticate, requireRole('owner'), async (req, res) => {
+  const { playerId, message } = req.body;
+  const ownerId = req.user.id;
+  if (!playerId || !message) {
+    return res.status(400).json({ error: 'PlayerId et message requis' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO player_messages (owner_id, player_id, message, created_at)
+       VALUES ($1, $2, $3, NOW())`,
+      [ownerId, playerId, message]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
