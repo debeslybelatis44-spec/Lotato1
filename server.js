@@ -2068,6 +2068,44 @@ app.get('/api/agent/transactions', authenticate, requireStaff, async (req, res) 
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+// Récupérer un joueur par son ID (pour modification)
+app.get('/api/owner/players/:id', authenticate, requireRole('owner'), async (req, res) => {
+  const { id } = req.params;
+  const ownerId = req.user.id;
+  try {
+    const result = await pool.query(
+      'SELECT id, name, phone as username, zone, balance FROM players WHERE id = $1 AND owner_id = $2',
+      [id, ownerId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Joueur non trouvé' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Alias pour créer un joueur (compatible avec l'appel /api/owner/create-player)
+app.post('/api/owner/create-player', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { name, phone, password, zone } = req.body;
+  if (!name || !phone || !password) {
+    return res.status(400).json({ error: 'Nom, téléphone et mot de passe requis' });
+  }
+  try {
+    const hashed = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      `INSERT INTO players (name, phone, password, zone, owner_id, balance, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 0, NOW(), NOW()) RETURNING id`,
+      [name, phone, hashed, zone || null, ownerId]
+    );
+    res.json({ success: true, playerId: result.rows[0].id });
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'Ce numéro de téléphone existe déjà' });
+    console.error(err);
+    res.status(500).json({ error: 'Erreur création joueur' });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
