@@ -2048,6 +2048,26 @@ app.post('/api/owner/send-player-message', authenticate, requireRole('owner'), a
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+// Récupérer les transactions (dépôts/retraits) des joueurs pour l'agent
+app.get('/api/agent/transactions', authenticate, requireStaff, async (req, res) => {
+  const ownerId = req.user.ownerId;
+  const limit = parseInt(req.query.limit) || 50;
+  try {
+    const result = await pool.query(
+      `SELECT t.*, p.name as player_name
+       FROM transactions t
+       JOIN players p ON t.player_id = p.id
+       WHERE p.owner_id = $1 AND t.type IN ('deposit', 'withdraw')
+       ORDER BY t.created_at DESC
+       LIMIT $2`,
+      [ownerId, limit]
+    );
+    res.json({ transactions: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {

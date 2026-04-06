@@ -1,12 +1,10 @@
-// recharge.js - Gestion des recharges et retraits de joueurs pour l'agent
+// recharge.js - Gestion des recharges et retraits avec historique
 (function() {
     if (window.rechargeManagerReady) return;
     window.rechargeManagerReady = true;
 
-    // Utiliser l'API_URL définie dans config.js
     const API_URL = window.API_URL || 'https://lotato1.onrender.com/api';
 
-    // ==================== Création de l'UI ====================
     function createRechargeUI() {
         if (document.getElementById('recharge-screen')) return;
 
@@ -26,6 +24,7 @@
                     <button class="recharge-tab active" data-tab="recharge">Recharger</button>
                     <button class="recharge-tab" data-tab="withdraw">Retirer</button>
                     <button class="recharge-tab" data-tab="balance">Consulter solde</button>
+                    <button class="recharge-tab" data-tab="history">Historique</button>
                 </div>
 
                 <div id="recharge-tab-content" class="recharge-tab-content active">
@@ -84,10 +83,20 @@
                         <div id="balance-result" class="recharge-result"></div>
                     </div>
                 </div>
+
+                <div id="history-tab-content" class="recharge-tab-content">
+                    <div class="recharge-form">
+                        <h3>Dernières transactions (dépôts/retraits)</h3>
+                        <div id="transactions-history" style="max-height: 400px; overflow-y: auto;">
+                            <p>Chargement...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
         main.appendChild(screen);
 
+        // Styles
         if (!document.getElementById('recharge-styles')) {
             const style = document.createElement('style');
             style.id = 'recharge-styles';
@@ -98,6 +107,7 @@
                     margin-bottom: 20px;
                     border-bottom: 1px solid rgba(255,255,255,0.1);
                     padding-bottom: 10px;
+                    flex-wrap: wrap;
                 }
                 .recharge-tab {
                     background: none;
@@ -172,6 +182,16 @@
                     border: 1px solid #ff4d4d;
                     color: #ff4d4d;
                 }
+                .transaction-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 10px;
+                    border-bottom: 1px solid rgba(255,255,255,0.1);
+                    flex-wrap: wrap;
+                }
+                .transaction-amount.positive { color: #00f190; font-weight: bold; }
+                .transaction-amount.negative { color: #ff4d4d; font-weight: bold; }
             `;
             document.head.appendChild(style);
         }
@@ -189,6 +209,7 @@
                 document.getElementById('recharge-screen').classList.add('active');
                 document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
                 this.classList.add('active');
+                loadTransactionsHistory();
             });
             nav.appendChild(tab);
         }
@@ -201,6 +222,7 @@
                 document.querySelectorAll('.recharge-tab-content').forEach(c => c.classList.remove('active'));
                 tab.classList.add('active');
                 document.getElementById(`${tabId}-tab-content`).classList.add('active');
+                if (tabId === 'history') loadTransactionsHistory();
             });
         });
 
@@ -209,18 +231,20 @@
         document.getElementById('btn-check-balance')?.addEventListener('click', checkPlayerBalance);
     }
 
-    // ==================== Fonctions API ====================
     async function getPlayerByPhone(phone) {
         const token = localStorage.getItem('auth_token');
-        const res = await fetch(`${API_URL}/users/by-phone?phone=${phone}&role=player`, {
+        const res = await fetch(`${API_URL}/player/by-phone?phone=${encodeURIComponent(phone)}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error('Joueur non trouvé');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Joueur non trouvé');
+        }
         return await res.json();
     }
 
     async function rechargePlayer() {
-        const phone = document.getElementById('player-phone-recharge').value;
+        const phone = document.getElementById('player-phone-recharge').value.trim();
         const amount = parseFloat(document.getElementById('recharge-amount').value);
         const method = document.getElementById('recharge-method').value;
         const resultDiv = document.getElementById('recharge-result');
@@ -241,12 +265,13 @@
                 body: JSON.stringify({ playerId: player.id, amount, method })
             });
             const data = await res.json();
-            if (data.success) {
+            if (res.ok && data.success) {
                 resultDiv.innerHTML = `<div class="recharge-result success">✅ Recharge de ${amount} G effectuée pour ${player.name}. Nouveau solde : ${data.balance} G</div>`;
                 document.getElementById('player-phone-recharge').value = '';
                 document.getElementById('recharge-amount').value = '';
+                loadTransactionsHistory();
             } else {
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error}</div>`;
+                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error || 'Erreur inconnue'}</div>`;
             }
         } catch (err) {
             resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
@@ -254,7 +279,7 @@
     }
 
     async function withdrawPlayer() {
-        const phone = document.getElementById('player-phone-withdraw').value;
+        const phone = document.getElementById('player-phone-withdraw').value.trim();
         const amount = parseFloat(document.getElementById('withdraw-amount').value);
         const method = document.getElementById('withdraw-method').value;
         const resultDiv = document.getElementById('withdraw-result');
@@ -275,12 +300,13 @@
                 body: JSON.stringify({ playerId: player.id, amount, method })
             });
             const data = await res.json();
-            if (data.success) {
+            if (res.ok && data.success) {
                 resultDiv.innerHTML = `<div class="recharge-result success">✅ Retrait de ${amount} G effectué pour ${player.name}. Nouveau solde : ${data.balance} G</div>`;
                 document.getElementById('player-phone-withdraw').value = '';
                 document.getElementById('withdraw-amount').value = '';
+                loadTransactionsHistory();
             } else {
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error}</div>`;
+                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error || 'Erreur inconnue'}</div>`;
             }
         } catch (err) {
             resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
@@ -288,7 +314,7 @@
     }
 
     async function checkPlayerBalance() {
-        const phone = document.getElementById('player-phone-balance').value;
+        const phone = document.getElementById('player-phone-balance').value.trim();
         const resultDiv = document.getElementById('balance-result');
 
         if (!phone) {
@@ -308,14 +334,47 @@
             if (data.balance !== undefined) {
                 resultDiv.innerHTML = `<div class="recharge-result success">💰 Solde de ${player.name} : ${data.balance.toLocaleString()} G</div>`;
             } else {
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error}</div>`;
+                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error || 'Impossible de récupérer le solde'}</div>`;
             }
         } catch (err) {
             resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
         }
     }
 
-    // ==================== Initialisation ====================
+    async function loadTransactionsHistory() {
+        const container = document.getElementById('transactions-history');
+        if (!container) return;
+        container.innerHTML = '<p>Chargement...</p>';
+        try {
+            const token = localStorage.getItem('auth_token');
+            const res = await fetch(`${API_URL}/agent/transactions`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                container.innerHTML = '<p>⚠️ Impossible de charger l\'historique.</p>';
+                return;
+            }
+            const data = await res.json();
+            const transactions = data.transactions || [];
+            if (transactions.length === 0) {
+                container.innerHTML = '<p>Aucune transaction récente.</p>';
+                return;
+            }
+            container.innerHTML = transactions.map(t => `
+                <div class="transaction-item">
+                    <div><strong>${t.player_name}</strong><br><small>${new Date(t.created_at).toLocaleString()}</small></div>
+                    <div class="transaction-amount ${t.type === 'deposit' ? 'positive' : 'negative'}">
+                        ${t.type === 'deposit' ? '+' : '-'} ${t.amount} G
+                    </div>
+                    <div>${t.method || 'cash'}</div>
+                </div>
+            `).join('');
+        } catch (err) {
+            console.error(err);
+            container.innerHTML = '<p>Erreur chargement historique.</p>';
+        }
+    }
+
     function init() {
         createRechargeUI();
     }
