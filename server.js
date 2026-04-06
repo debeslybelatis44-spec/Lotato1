@@ -2106,6 +2106,29 @@ app.post('/api/owner/create-player', authenticate, requireRole('owner'), async (
     res.status(500).json({ error: 'Erreur création joueur' });
   }
 });
+// Récupérer toutes les transactions d’un joueur (pour le propriétaire)
+app.get('/api/owner/player-transactions/:playerId', authenticate, requireRole('owner'), async (req, res) => {
+  const { playerId } = req.params;
+  const ownerId = req.user.id;
+  try {
+    const result = await pool.query(
+      `SELECT t.*, 
+              CASE WHEN t.type IN ('deposit', 'withdraw') THEN u.name ELSE NULL END as agent_name,
+              t.method
+       FROM transactions t
+       LEFT JOIN users u ON t.method LIKE '%' || u.id || '%'  -- approche simplifiée, idéalement stocker agent_id
+       WHERE t.player_id = $1
+       ORDER BY t.created_at DESC
+       LIMIT 100`,
+      [playerId]
+    );
+    // Si vous n'avez pas d'agent_id dans transactions, on peut simplement afficher les infos sans agent.
+    res.json({ transactions: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
