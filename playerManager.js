@@ -117,7 +117,7 @@
         return response.json();
     }
 
-    // ==================== Chargement liste joueurs ====================
+    // ==================== Chargement liste joueurs (CORRIGÉ) ====================
     async function loadPlayers() {
         const search = document.getElementById('player-search').value;
         const container = document.getElementById('players-list-container');
@@ -133,10 +133,20 @@
             document.getElementById('stat-total-players').innerText = players.length;
             document.getElementById('stat-total-balance').innerHTML = totalBalance.toLocaleString() + ' G';
 
-            const stats = await apiCall('/api/owner/player-stats');
-            document.getElementById('stat-total-bets').innerHTML = (stats.totalBets || 0).toLocaleString() + ' G';
-            document.getElementById('stat-total-wins').innerHTML = (stats.totalWins || 0).toLocaleString() + ' G';
-            const netResult = (stats.totalBets || 0) - (stats.totalWins || 0);
+            // Stats globales avec fallback
+            let globalStats = { totalBets: 0, totalWins: 0 };
+            try {
+                const res = await apiCall('/api/owner/player-stats');
+                globalStats = {
+                    totalBets: res.totalBets || 0,
+                    totalWins: res.totalWins || 0
+                };
+            } catch(e) {
+                console.warn('Erreur stats globales', e);
+            }
+            document.getElementById('stat-total-bets').innerHTML = (globalStats.totalBets || 0).toLocaleString() + ' G';
+            document.getElementById('stat-total-wins').innerHTML = (globalStats.totalWins || 0).toLocaleString() + ' G';
+            const netResult = (globalStats.totalBets || 0) - (globalStats.totalWins || 0);
             document.getElementById('stat-net-result').innerHTML = netResult.toLocaleString() + ' G';
             document.getElementById('stat-net-result').style.color = netResult >= 0 ? '#00f190' : '#ff4d4d';
 
@@ -144,13 +154,13 @@
             for (const p of players) {
                 let playerStats = { totalBets: 0, totalWins: 0 };
                 try {
-                    const stats = await apiCall(`/api/owner/player-stats/${p.id}`);
+                    const pstats = await apiCall(`/api/owner/player-stats/${p.id}`);
                     playerStats = {
-                        totalBets: stats.totalBets || 0,
-                        totalWins: stats.totalWins || 0
+                        totalBets: pstats.totalBets || 0,
+                        totalWins: pstats.totalWins || 0
                     };
                 } catch(e) {
-                    console.warn(`Stats non trouvées pour joueur ${p.id}`);
+                    // Garder les valeurs par défaut
                 }
                 const net = (playerStats.totalBets || 0) - (playerStats.totalWins || 0);
                 html += `
@@ -249,7 +259,7 @@
         }
     }
 
-    // ==================== Détails du joueur (tickets + transactions + messages) ====================
+    // ==================== Détails du joueur ====================
     async function viewPlayerDetails(playerId) {
         const modal = document.getElementById('player-details-modal');
         const contentDiv = document.getElementById('player-details-content');
@@ -277,7 +287,7 @@
             }
             ticketsHtml += '</tbody></table></div>';
 
-            // Transactions (dépôts, retraits, paris, gains)
+            // Transactions
             let transactionsHtml = '<h4>Transactions (dépôts, retraits, paris, gains)</h4><div class="table-responsive"><table class="players-table"><thead><tr><th>Type</th><th>Montant</th><th>Méthode</th><th>Description</th><th>Date</th></tr></thead><tbody>';
             try {
                 const transData = await apiCall(`/api/owner/player-transactions/${playerId}`);
