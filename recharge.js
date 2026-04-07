@@ -1,9 +1,73 @@
-// recharge.js - Gestion des recharges et retraits avec historique
+// recharge.js - Gestion des recharges et retraits avec messages visibles
 (function() {
     if (window.rechargeManagerReady) return;
     window.rechargeManagerReady = true;
 
     const API_URL = window.API_URL || 'https://lotato1.onrender.com/api';
+
+    // Injecte le style des toasts directement dans la page
+    function injectToastStyle() {
+        if (document.getElementById('recharge-toast-style')) return;
+        const style = document.createElement('style');
+        style.id = 'recharge-toast-style';
+        style.textContent = `
+            .toast-notification {
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 12px 24px;
+                border-radius: 30px;
+                font-weight: bold;
+                z-index: 2000;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                font-size: 14px;
+                text-align: center;
+                white-space: normal;
+                max-width: 90%;
+                transition: opacity 0.3s;
+            }
+            .toast-notification.success {
+                background: #00f190;
+                color: #000;
+            }
+            .toast-notification.error {
+                background: #ff4d4d;
+                color: #fff;
+            }
+            .recharge-result {
+                margin-top: 15px;
+                padding: 10px;
+                border-radius: 8px;
+                text-align: center;
+            }
+            .recharge-result.success {
+                background: rgba(0,241,144,0.2);
+                border: 1px solid #00f190;
+                color: #00f190;
+            }
+            .recharge-result.error {
+                background: rgba(255,77,77,0.2);
+                border: 1px solid #ff4d4d;
+                color: #ff4d4d;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function showToast(message, type = 'success') {
+        const existingToast = document.querySelector('.toast-notification');
+        if (existingToast) existingToast.remove();
+
+        const toast = document.createElement('div');
+        toast.className = `toast-notification ${type}`;
+        toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${message}`;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 500);
+        }, 3000);
+    }
 
     function createRechargeUI() {
         if (document.getElementById('recharge-screen')) return;
@@ -29,22 +93,9 @@
 
                 <div id="recharge-tab-content" class="recharge-tab-content active">
                     <div class="recharge-form">
-                        <div class="form-group">
-                            <label>Téléphone du joueur</label>
-                            <input type="tel" id="player-phone-recharge" placeholder="Ex: 50912345678">
-                        </div>
-                        <div class="form-group">
-                            <label>Montant (Gdes)</label>
-                            <input type="number" id="recharge-amount" placeholder="Montant">
-                        </div>
-                        <div class="form-group">
-                            <label>Méthode de paiement</label>
-                            <select id="recharge-method">
-                                <option value="cash">Espèces</option>
-                                <option value="moncash">MonCash</option>
-                                <option value="ourcash">OurCash</option>
-                            </select>
-                        </div>
+                        <div class="form-group"><label>Téléphone du joueur</label><input type="tel" id="player-phone-recharge" placeholder="Ex: 50912345678"></div>
+                        <div class="form-group"><label>Montant (Gdes)</label><input type="number" id="recharge-amount" placeholder="Montant"></div>
+                        <div class="form-group"><label>Méthode de paiement</label><select id="recharge-method"><option value="cash">Espèces</option><option value="moncash">MonCash</option><option value="ourcash">OurCash</option></select></div>
                         <button id="btn-recharge" class="btn-primary">Recharger</button>
                         <div id="recharge-result" class="recharge-result"></div>
                     </div>
@@ -52,22 +103,9 @@
 
                 <div id="withdraw-tab-content" class="recharge-tab-content">
                     <div class="recharge-form">
-                        <div class="form-group">
-                            <label>Téléphone du joueur</label>
-                            <input type="tel" id="player-phone-withdraw" placeholder="Ex: 50912345678">
-                        </div>
-                        <div class="form-group">
-                            <label>Montant à retirer (Gdes)</label>
-                            <input type="number" id="withdraw-amount" placeholder="Montant">
-                        </div>
-                        <div class="form-group">
-                            <label>Méthode de retrait</label>
-                            <select id="withdraw-method">
-                                <option value="cash">Espèces</option>
-                                <option value="moncash">MonCash</option>
-                                <option value="ourcash">OurCash</option>
-                            </select>
-                        </div>
+                        <div class="form-group"><label>Téléphone du joueur</label><input type="tel" id="player-phone-withdraw" placeholder="Ex: 50912345678"></div>
+                        <div class="form-group"><label>Montant à retirer (Gdes)</label><input type="number" id="withdraw-amount" placeholder="Montant"></div>
+                        <div class="form-group"><label>Méthode de retrait</label><select id="withdraw-method"><option value="cash">Espèces</option><option value="moncash">MonCash</option><option value="ourcash">OurCash</option></select></div>
                         <button id="btn-withdraw" class="btn-danger">Retirer</button>
                         <div id="withdraw-result" class="recharge-result"></div>
                     </div>
@@ -75,121 +113,37 @@
 
                 <div id="balance-tab-content" class="recharge-tab-content">
                     <div class="recharge-form">
-                        <div class="form-group">
-                            <label>Téléphone du joueur</label>
-                            <input type="tel" id="player-phone-balance" placeholder="Ex: 50912345678">
-                        </div>
+                        <div class="form-group"><label>Téléphone du joueur</label><input type="tel" id="player-phone-balance" placeholder="Ex: 50912345678"></div>
                         <button id="btn-check-balance" class="btn-primary">Voir solde</button>
                         <div id="balance-result" class="recharge-result"></div>
                     </div>
                 </div>
 
                 <div id="history-tab-content" class="recharge-tab-content">
-                    <div class="recharge-form">
-                        <h3>Dernières transactions (dépôts/retraits)</h3>
-                        <div id="transactions-history" style="max-height: 400px; overflow-y: auto;">
-                            <p>Chargement...</p>
-                        </div>
-                    </div>
+                    <div class="recharge-form"><h3>Dernières transactions (dépôts/retraits)</h3><div id="transactions-history" style="max-height: 400px; overflow-y: auto;"><p>Chargement...</p></div></div>
                 </div>
             </div>
         `;
         main.appendChild(screen);
 
-        // Styles
+        // Styles existants (complémentaires)
         if (!document.getElementById('recharge-styles')) {
             const style = document.createElement('style');
             style.id = 'recharge-styles';
             style.textContent = `
-                .recharge-tabs {
-                    display: flex;
-                    gap: 10px;
-                    margin-bottom: 20px;
-                    border-bottom: 1px solid rgba(255,255,255,0.1);
-                    padding-bottom: 10px;
-                    flex-wrap: wrap;
-                }
-                .recharge-tab {
-                    background: none;
-                    border: none;
-                    color: #aaa;
-                    padding: 10px 20px;
-                    cursor: pointer;
-                    font-weight: 600;
-                    transition: 0.2s;
-                }
-                .recharge-tab.active {
-                    color: #00d4ff;
-                    border-bottom: 2px solid #00d4ff;
-                }
-                .recharge-tab-content {
-                    display: none;
-                }
-                .recharge-tab-content.active {
-                    display: block;
-                }
-                .recharge-form {
-                    max-width: 500px;
-                    margin: 0 auto;
-                }
-                .form-group {
-                    margin-bottom: 15px;
-                }
-                .form-group label {
-                    display: block;
-                    margin-bottom: 5px;
-                    color: #aaa;
-                }
-                .form-group input, .form-group select {
-                    width: 100%;
-                    padding: 12px;
-                    background: rgba(0,0,0,0.3);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    border-radius: 12px;
-                    color: white;
-                    font-size: 1rem;
-                }
-                .btn-primary, .btn-danger {
-                    width: 100%;
-                    padding: 12px;
-                    border: none;
-                    border-radius: 30px;
-                    font-weight: bold;
-                    cursor: pointer;
-                    margin-top: 10px;
-                }
-                .btn-primary {
-                    background: linear-gradient(135deg, #ad00f1, #00d4ff);
-                    color: white;
-                }
-                .btn-danger {
-                    background: rgba(255,77,77,0.8);
-                    color: white;
-                }
-                .recharge-result {
-                    margin-top: 15px;
-                    padding: 10px;
-                    border-radius: 8px;
-                    text-align: center;
-                }
-                .recharge-result.success {
-                    background: rgba(0,241,144,0.2);
-                    border: 1px solid #00f190;
-                    color: #00f190;
-                }
-                .recharge-result.error {
-                    background: rgba(255,77,77,0.2);
-                    border: 1px solid #ff4d4d;
-                    color: #ff4d4d;
-                }
-                .transaction-item {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 10px;
-                    border-bottom: 1px solid rgba(255,255,255,0.1);
-                    flex-wrap: wrap;
-                }
+                .recharge-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; flex-wrap: wrap; }
+                .recharge-tab { background: none; border: none; color: #aaa; padding: 10px 20px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+                .recharge-tab.active { color: #00d4ff; border-bottom: 2px solid #00d4ff; }
+                .recharge-tab-content { display: none; }
+                .recharge-tab-content.active { display: block; }
+                .recharge-form { max-width: 500px; margin: 0 auto; }
+                .form-group { margin-bottom: 15px; }
+                .form-group label { display: block; margin-bottom: 5px; color: #aaa; }
+                .form-group input, .form-group select { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: white; font-size: 1rem; }
+                .btn-primary, .btn-danger { width: 100%; padding: 12px; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+                .btn-primary { background: linear-gradient(135deg, #ad00f1, #00d4ff); color: white; }
+                .btn-danger { background: rgba(255,77,77,0.8); color: white; }
+                .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; }
                 .transaction-amount.positive { color: #00f190; font-weight: bold; }
                 .transaction-amount.negative { color: #ff4d4d; font-weight: bold; }
             `;
@@ -250,11 +204,12 @@
         const resultDiv = document.getElementById('recharge-result');
 
         if (!phone || isNaN(amount) || amount <= 0) {
-            resultDiv.innerHTML = '<div class="recharge-result error">Veuillez remplir tous les champs correctement.</div>';
+            resultDiv.innerHTML = '<div class="recharge-result error">❌ Veuillez remplir tous les champs correctement.</div>';
+            showToast('Montant invalide', 'error');
             return;
         }
 
-        resultDiv.innerHTML = '<div class="recharge-result">Traitement en cours...</div>';
+        resultDiv.innerHTML = '<div class="recharge-result">⏳ Traitement en cours...</div>';
 
         try {
             const player = await getPlayerByPhone(phone);
@@ -266,15 +221,20 @@
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                resultDiv.innerHTML = `<div class="recharge-result success">✅ Recharge de ${amount} G effectuée pour ${player.name}. Nouveau solde : ${data.balance} G</div>`;
+                const msg = `✅ Recharge de ${amount} G effectuée pour ${player.name}. Nouveau solde : ${data.balance} G`;
+                resultDiv.innerHTML = `<div class="recharge-result success">${msg}</div>`;
+                showToast(`Recharge de ${amount} G réussie !`, 'success');
                 document.getElementById('player-phone-recharge').value = '';
                 document.getElementById('recharge-amount').value = '';
                 loadTransactionsHistory();
             } else {
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error || 'Erreur inconnue'}</div>`;
+                const errMsg = data.error || 'Erreur inconnue';
+                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${errMsg}</div>`;
+                showToast(`Erreur : ${errMsg}`, 'error');
             }
         } catch (err) {
             resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
+            showToast(`Erreur : ${err.message}`, 'error');
         }
     }
 
@@ -285,11 +245,12 @@
         const resultDiv = document.getElementById('withdraw-result');
 
         if (!phone || isNaN(amount) || amount <= 0) {
-            resultDiv.innerHTML = '<div class="recharge-result error">Veuillez remplir tous les champs correctement.</div>';
+            resultDiv.innerHTML = '<div class="recharge-result error">❌ Veuillez remplir tous les champs correctement.</div>';
+            showToast('Montant invalide', 'error');
             return;
         }
 
-        resultDiv.innerHTML = '<div class="recharge-result">Traitement en cours...</div>';
+        resultDiv.innerHTML = '<div class="recharge-result">⏳ Traitement en cours...</div>';
 
         try {
             const player = await getPlayerByPhone(phone);
@@ -301,15 +262,20 @@
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                resultDiv.innerHTML = `<div class="recharge-result success">✅ Retrait de ${amount} G effectué pour ${player.name}. Nouveau solde : ${data.balance} G</div>`;
+                const msg = `✅ Retrait de ${amount} G effectué pour ${player.name}. Nouveau solde : ${data.balance} G`;
+                resultDiv.innerHTML = `<div class="recharge-result success">${msg}</div>`;
+                showToast(`Retrait de ${amount} G effectué !`, 'success');
                 document.getElementById('player-phone-withdraw').value = '';
                 document.getElementById('withdraw-amount').value = '';
                 loadTransactionsHistory();
             } else {
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error || 'Erreur inconnue'}</div>`;
+                const errMsg = data.error || 'Erreur inconnue';
+                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${errMsg}</div>`;
+                showToast(`Erreur : ${errMsg}`, 'error');
             }
         } catch (err) {
             resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
+            showToast(`Erreur : ${err.message}`, 'error');
         }
     }
 
@@ -318,11 +284,12 @@
         const resultDiv = document.getElementById('balance-result');
 
         if (!phone) {
-            resultDiv.innerHTML = '<div class="recharge-result error">Veuillez saisir un numéro de téléphone.</div>';
+            resultDiv.innerHTML = '<div class="recharge-result error">❌ Veuillez saisir un numéro de téléphone.</div>';
+            showToast('Numéro requis', 'error');
             return;
         }
 
-        resultDiv.innerHTML = '<div class="recharge-result">Recherche en cours...</div>';
+        resultDiv.innerHTML = '<div class="recharge-result">⏳ Recherche en cours...</div>';
 
         try {
             const player = await getPlayerByPhone(phone);
@@ -332,12 +299,17 @@
             });
             const data = await res.json();
             if (data.balance !== undefined) {
-                resultDiv.innerHTML = `<div class="recharge-result success">💰 Solde de ${player.name} : ${data.balance.toLocaleString()} G</div>`;
+                const msg = `💰 Solde de ${player.name} : ${data.balance.toLocaleString()} G`;
+                resultDiv.innerHTML = `<div class="recharge-result success">${msg}</div>`;
+                showToast(msg, 'success');
             } else {
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${data.error || 'Impossible de récupérer le solde'}</div>`;
+                const errMsg = data.error || 'Impossible de récupérer le solde';
+                resultDiv.innerHTML = `<div class="recharge-result error">❌ ${errMsg}</div>`;
+                showToast(errMsg, 'error');
             }
         } catch (err) {
             resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
+            showToast(`Erreur : ${err.message}`, 'error');
         }
     }
 
@@ -376,6 +348,7 @@
     }
 
     function init() {
+        injectToastStyle();
         createRechargeUI();
     }
 
