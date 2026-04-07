@@ -198,45 +198,63 @@
     }
 
     async function rechargePlayer() {
-        const phone = document.getElementById('player-phone-recharge').value.trim();
-        const amount = parseFloat(document.getElementById('recharge-amount').value);
-        const method = document.getElementById('recharge-method').value;
-        const resultDiv = document.getElementById('recharge-result');
+    const phone = document.getElementById('player-phone-recharge').value.trim();
+    const amount = parseFloat(document.getElementById('recharge-amount').value);
+    const method = document.getElementById('recharge-method').value;
+    const resultDiv = document.getElementById('recharge-result');
 
-        if (!phone || isNaN(amount) || amount <= 0) {
-            resultDiv.innerHTML = '<div class="recharge-result error">❌ Veuillez remplir tous les champs correctement.</div>';
-            showToast('Montant invalide', 'error');
-            return;
-        }
-
-        resultDiv.innerHTML = '<div class="recharge-result">⏳ Traitement en cours...</div>';
-
-        try {
-            const player = await getPlayerByPhone(phone);
-            const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_URL}/player/deposit`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ playerId: player.id, amount, method })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                const msg = `✅ Recharge de ${amount} G effectuée pour ${player.name}. Nouveau solde : ${data.balance} G`;
-                resultDiv.innerHTML = `<div class="recharge-result success">${msg}</div>`;
-                showToast(`Recharge de ${amount} G réussie !`, 'success');
-                document.getElementById('player-phone-recharge').value = '';
-                document.getElementById('recharge-amount').value = '';
-                loadTransactionsHistory();
-            } else {
-                const errMsg = data.error || 'Erreur inconnue';
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${errMsg}</div>`;
-                showToast(`Erreur : ${errMsg}`, 'error');
-            }
-        } catch (err) {
-            resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
-            showToast(`Erreur : ${err.message}`, 'error');
-        }
+    if (!phone || isNaN(amount) || amount <= 0) {
+        resultDiv.innerHTML = '<div class="recharge-result error">❌ Veuillez remplir tous les champs correctement.</div>';
+        showToast('Montant invalide', 'error');
+        return;
     }
+
+    resultDiv.innerHTML = '<div class="recharge-result">⏳ Traitement en cours...</div>';
+
+    try {
+        const player = await getPlayerByPhone(phone);
+        const token = localStorage.getItem('auth_token');
+        
+        // Récupérer l'ancien solde
+        const oldBalanceRes = await fetch(`${API_URL}/player/balance-by-id?playerId=${player.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const oldBalanceData = await oldBalanceRes.json();
+        const oldBalance = oldBalanceData.balance || 0;
+
+        // Tenter le dépôt
+        const res = await fetch(`${API_URL}/player/deposit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ playerId: player.id, amount, method })
+        });
+        const data = await res.json();
+
+        // Vérifier le nouveau solde
+        const newBalanceRes = await fetch(`${API_URL}/player/balance-by-id?playerId=${player.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const newBalanceData = await newBalanceRes.json();
+        const newBalance = newBalanceData.balance || 0;
+
+        // Si le solde a augmenté du montant, c'est un succès
+        if (newBalance === oldBalance + amount) {
+            const msg = `✅ Recharge de ${amount} G effectuée pour ${player.name}. Nouveau solde : ${newBalance} G`;
+            resultDiv.innerHTML = `<div class="recharge-result success">${msg}</div>`;
+            showToast(`Recharge de ${amount} G réussie !`, 'success');
+            document.getElementById('player-phone-recharge').value = '';
+            document.getElementById('recharge-amount').value = '';
+            loadTransactionsHistory();
+        } else {
+            const errMsg = data.error || 'Erreur inconnue';
+            resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${errMsg}</div>`;
+            showToast(`Erreur : ${errMsg}`, 'error');
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
+        showToast(`Erreur : ${err.message}`, 'error');
+    }
+}
 
     async function withdrawPlayer() {
         const phone = document.getElementById('player-phone-withdraw').value.trim();
