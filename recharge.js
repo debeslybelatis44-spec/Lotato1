@@ -297,40 +297,64 @@
         }
     }
 
-    async function checkPlayerBalance() {
-        const phone = document.getElementById('player-phone-balance').value.trim();
-        const resultDiv = document.getElementById('balance-result');
+    async function withdrawPlayer() {
+    const phone = document.getElementById('player-phone-withdraw').value.trim();
+    const amount = parseFloat(document.getElementById('withdraw-amount').value);
+    const method = document.getElementById('withdraw-method').value;
+    const resultDiv = document.getElementById('withdraw-result');
 
-        if (!phone) {
-            resultDiv.innerHTML = '<div class="recharge-result error">❌ Veuillez saisir un numéro de téléphone.</div>';
-            showToast('Numéro requis', 'error');
-            return;
-        }
-
-        resultDiv.innerHTML = '<div class="recharge-result">⏳ Recherche en cours...</div>';
-
-        try {
-            const player = await getPlayerByPhone(phone);
-            const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_URL}/player/balance-by-id?playerId=${player.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.balance !== undefined) {
-                const msg = `💰 Solde de ${player.name} : ${data.balance.toLocaleString()} G`;
-                resultDiv.innerHTML = `<div class="recharge-result success">${msg}</div>`;
-                showToast(msg, 'success');
-            } else {
-                const errMsg = data.error || 'Impossible de récupérer le solde';
-                resultDiv.innerHTML = `<div class="recharge-result error">❌ ${errMsg}</div>`;
-                showToast(errMsg, 'error');
-            }
-        } catch (err) {
-            resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
-            showToast(`Erreur : ${err.message}`, 'error');
-        }
+    if (!phone || isNaN(amount) || amount <= 0) {
+        resultDiv.innerHTML = '<div class="recharge-result error">❌ Veuillez remplir tous les champs correctement.</div>';
+        showToast('Montant invalide', 'error');
+        return;
     }
 
+    resultDiv.innerHTML = '<div class="recharge-result">⏳ Traitement en cours...</div>';
+
+    try {
+        const player = await getPlayerByPhone(phone);
+        const token = localStorage.getItem('auth_token');
+
+        // Récupérer l'ancien solde
+        const oldBalanceRes = await fetch(`${API_URL}/player/balance-by-id?playerId=${player.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const oldBalanceData = await oldBalanceRes.json();
+        const oldBalance = oldBalanceData.balance || 0;
+
+        // Tenter le retrait
+        const res = await fetch(`${API_URL}/player/withdraw`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ playerId: player.id, amount, method })
+        });
+        const data = await res.json();
+
+        // Vérifier le nouveau solde
+        const newBalanceRes = await fetch(`${API_URL}/player/balance-by-id?playerId=${player.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const newBalanceData = await newBalanceRes.json();
+        const newBalance = newBalanceData.balance || 0;
+
+        // Si le solde a diminué du montant, c'est un succès
+        if (newBalance === oldBalance - amount) {
+            const msg = `✅ Retrait de ${amount} G effectué pour ${player.name}. Nouveau solde : ${newBalance} G`;
+            resultDiv.innerHTML = `<div class="recharge-result success">${msg}</div>`;
+            showToast(`Retrait de ${amount} G effectué !`, 'success');
+            document.getElementById('player-phone-withdraw').value = '';
+            document.getElementById('withdraw-amount').value = '';
+            loadTransactionsHistory();
+        } else {
+            const errMsg = data.error || 'Erreur inconnue';
+            resultDiv.innerHTML = `<div class="recharge-result error">❌ Erreur : ${errMsg}</div>`;
+            showToast(`Erreur : ${errMsg}`, 'error');
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="recharge-result error">❌ ${err.message}</div>`;
+        showToast(`Erreur : ${err.message}`, 'error');
+    }
+}
     async function loadTransactionsHistory() {
         const container = document.getElementById('transactions-history');
         if (!container) return;
