@@ -1,4 +1,4 @@
-// playersManager.js - Gestion des joueurs pour le propriétaire
+// playersManager.js - Gestion des joueurs pour le propriétaire (avec résumé par agent)
 (function() {
     if (window.playersManagerReady) return;
     window.playersManagerReady = true;
@@ -40,7 +40,6 @@
                 </div>
                 <div class="list-container" id="players-list-container"><p>Chargement...</p></div>
 
-                <!-- Modal ajout/modif -->
                 <div id="player-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
                     <div style="background:#1e1f36; border-radius:20px; padding:25px; max-width:500px; width:90%;">
                         <h3 id="modal-title">Ajouter un joueur</h3>
@@ -56,7 +55,6 @@
                     </div>
                 </div>
 
-                <!-- Modal détails joueur -->
                 <div id="player-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
                     <div style="background:#1e1f36; border-radius:20px; padding:25px; max-width:900px; width:90%; max-height:80%; overflow-y:auto;">
                         <h3 id="details-title">Détails du joueur</h3>
@@ -70,7 +68,6 @@
             tabsContainer.appendChild(playersContent);
         }
 
-        // Styles
         if (!document.getElementById('players-manager-styles')) {
             const style = document.createElement('style');
             style.id = 'players-manager-styles';
@@ -92,7 +89,6 @@
             document.head.appendChild(style);
         }
 
-        // Événements
         document.getElementById('search-players-btn')?.addEventListener('click', () => loadPlayers());
         document.getElementById('player-search')?.addEventListener('keypress', (e) => { if(e.key === 'Enter') loadPlayers(); });
         document.getElementById('add-player-btn')?.addEventListener('click', () => openPlayerModal());
@@ -117,7 +113,7 @@
         return response.json();
     }
 
-    // ==================== Chargement liste joueurs (CORRIGÉ) ====================
+    // ==================== Chargement liste joueurs ====================
     async function loadPlayers() {
         const search = document.getElementById('player-search').value;
         const container = document.getElementById('players-list-container');
@@ -133,7 +129,6 @@
             document.getElementById('stat-total-players').innerText = players.length;
             document.getElementById('stat-total-balance').innerHTML = totalBalance.toLocaleString() + ' G';
 
-            // Stats globales avec fallback
             let globalStats = { totalBets: 0, totalWins: 0 };
             try {
                 const res = await apiCall('/api/owner/player-stats');
@@ -141,9 +136,7 @@
                     totalBets: res.totalBets || 0,
                     totalWins: res.totalWins || 0
                 };
-            } catch(e) {
-                console.warn('Erreur stats globales', e);
-            }
+            } catch(e) {}
             document.getElementById('stat-total-bets').innerHTML = (globalStats.totalBets || 0).toLocaleString() + ' G';
             document.getElementById('stat-total-wins').innerHTML = (globalStats.totalWins || 0).toLocaleString() + ' G';
             const netResult = (globalStats.totalBets || 0) - (globalStats.totalWins || 0);
@@ -159,9 +152,7 @@
                         totalBets: pstats.totalBets || 0,
                         totalWins: pstats.totalWins || 0
                     };
-                } catch(e) {
-                    // Garder les valeurs par défaut
-                }
+                } catch(e) {}
                 const net = (playerStats.totalBets || 0) - (playerStats.totalWins || 0);
                 html += `
                     <tr>
@@ -287,7 +278,30 @@
             }
             ticketsHtml += '</tbody></table></div>';
 
-            // Transactions
+            // Résumé par agent (dépôts/retraits)
+            let agentSummaryHtml = '<h4>Récapitulatif par agent (dépôts/retraits)</h4>';
+            try {
+                const summary = await apiCall(`/api/owner/player-agent-summary/${playerId}`);
+                if (summary.length > 0) {
+                    agentSummaryHtml += '<div class="table-responsive"><table class="players-table"><thead><tr><th>Agent</th><th>Total dépôts</th><th>Total retraits</th><th>Net (dû au propriétaire)</th></tr></thead><tbody>';
+                    summary.forEach(agent => {
+                        const netClass = agent.net >= 0 ? 'profit' : 'loss';
+                        agentSummaryHtml += `<tr>
+                            <td>${escapeHtml(agent.agent_name || 'Agent inconnu')}</td>
+                            <td>${parseFloat(agent.total_deposits).toLocaleString()} G</td>
+                            <td>${parseFloat(agent.total_withdraws).toLocaleString()} G</td>
+                            <td class="${netClass}">${parseFloat(agent.net).toLocaleString()} G</td>
+                        </tr>`;
+                    });
+                    agentSummaryHtml += '</tbody></table></div>';
+                } else {
+                    agentSummaryHtml += '<p>Aucune transaction avec agent.</p>';
+                }
+            } catch(e) {
+                agentSummaryHtml += '<p>Erreur chargement résumé par agent.</p>';
+            }
+
+            // Transactions (détail)
             let transactionsHtml = '<h4>Transactions (dépôts, retraits, paris, gains)</h4><div class="table-responsive"><table class="players-table"><thead><tr><th>Type</th><th>Montant</th><th>Méthode</th><th>Description</th><th>Date</th></tr></thead><tbody>';
             try {
                 const transData = await apiCall(`/api/owner/player-transactions/${playerId}`);
@@ -324,22 +338,23 @@
             }
             messagesHtml += '</ul>';
 
-            // Formulaire d'envoi de message
             messagesHtml += `
                 <h4>Envoyer un message</h4>
                 <textarea id="msg-text" class="message-input" rows="2" placeholder="Votre message..."></textarea>
                 <button onclick="sendMessageToPlayer(${playerId})" class="send-msg-btn">Envoyer</button>
             `;
 
-            contentDiv.innerHTML = ticketsHtml + transactionsHtml + messagesHtml;
+            contentDiv.innerHTML = ticketsHtml + agentSummaryHtml + transactionsHtml + messagesHtml;
             modal.style.display = 'flex';
         } catch (err) {
             alert('Erreur chargement détails : ' + err.message);
         }
     }
+
     function closeDetailsModal() {
         document.getElementById('player-details-modal').style.display = 'none';
     }
+
     async function sendMessageToPlayer(playerId, messageText = null) {
         let message = messageText;
         if (!message) {
@@ -365,7 +380,6 @@
         }
     }
 
-    // ==================== Utilitaire ====================
     function escapeHtml(text) {
         if (!text) return '';
         return text.replace(/[&<>]/g, function(m) {
@@ -376,13 +390,11 @@
         });
     }
 
-    // Expositions globales
     window.viewPlayerDetails = viewPlayerDetails;
     window.editPlayer = (id) => openPlayerModal(id);
     window.deletePlayer = deletePlayer;
     window.sendMessageToPlayer = sendMessageToPlayer;
 
-    // ==================== Initialisation ====================
     function init() {
         createPlayersUI();
         const originalSwitchTab = window.switchTab;

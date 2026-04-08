@@ -2131,6 +2131,85 @@ app.get('/api/owner/player-transactions/:playerId', authenticate, requireRole('o
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+// ==================== AJOUT POUR SUIVI DES AGENTS SUR TRANSACTIONS ====================
+// Ajouter la colonne agent_id à la table transactions si elle n'existe pas
+(async () => {
+  try {
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+    console.log('✅ Colonne agent_id ajoutée à transactions (si manquante)');
+  } catch (err) {
+    console.error('⚠️ Erreur ajout colonne agent_id (ignorée):', err.message);
+  }
+})();
+
+// Remplacer la route deposit existante pour enregistrer l'agent
+app.post('/api/player/deposit', authenticate, requireStaff, async (req, res) => {
+  const { playerId, amount, method } = req.body;
+  if (!playerId || !amount || amount <= 0) return res.status(400).json({ error: 'Montant invalide' });
+  try {
+    const playerOwner = await pool.query('SELECT owner_id FROM players WHERE id = $1', [playerId]);
+    if (playerOwner.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
+    if (playerOwner.rows[0].owner_id !== req.user.ownerId) return res.status(403).json({ error: 'Joueur non autorisé' });
+    const update = await pool.query('UPDATE players SET balance = balance + $1, updated_at = NOW() WHERE id = $2 RETURNING balance', [amount, playerId]);
+    const newBalance = parseFloat(update.rows[0].balance);
+    await pool.query(
+      `INSERT INTO transactions (player_id, type, amount, method, description, agent_id)
+       VALUES ($1, 'deposit', $2, $3, $4, $5)`,
+      [playerId, amount, method || 'cash', `Dépôt par ${req.user.role} ${req.user.name}`, req.user.id]
+    );
+    res.json({ success: true, balance: newBalance });
+  } catch (err) {
+    console.error('Erreur dépôt:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remplacer la route withdraw existante pour enregistrer l'agent
+app.post('/api/player/withdraw', authenticate, requireStaff, async (req, res) => {
+  const { playerId, amount, method } = req.body;
+  if (!playerId || !amount || amount <= 0) return res.status(400).json({ error: 'Montant invalide' });
+  try {
+    const playerOwner = await pool.query('SELECT owner_id, balance FROM players WHERE id = $1', [playerId]);
+    if (playerOwner.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
+    if (playerOwner.rows[0].owner_id !== req.user.ownerId) return res.status(403).json({ error: 'Joueur non autorisé' });
+    const currentBalance = parseFloat(playerOwner.rows[0].balance);
+    if (currentBalance < amount) return res.status(400).json({ error: 'Solde insuffisant' });
+    const update = await pool.query('UPDATE players SET balance = balance - $1, updated_at = NOW() WHERE id = $2 RETURNING balance', [amount, playerId]);
+    const newBalance = parseFloat(update.rows[0].balance);
+    await pool.query(
+      `INSERT INTO transactions (player_id, type, amount, method, description, agent_id)
+       VALUES ($1, 'withdraw', $2, $3, $4, $5)`,
+      [playerId, amount, method || 'cash', `Retrait par ${req.user.role} ${req.user.name}`, req.user.id]
+    );
+    res.json({ success: true, balance: newBalance });
+  } catch (err) {
+    console.error('Erreur retrait:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Route pour obtenir le résumé des dépôts/retraits par agent pour un joueur (propriétaire)
+app.get('/api/owner/player-agent-summary/:playerId', authenticate, requireRole('owner'), async (req, res) => {
+  const { playerId } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT u.id as agent_id, u.name as agent_name,
+              COALESCE(SUM(CASE WHEN t.type = 'deposit' THEN t.amount ELSE 0 END), 0) as total_deposits,
+              COALESCE(SUM(CASE WHEN t.type = 'withdraw' THEN t.amount ELSE 0 END), 0) as total_withdraws,
+              COALESCE(SUM(CASE WHEN t.type = 'deposit' THEN t.amount ELSE -t.amount END), 0) as net
+       FROM transactions t
+       LEFT JOIN users u ON t.agent_id = u.id
+       WHERE t.player_id = $1 AND t.type IN ('deposit', 'withdraw')
+       GROUP BY u.id, u.name
+       ORDER BY u.name`,
+      [playerId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
