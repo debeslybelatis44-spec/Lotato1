@@ -282,7 +282,7 @@
             let agentSummaryHtml = '<h4>Récapitulatif par agent (dépôts/retraits)</h4>';
             try {
                 const summary = await apiCall(`/api/owner/player-agent-summary/${playerId}`);
-                if (summary.length > 0) {
+                if (summary && summary.length > 0) {
                     agentSummaryHtml += '<div class="table-responsive"><table class="players-table"><thead><tr><th>Agent</th><th>Total dépôts</th><th>Total retraits</th><th>Net (dû au propriétaire)</th></tr></thead><tbody>';
                     summary.forEach(agent => {
                         const netClass = agent.net >= 0 ? 'profit' : 'loss';
