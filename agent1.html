@@ -333,59 +333,55 @@
         </div>
     </div>
 
-    <script>
-        (function() {
-            // Enregistrement du Service Worker
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then(reg => console.log('✅ Service Worker enregistré', reg))
-                    .catch(err => console.error('❌ Erreur SW :', err));
-            }
+<script>
+  (function() {
+    // Enregistrement du Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(reg => console.log('✅ SW enregistré', reg))
+        .catch(err => console.error('❌ Erreur SW :', err));
+    }
 
-            // Variables pour l'installation
-            let deferredPrompt;
-            const installBanner = document.getElementById('install-banner');
-            const installBtn = document.getElementById('install-btn');
-            const closeBanner = document.getElementById('close-banner');
+    // Éléments de la bannière
+    const installBanner = document.getElementById('install-banner');
+    const installBtn = document.getElementById('install-btn');
+    const closeBanner = document.getElementById('close-banner');
+    let deferredPrompt = null;
 
-            // Vérifier si l'app est déjà installée (mode standalone)
-            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
-                                 window.navigator.standalone === true; // pour iOS
+    // Vérifier si déjà installé
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                         window.navigator.standalone === true;
 
-            if (!isStandalone) {
-                // Écouter l'événement beforeinstallprompt
-                window.addEventListener('beforeinstallprompt', (e) => {
-                    e.preventDefault(); // Empêche l'affichage automatique
-                    deferredPrompt = e;
-                    installBanner.style.display = 'flex'; // Affiche la bannière
-                });
+    if (!isStandalone) {
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBanner.style.display = 'flex'; // Affiche la bannière
+        console.log('📲 Installation possible');
+      });
 
-                // Action sur le bouton Installer
-                installBtn.addEventListener('click', async () => {
-                    if (!deferredPrompt) {
-                        alert("L'installation automatique n'est pas disponible. Vous pouvez ajouter cette page à l'écran d'accueil via le menu du navigateur (Partager > Ajouter à l'écran d'accueil).");
-                        return;
-                    }
-                    deferredPrompt.prompt(); // Affiche la boîte native
-                    const choiceResult = await deferredPrompt.userChoice;
-                    if (choiceResult.outcome === 'accepted') {
-                        console.log('✅ Installation acceptée');
-                        installBanner.style.display = 'none';
-                    } else {
-                        console.log('❌ Installation refusée');
-                    }
-                    deferredPrompt = null; // On ne peut l'utiliser qu'une fois
-                });
+      installBtn.addEventListener('click', async () => {
+        if (!deferredPrompt) {
+          // Fallback : expliquer comment installer manuellement
+          alert("Pour installer l'application :\n- Sur Android : Menu ⋮ → Ajouter à l'écran d'accueil\n- Sur iPhone : Partager → Sur l'écran d'accueil");
+          return;
+        }
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          installBanner.style.display = 'none';
+        }
+        deferredPrompt = null;
+      });
 
-                // Fermer la bannière sans installer
-                closeBanner.addEventListener('click', () => {
-                    installBanner.style.display = 'none';
-                });
-            } else {
-                console.log('📱 Application déjà installée');
-            }
-        })();
-    </script>
-    <script src="/installer.js" defer></script>
+      closeBanner.addEventListener('click', () => {
+        installBanner.style.display = 'none';
+      });
+    } else {
+      console.log('📱 App déjà installée');
+      installBanner.style.display = 'none';
+    }
+  })();
+</script>
 </body>
 </html>
