@@ -1,0 +1,9 @@
+{
+  "name": "LOTATO PRO - Joueur",
+  "short_name": "LOTATO",
+  "start_url": "/player.html",
+  "display": "standalone",
+  "background_color": "#0a0b1e",
+  "theme_color": "#fbbf24",
+  "icons": [ /* mêmes icônes */ ]
+}

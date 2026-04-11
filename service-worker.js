@@ -1,8 +1,21 @@
-const CACHE_NAME = 'lotato-pro-v7';  // version changée pour forcer la mise à jour
+const CACHE_NAME = 'lotato-pro-v8';
+const STATIC_CACHE = 'lotato-static-v8';
+const DATA_CACHE = 'lotato-data-v8';
+
+// Durées de validité (en millisecondes)
+const TTL = {
+  STATIC: 7 * 24 * 60 * 60 * 1000,   // 7 jours pour le code statique
+  DRAWS: 24 * 60 * 60 * 1000,        // 1 jour pour les tirages
+  SETTINGS: 24 * 60 * 60 * 1000,     // 1 jour pour les paramètres
+  OTHER_API: 5 * 60 * 1000           // 5 minutes pour les autres API
+};
+
+// Ressources statiques à mettre en cache (inclut player.html)
 const urlsToCache = [
   '/',
   '/agent1.html',
-  '/superadmin.html',          // <-- AJOUTÉ
+  '/superadmin.html',
+  '/player.html',        // <-- AJOUTÉ
   '/style.css',
   '/config.js',
   '/drawManager.js',
@@ -12,7 +25,7 @@ const urlsToCache = [
   '/uiManager.js',
   '/main.js',
   '/manifest.json',
-  // Icônes à la racine
+  '/installer.js',       // utile pour les agents
   '/72.png',
   '/96.png',
   '/128.png',
@@ -25,65 +38,115 @@ const urlsToCache = [
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap'
 ];
 
-// Installation
+// Installation : mise en cache statique
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
+    caches.open(STATIC_CACHE)
       .then(cache => cache.addAll(urlsToCache))
       .then(() => self.skipWaiting())
   );
 });
 
-// Activation
+// Activation : nettoyage des anciens caches
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(name => {
-          if (name !== CACHE_NAME) return caches.delete(name);
+          if (![STATIC_CACHE, DATA_CACHE].includes(name)) {
+            return caches.delete(name);
+          }
         })
       );
     }).then(() => self.clients.claim())
   );
 });
 
-// Stratégie de cache
-self.addEventListener('fetch', event => {
-  const requestUrl = new URL(event.request.url);
+// Fonction utilitaire pour mettre à jour le cache avec TTL
+function storeWithTTL(cacheName, request, response, ttl) {
+  const copy = response.clone();
+  const headers = new Headers(copy.headers);
+  headers.set('sw-cache-expiry', Date.now() + ttl);
+  const newResponse = new Response(copy.body, { status: copy.status, statusText: copy.statusText, headers });
+  return caches.open(cacheName).then(cache => cache.put(request, newResponse));
+}
 
-  // API : réseau d'abord, puis cache
-  if (requestUrl.pathname.startsWith('/api/')) {
+// Vérifier si une réponse en cache est encore valide
+function isCacheValid(response) {
+  const expiry = response.headers.get('sw-cache-expiry');
+  if (!expiry) return false;
+  return Date.now() < parseInt(expiry);
+}
+
+// Stratégie de cache avec fallback réseau et mise en cache avec TTL
+function cacheFirstWithTTL(request, ttl, fallbackUrl = null) {
+  return caches.match(request).then(cachedResponse => {
+    if (cachedResponse && isCacheValid(cachedResponse)) {
+      return cachedResponse;
+    }
+    return fetch(request).then(networkResponse => {
+      if (networkResponse && networkResponse.status === 200) {
+        storeWithTTL(DATA_CACHE, request, networkResponse.clone(), ttl);
+      }
+      return networkResponse;
+    }).catch(() => {
+      if (cachedResponse) return cachedResponse; // retourne même expiré si offline
+      if (fallbackUrl) return caches.match(fallbackUrl);
+      return new Response('Offline', { status: 503 });
+    });
+  });
+}
+
+// Gestion des requêtes
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  const isStatic = urlsToCache.some(res => event.request.url.includes(res) || event.request.url.match(/\.(css|js|png|jpg|json)$/));
+  const isDrawsApi = url.pathname === '/api/draws';
+  const isSettingsApi = url.pathname === '/api/lottery-settings';
+  const isOwnerSettings = url.pathname.startsWith('/api/owner-settings/');
+  const isOtherApi = url.pathname.startsWith('/api/');
+
+  // Ressources statiques (CSS, JS, HTML, images) - cache avec TTL long
+  if (isStatic) {
     event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
-          return response;
+      caches.open(STATIC_CACHE).then(cache => 
+        cache.match(event.request).then(cached => {
+          const fetchAndCache = () => fetch(event.request).then(response => {
+            if (response.status === 200) cache.put(event.request, response.clone());
+            return response;
+          }).catch(() => cached);
+          if (cached) {
+            // Rafraîchir en arrière-plan une fois par semaine
+            fetchAndCache();
+            return cached;
+          }
+          return fetchAndCache();
         })
-        .catch(() => caches.match(event.request))
+      )
     );
     return;
   }
 
-  // Ressources statiques : cache d'abord, puis réseau
+  // API des tirages - cache 1 jour
+  if (isDrawsApi) {
+    event.respondWith(cacheFirstWithTTL(event.request, TTL.DRAWS, '/agent1.html'));
+    return;
+  }
+
+  // API des paramètres (lottery-settings) - cache 1 jour
+  if (isSettingsApi || isOwnerSettings) {
+    event.respondWith(cacheFirstWithTTL(event.request, TTL.SETTINGS, '/agent1.html'));
+    return;
+  }
+
+  // Autres API - cache 5 minutes
+  if (isOtherApi) {
+    event.respondWith(cacheFirstWithTTL(event.request, TTL.OTHER_API, '/agent1.html'));
+    return;
+  }
+
+  // Par défaut : réseau d'abord, cache fallback
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          fetch(event.request)
-            .then(networkResponse => {
-              caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse));
-            })
-            .catch(() => {});
-          return response;
-        }
-        return fetch(event.request).then(networkResponse => {
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
-          });
-        });
-      })
-      .catch(() => caches.match('/agent1.html'))
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });
