@@ -1,3 +1,4 @@
+import { SunmiPrinter, AlignmentModeEnum } from 'https://unpkg.com/capacitor-sunmi-printer-v7@0.5.7/dist/esm/index.js';
 // ==========================
 // cartManager.js (corrigé - date normalisée sans forçage UTC)
 // ==========================
@@ -375,14 +376,17 @@ async function processFinalTicket() {
         return;
     }
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
-    if (!printWindow) {
-        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
-        return;
+    const isCapacitor = !!window.Capacitor;
+    let printWindow = null;
+    if (!isCapacitor) {
+        printWindow = window.open('', '_blank', 'width=500,height=700');
+        if (!printWindow) {
+            alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
+            return;
+        }
+        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
+        printWindow.document.close();
     }
-
-    printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
-    printWindow.document.close();
 
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
@@ -394,7 +398,6 @@ async function processFinalTicket() {
         for (const drawId in betsByDraw) {
             const bets = betsByDraw[drawId];
             const total = bets.reduce((s, b) => s + b.amount, 0);
-
             const payload = {
                 agentId: APP_STATE.agentId,
                 agentName: APP_STATE.agentName,
@@ -403,7 +406,6 @@ async function processFinalTicket() {
                 bets,
                 total
             };
-
             const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {
                 method: 'POST',
                 headers: {
@@ -412,133 +414,116 @@ async function processFinalTicket() {
                 },
                 body: JSON.stringify(payload)
             });
-
             if (!res.ok) throw new Error("Erreur serveur");
-
             const data = await res.json();
-            // Ajout de la date actuelle pour l'impression immédiate
             data.ticket.date = new Date().toISOString();
             printThermalTicket(data.ticket, printWindow);
             APP_STATE.ticketsHistory.unshift(data.ticket);
         }
-
         APP_STATE.currentCart = [];
         CartManager.renderCart();
         alert("✅ Tikè sove & enprime");
-
     } catch (err) {
         console.error(err);
         alert("❌ Erè pandan enpresyon");
-        printWindow.close();
+        if (printWindow) printWindow.close();
+    }
+}
+// Nouvelle version : utilise le plugin Sunmi dans l'APK, sinon fallback popup
+function printThermalTicket(ticket, printWindow) {
+    const isCapacitor = !!window.Capacitor;
+    const hasSunmi = typeof SunmiPrinter !== 'undefined';
+
+    if (isCapacitor && hasSunmi) {
+        // Impression native Sunmi
+        printWithSunmi(ticket);
+    } else {
+        // Impression classique (popup)
+        const html = generateTicketHTML(ticket);
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Ticket</title>
+                <style>
+                    @page { size: 80mm auto; margin: 2mm; }
+                    body { font-family: 'Courier New', monospace; font-size: 32px; font-weight: bold; width: 76mm; margin: 0 auto; padding: 4mm; background: white; color: black; }
+                    .header { text-align: center; border-bottom: 2px dashed #000; margin-bottom: 10px; }
+                    .info p { margin: 5px 0; font-size: 20px; }
+                    hr { border-top: 2px dashed #000; margin: 10px 0; }
+                    .bet-row { display: flex; justify-content: space-between; margin: 5px 0; }
+                    .total-row { display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px; }
+                    .footer { text-align: center; margin-top: 20px; font-style: italic; font-size: 28px; }
+                </style>
+            </head>
+            <body>
+                ${html}
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
     }
 }
 
-// ---------- PRINT ----------
-function printThermalTicket(ticket, printWindow) {
-    const html = generateTicketHTML(ticket);
+// Nouvelle fonction d'impression native Sunmi (à ajouter juste après)
+async function printWithSunmi(ticket) {
+    try {
+        await SunmiPrinter.enterPrinterBuffer();
+        await SunmiPrinter.setAlignment({ alignment: AlignmentModeEnum.CENTER });
 
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Ticket</title>
-            <style>
-                @page {
-                    size: 80mm auto;
-                    margin: 2mm;
-                }
-                body {
-                    font-family: 'Courier New', monospace;
-                    font-size: 32px;
-                    font-weight: bold;
-                    width: 76mm;
-                    margin: 0 auto;
-                    padding: 4mm;
-                    background: white;
-                    color: black;
-                }
-                .header {
-                    text-align: center !important;
-                    border-bottom: 2px dashed #000;
-                    padding: 0 !important;
-                    margin: 0 0 2px 0 !important;
-                    line-height: 1;
-                }
-                .header img {
-                    display: block !important;
-                    margin: 0 auto !important;
-                    vertical-align: bottom !important;
-                    max-height: 350px;
-                    max-width: 100%;
-                }
-                .header strong {
-                    display: block;
-                    font-size: 40px;
-                    font-weight: bold;
-                    margin: 0;
-                    line-height: 1;
-                }
-                .header small {
-                    display: block;
-                    font-size: 26px;
-                    color: #555;
-                    margin: 0;
-                    line-height: 1;
-                }
-                .info {
-                    margin: 10px 0;
-                }
-                .info p {
-                    margin: 5px 0;
-                    font-size: 20px;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-                hr {
-                    border: none;
-                    border-top: 2px dashed #000;
-                    margin: 10px 0;
-                }
-                .bet-row {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 5px 0;
-                    font-weight: bold;
-                    font-size: 32px;
-                }
-                .total-row {
-                    display: flex;
-                    justify-content: space-between;
-                    font-weight: bold;
-                    margin-top: 10px;
-                    font-size: 36px;
-                }
-                .footer {
-                    text-align: center;
-                    margin-top: 20px;
-                    font-style: italic;
-                    font-size: 28px;
-                }
-                .footer p {
-                    font-weight: bold;
-                    margin: 3px 0;
-                }
-            </style>
-        </head>
-        <body>
-            ${html}
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
+        const cfg = APP_STATE.lotteryConfig || CONFIG;
+        const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
+        const slogan = cfg.slogan || '';
 
-    printWindow.onload = function() {
-        printWindow.focus();
-        printWindow.print();
-    };
+        await SunmiPrinter.printText({ text: `\n${lotteryName}\n` });
+        if (slogan) await SunmiPrinter.printText({ text: `${slogan}\n` });
+        await SunmiPrinter.printText({ text: `Ticket #: ${ticket.ticket_id || ticket.id}\n` });
+
+        let drawName = ticket.draw_name || ticket.drawName;
+        if (!drawName && APP_STATE.draws && ticket.draw_id) {
+            const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
+            drawName = draw ? draw.name : 'Tiraj Inkonu';
+        }
+        await SunmiPrinter.printText({ text: `Tiraj: ${drawName}\n` });
+
+        let formattedDate = 'Date inkonu';
+        if (ticket.date) {
+            const normalized = normalizeDateString(ticket.date);
+            const dateObj = new Date(normalized);
+            if (!isNaN(dateObj)) {
+                formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' +
+                                dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+            }
+        }
+        await SunmiPrinter.printText({ text: `Date: ${formattedDate}\n` });
+        await SunmiPrinter.printText({ text: `Ajan: ${ticket.agent_name || ticket.agentName || ''}\n` });
+        await SunmiPrinter.printText({ text: `--------------------------------\n` });
+
+        await SunmiPrinter.setAlignment({ alignment: AlignmentModeEnum.LEFT });
+        const bets = ticket.bets || [];
+        for (const bet of bets) {
+            const gameAbbr = getGameAbbreviation(bet.game || '', bet);
+            let displayNumber = bet.number || '';
+            if (bet.game === 'auto_marriage' && displayNumber.includes('&')) displayNumber = displayNumber.replace('&', '*');
+            const amount = bet.amount || 0;
+            await SunmiPrinter.printText({ text: `${gameAbbr} ${displayNumber}  ${amount} G\n` });
+        }
+
+        await SunmiPrinter.printText({ text: `--------------------------------\n` });
+        await SunmiPrinter.setAlignment({ alignment: AlignmentModeEnum.CENTER });
+        const total = ticket.total_amount || ticket.total || 0;
+        await SunmiPrinter.printText({ text: `TOTAL : ${total} Gdes\n` });
+        await SunmiPrinter.printText({ text: `\ntickets valable jusqu'à 90 jours\nRef : +509 \nLOTATO S.A.\n\n` });
+
+        await SunmiPrinter.cutPaper();
+        await SunmiPrinter.exitPrinterBuffer();
+        console.log("Impression Sunmi réussie");
+    } catch (error) {
+        console.error("Erreur impression Sunmi:", error);
+        alert("Erreur d'impression sur le terminal Sunmi. Vérifiez l'imprimante.");
+    }
 }
-
 // ---------- Ticket HTML ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
