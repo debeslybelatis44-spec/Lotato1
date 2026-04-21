@@ -250,17 +250,17 @@ async function processFinalTicket() {
 
 function printThermalTicket(ticket, printWindow) {
     const isCapacitor = !!window.Capacitor;
-    // Récupération du plugin Sunmi depuis l'objet global de Capacitor
     const sunmiPlugin = window.Capacitor?.Plugins?.SunmiPrinter || window.SunmiPrinter;
-    const hasSunmi = !!sunmiPlugin;
-
-    if (isCapacitor && hasSunmi) {
+    alert("printThermalTicket: isCapacitor=" + isCapacitor + ", sunmiPlugin=" + (sunmiPlugin ? "OUI" : "NON"));
+    if (isCapacitor && sunmiPlugin) {
+        alert("Chemin Sunmi (impression native)");
         printWithSunmi(ticket, sunmiPlugin);
     } else {
-        // Fallback popup
+        alert("Chemin fallback (popup)");
+        // Impression classique (popup) - code inchangé
         const html = generateTicketHTML(ticket);
         if (printWindow) {
-            printWindow.document.write(`<!DOCTYPE html><html><head><title>Ticket</title><style>@page{size:80mm auto;margin:2mm;}body{font-family:'Courier New',monospace;font-size:32px;font-weight:bold;width:76mm;margin:0 auto;padding:4mm;background:white;color:black;}.header{text-align:center;border-bottom:2px dashed #000;margin-bottom:10px;}.info p{margin:5px 0;font-size:20px;}hr{border-top:2px dashed #000;margin:10px 0;}.bet-row{display:flex;justify-content:space-between;margin:5px 0;}.total-row{display:flex;justify-content:space-between;font-weight:bold;margin-top:10px;}.footer{text-align:center;margin-top:20px;font-style:italic;font-size:28px;}</style></head><body>${html}</body></html>`);
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>Ticket</title><style>...</style></head><body>${html}</body></html>`);
             printWindow.document.close();
             printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
         } else {
@@ -270,7 +270,6 @@ function printThermalTicket(ticket, printWindow) {
         }
     }
 }
-
 async function printWithSunmi(ticket, sunmiPlugin) {
     // Étape 0 : vérifier que le plugin est présent
     if (!sunmiPlugin) {
