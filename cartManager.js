@@ -1,5 +1,5 @@
 // ==========================
-// cartManager.js - Version APK native (sans import)
+// cartManager.js - Version finale avec impression Sunmi native
 // ==========================
 
 // ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
@@ -209,33 +209,108 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// ---------- Impression ----------
+// ---------- Impression native Sunmi ----------
+async function printWithSunmi(ticket) {
+    // Récupération du plugin via Capacitor
+    const { SunmiPrinter } = Capacitor.Plugins;
+    if (!SunmiPrinter) throw new Error("Plugin Sunmi non trouvé");
+
+    // Vérifier l'état de l'imprimante
+    await SunmiPrinter.printerInit();
+    const status = await SunmiPrinter.updatePrinterState();
+    if (status.status !== 1) throw new Error("Imprimante non prête (code " + status.code + ")");
+
+    await SunmiPrinter.enterPrinterBuffer();
+
+    // Styles et contenu
+    await SunmiPrinter.setAlignment({ alignment: AlignmentModeEnum.CENTER });
+    await SunmiPrinter.setFontSize({ size: 35 });
+    await SunmiPrinter.setBold({ enable: true });
+
+    const cfg = APP_STATE.lotteryConfig || CONFIG;
+    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
+    const slogan = cfg.slogan || '';
+    await SunmiPrinter.printText({ text: `\n${lotteryName}\n` });
+    if (slogan) await SunmiPrinter.printText({ text: `${slogan}\n` });
+
+    await SunmiPrinter.setFontSize({ size: 30 });
+    await SunmiPrinter.setBold({ enable: false });
+    await SunmiPrinter.printText({ text: `Ticket #: ${ticket.ticket_id || ticket.id}\n` });
+
+    let drawName = ticket.draw_name || ticket.drawName;
+    if (!drawName && APP_STATE.draws && ticket.draw_id) {
+        const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
+        drawName = draw ? draw.name : 'Tiraj Inkonu';
+    }
+    await SunmiPrinter.printText({ text: `Tiraj: ${drawName}\n` });
+
+    let formattedDate = 'Date inkonu';
+    if (ticket.date) {
+        const normalized = normalizeDateString(ticket.date);
+        const dateObj = new Date(normalized);
+        if (!isNaN(dateObj)) {
+            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+        }
+    }
+    await SunmiPrinter.printText({ text: `Date: ${formattedDate}\n` });
+    await SunmiPrinter.printText({ text: `Ajan: ${ticket.agent_name || ticket.agentName || ''}\n` });
+    await SunmiPrinter.printText({ text: `--------------------------------\n` });
+
+    await SunmiPrinter.setAlignment({ alignment: AlignmentModeEnum.LEFT });
+    const bets = ticket.bets || [];
+    for (const bet of bets) {
+        const gameAbbr = getGameAbbreviation(bet.game || '', bet);
+        let displayNumber = bet.number || '';
+        if (bet.game === 'auto_marriage' && displayNumber.includes('&')) displayNumber = displayNumber.replace('&', '*');
+        const amount = bet.amount || 0;
+        await SunmiPrinter.printText({ text: `${gameAbbr} ${displayNumber}  ${amount} G\n` });
+    }
+
+    await SunmiPrinter.printText({ text: `--------------------------------\n` });
+    await SunmiPrinter.setAlignment({ alignment: AlignmentModeEnum.CENTER });
+    const total = ticket.total_amount || ticket.total || 0;
+    await SunmiPrinter.printText({ text: `TOTAL : ${total} Gdes\n` });
+    await SunmiPrinter.printText({ text: `\ntickets valable jusqu'à 90 jours\nRef : +509 \nLOTATO S.A.\n\n` });
+
+    await SunmiPrinter.cutPaper();
+    await SunmiPrinter.exitPrinterBuffer();
+    console.log("Impression Sunmi réussie");
+}
+
+// ---------- Sauvegarde et impression (point d'entrée) ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) { alert("Panye vid"); return; }
-    const isCapacitor = !!window.Capacitor;
-    let printWindow = null;
-    if (!isCapacitor) {
-        printWindow = window.open('', '_blank', 'width=500,height=700');
-        if (!printWindow) { alert("Veuillez autoriser les pop-ups pour imprimer le ticket."); return; }
-        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
-        printWindow.document.close();
-    }
+
     const betsByDraw = {};
-    APP_STATE.currentCart.forEach(b => { if (!betsByDraw[b.drawId]) betsByDraw[b.drawId] = []; betsByDraw[b.drawId].push(b); });
+    APP_STATE.currentCart.forEach(b => {
+        if (!betsByDraw[b.drawId]) betsByDraw[b.drawId] = [];
+        betsByDraw[b.drawId].push(b);
+    });
+
     try {
         for (const drawId in betsByDraw) {
             const bets = betsByDraw[drawId];
             const total = bets.reduce((s, b) => s + b.amount, 0);
-            const payload = { agentId: APP_STATE.agentId, agentName: APP_STATE.agentName, drawId, drawName: bets[0].drawName, bets, total };
+            const payload = {
+                agentId: APP_STATE.agentId,
+                agentName: APP_STATE.agentName,
+                drawId,
+                drawName: bets[0].drawName,
+                bets,
+                total
+            };
             const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                },
                 body: JSON.stringify(payload)
             });
             if (!res.ok) throw new Error("Erreur serveur");
             const data = await res.json();
             data.ticket.date = new Date().toISOString();
-            printThermalTicket(data.ticket, printWindow);
+            await printWithSunmi(data.ticket);
             APP_STATE.ticketsHistory.unshift(data.ticket);
         }
         APP_STATE.currentCart = [];
@@ -243,86 +318,11 @@ async function processFinalTicket() {
         alert("✅ Tikè sove & enprime");
     } catch (err) {
         console.error(err);
-        alert("❌ Erè pandan enpresyon");
-        if (printWindow) printWindow.close();
+        alert("❌ Erè pandan enpresyon: " + err.message);
     }
 }
 
-function printThermalTicket(ticket, printWindow) {
-    const isCapacitor = !!window.Capacitor;
-    const sunmiPlugin = window.Capacitor?.Plugins?.SunmiPrinter || window.SunmiPrinter;
-    alert("printThermalTicket: isCapacitor=" + isCapacitor + ", sunmiPlugin=" + (sunmiPlugin ? "OUI" : "NON"));
-    if (isCapacitor && sunmiPlugin) {
-        alert("Chemin Sunmi (impression native)");
-        printWithSunmi(ticket, sunmiPlugin);
-    } else {
-        alert("Chemin fallback (popup)");
-        // Impression classique (popup) - code inchangé
-        const html = generateTicketHTML(ticket);
-        if (printWindow) {
-            printWindow.document.write(`<!DOCTYPE html><html><head><title>Ticket</title><style>...</style></head><body>${html}</body></html>`);
-            printWindow.document.close();
-            printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
-        } else {
-            const newWin = window.open('', '_blank', 'width=500,height=700');
-            if (newWin) { newWin.document.write(html); newWin.document.close(); newWin.print(); }
-            else alert("Impossible d'ouvrir la fenêtre d'impression");
-        }
-    }
-}async function printWithSunmi(ticket, sunmiPlugin) {
-    try {
-        alert("1. enterPrinterBuffer...");
-        await sunmiPlugin.enterPrinterBuffer();
-        alert("2. Impression d'un texte simple...");
-        await sunmiPlugin.printText({ text: "Test d'impression directe\n" });
-        alert("3. Découpe papier...");
-        await sunmiPlugin.cutPaper();
-        alert("4. Sortie buffer...");
-        await sunmiPlugin.exitPrinterBuffer();
-        alert("✅ Impression test réussie !");
-    } catch (error) {
-        console.error(error);
-        alert("Erreur test: " + (error.message || JSON.stringify(error)));
-    }
-}
-
-        await sunmiPlugin.printText({ text: `Date: ${formattedDate}\n` });
-        await sunmiPlugin.printText({ text: `Ajan: ${ticket.agent_name || ticket.agentName || ''}\n` });
-        await sunmiPlugin.printText({ text: `--------------------------------\n` });
-        
-        alert("7. Passage à l'alignement LEFT...");
-        await sunmiPlugin.setAlignment({ alignment: 0 }); // 0 = LEFT
-        
-        const bets = ticket.bets || [];
-        alert(`8. Impression de ${bets.length} paris...`);
-        for (const bet of bets) {
-            const gameAbbr = getGameAbbreviation(bet.game || '', bet);
-            let displayNumber = bet.number || '';
-            if (bet.game === 'auto_marriage' && displayNumber.includes('&')) displayNumber = displayNumber.replace('&', '*');
-            const amount = bet.amount || 0;
-            await sunmiPlugin.printText({ text: `${gameAbbr} ${displayNumber}  ${amount} G\n` });
-        }
-        
-        await sunmiPlugin.printText({ text: `--------------------------------\n` });
-        await sunmiPlugin.setAlignment({ alignment: 1 });
-        const total = ticket.total_amount || ticket.total || 0;
-        await sunmiPlugin.printText({ text: `TOTAL : ${total} Gdes\n` });
-        await sunmiPlugin.printText({ text: `\ntickets valable jusqu'à 90 jours\nRef : +509 \nLOTATO S.A.\n\n` });
-        
-        alert("9. Découpe du papier...");
-        await sunmiPlugin.cutPaper();
-        alert("10. Sortie du buffer...");
-        await sunmiPlugin.exitPrinterBuffer();
-        
-        alert("✅ Impression Sunmi réussie !");
-        console.log("Impression Sunmi réussie");
-    } catch (error) {
-        console.error("Erreur impression Sunmi:", error);
-        alert("Erreur détaillée: " + (error.message || JSON.stringify(error)));
-        // Tente de sortir du buffer pour ne pas bloquer l'imprimante
-        try { await sunmiPlugin.exitPrinterBuffer(); } catch(e) {}
-    }
-}
+// ---------- Fallback HTML (génération de ticket pour popup, non utilisé sur Sunmi mais conservé) ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
     const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
@@ -356,6 +356,6 @@ function generateTicketHTML(ticket) {
     `;
 }
 
+// Expositions globales
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
-window.printThermalTicket = printThermalTicket;
