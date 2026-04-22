@@ -269,50 +269,23 @@ function printThermalTicket(ticket, printWindow) {
             else alert("Impossible d'ouvrir la fenêtre d'impression");
         }
     }
-}
-async function printWithSunmi(ticket, sunmiPlugin) {
-    // Étape 0 : vérifier que le plugin est présent
-    if (!sunmiPlugin) {
-        alert("Erreur: Plugin Sunmi non trouvé dans l'APK.");
-        return;
-    }
-    alert("✅ Plugin Sunmi détecté");
-
+}async function printWithSunmi(ticket, sunmiPlugin) {
     try {
-        alert("1. Tentative de enterPrinterBuffer...");
+        alert("1. enterPrinterBuffer...");
         await sunmiPlugin.enterPrinterBuffer();
-        alert("2. enterPrinterBuffer réussi");
+        alert("2. Impression d'un texte simple...");
+        await sunmiPlugin.printText({ text: "Test d'impression directe\n" });
+        alert("3. Découpe papier...");
+        await sunmiPlugin.cutPaper();
+        alert("4. Sortie buffer...");
+        await sunmiPlugin.exitPrinterBuffer();
+        alert("✅ Impression test réussie !");
+    } catch (error) {
+        console.error(error);
+        alert("Erreur test: " + (error.message || JSON.stringify(error)));
+    }
+}
 
-        alert("3. Tentative de setAlignment (CENTER)...");
-        await sunmiPlugin.setAlignment({ alignment: 1 }); // 1 = CENTER
-        alert("4. setAlignment CENTER réussi");
-
-        const cfg = APP_STATE.lotteryConfig || CONFIG;
-        const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
-        const slogan = cfg.slogan || '';
-
-        alert("5. Impression du nom de la loterie...");
-        await sunmiPlugin.printText({ text: `\n${lotteryName}\n` });
-        if (slogan) await sunmiPlugin.printText({ text: `${slogan}\n` });
-        
-        alert("6. Impression du numéro de ticket...");
-        await sunmiPlugin.printText({ text: `Ticket #: ${ticket.ticket_id || ticket.id}\n` });
-        
-        let drawName = ticket.draw_name || ticket.drawName;
-        if (!drawName && APP_STATE.draws && ticket.draw_id) {
-            const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
-            drawName = draw ? draw.name : 'Tiraj Inkonu';
-        }
-        await sunmiPlugin.printText({ text: `Tiraj: ${drawName}\n` });
-        
-        let formattedDate = 'Date inkonu';
-        if (ticket.date) {
-            const normalized = normalizeDateString(ticket.date);
-            const dateObj = new Date(normalized);
-            if (!isNaN(dateObj)) {
-                formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
-            }
-        }
         await sunmiPlugin.printText({ text: `Date: ${formattedDate}\n` });
         await sunmiPlugin.printText({ text: `Ajan: ${ticket.agent_name || ticket.agentName || ''}\n` });
         await sunmiPlugin.printText({ text: `--------------------------------\n` });
