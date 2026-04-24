@@ -1,13 +1,11 @@
 // ==========================
-// cartManager.js - FINAL POUR SUNMI
-// avec impression native via Capacitor
+// cartManager.js - VERSION FINALE POUR SUNMI V2s
 // ==========================
 
-// ---------- Utilitaires existants (inchangés) ----------
+// ---------- Fonctions utilitaires (inchangées) ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
-    let normalized = dateStr.replace(' ', 'T');
-    return normalized;
+    return dateStr.replace(' ', 'T');
 }
 
 function isNumberBlocked(number, drawId) {
@@ -20,9 +18,7 @@ function checkNumberLimit(number, drawId, amountToAdd) {
     const key = `${drawId}_${number}`;
     const limit = APP_STATE.numberLimits[key];
     if (!limit) return { success: true };
-    const currentTotal = APP_STATE.currentCart
-        .filter(bet => bet.drawId === drawId && bet.cleanNumber === number)
-        .reduce((sum, bet) => sum + (bet.amount || 0), 0);
+    const currentTotal = APP_STATE.currentCart.filter(bet => bet.drawId === drawId && bet.cleanNumber === number).reduce((sum, bet) => sum + (bet.amount || 0), 0);
     const newTotal = currentTotal + amountToAdd;
     if (newTotal > limit) {
         return { success: false, message: `Limite atteinte : ${number} (${drawId}) – max ${limit} G, déjà ${currentTotal} G, tentative ${amountToAdd} G.` };
@@ -71,7 +67,6 @@ var CartManager = {
         if (isNaN(amt) || amt <= 0) { alert("Montan pa valid"); return; }
         const game = APP_STATE.selectedGame;
 
-        // Gestion des jeux automatiques
         if (game === 'auto_marriage' || game === 'bo' || game === 'grap' || game === 'auto_lotto4' || game === 'auto_lotto5') {
             let autoBets = [];
             switch (game) {
@@ -110,7 +105,6 @@ var CartManager = {
             return;
         }
 
-        // Gestion des jeux NX
         if (/^n[0-9]$/.test(game)) {
             const lastDigit = parseInt(game.substring(1), 10);
             const numbers = [];
@@ -142,7 +136,6 @@ var CartManager = {
             return;
         }
 
-        // Jeux normaux
         let num = numInput.value.trim();
         if (!GameEngine.validateEntry(game, num)) { alert("Nimewo pa valid"); return; }
         num = GameEngine.getCleanNumber(num);
@@ -209,9 +202,8 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// ---------- NOUVELLE IMPRESSION NATIVE SUNMI (avec fallback) ----------
+// ---------- Impression native Sunmi (avec gestion forcée du service) ----------
 async function printWithSunmi(ticket) {
-    // Récupération du plugin
     let SunmiPrinter;
     try {
         if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SunmiPrinter) {
@@ -219,28 +211,35 @@ async function printWithSunmi(ticket) {
         } else if (window.SunmiPrinter) {
             SunmiPrinter = window.SunmiPrinter;
         } else {
-            throw new Error("Plugin Sunmi non disponible");
+            throw new Error("Plugin Sunmi non trouvé");
         }
-        alert("Plugin trouvé");
+        alert("✅ Plugin trouvé");
     } catch(e) {
-        alert("Erreur: " + e.message);
+        alert("❌ " + e.message);
         return;
     }
 
     try {
-        // Étape 0 : initialisation et vérification
-        alert("Initialisation de l'imprimante...");
+        alert("Tentative de bindService...");
+        await SunmiPrinter.bindService();
+        alert("bindService effectué");
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Vérification optionnelle de l'état du service
+        let serviceStatus = await SunmiPrinter.getServiceStatus();
+        alert("État service: " + (serviceStatus && serviceStatus.status === 1 ? "lié" : "non lié / code " + (serviceStatus?.status || "?")));
+
+        alert("printerInit...");
         await SunmiPrinter.printerInit();
         alert("printerInit OK");
 
-        // Optionnel : vérifier l'état (1 = prêt)
-        let status = await SunmiPrinter.updatePrinterState();
-        alert("État imprimante: " + (status && status.status ? status.status : "inconnu"));
+        let printerState = await SunmiPrinter.updatePrinterState();
+        alert("État imprimante: " + (printerState && printerState.status === 1 ? "prête" : "code " + (printerState?.code || "?")));
 
-        // Construction du ticket (texte simple sans mise en forme complexe)
+        // Construction du contenu
         let content = "";
-        content += "\n";
-        content += "LOTATO\n";
+        content += "\nLOTATO\n";
         content += "Ticket #: " + (ticket.ticket_id || ticket.id) + "\n";
         let drawName = ticket.draw_name || ticket.drawName;
         if (!drawName && APP_STATE.draws && ticket.draw_id) {
@@ -265,27 +264,23 @@ async function printWithSunmi(ticket) {
         content += "TOTAL : " + total + " Gdes\n";
         content += "Merci et à bientôt!\n\n";
 
-        alert("Contenu préparé, envoi à l'imprimante...");
+        alert("Envoi à l'imprimante...");
         await SunmiPrinter.enterPrinterBuffer();
         alert("enterPrinterBuffer OK");
-
-        // Envoi du texte
         await SunmiPrinter.printText({ text: content });
         alert("printText OK");
-
         await SunmiPrinter.cutPaper();
         alert("cutPaper OK");
-
         await SunmiPrinter.exitPrinterBuffer();
-        alert("Impression terminée avec succès !");
+        alert("✅ Impression terminée avec succès !");
     } catch(e) {
-        alert("Erreur dans printWithSunmi: " + e.message);
+        alert("❌ Erreur: " + e.message);
         console.error(e);
         try { await SunmiPrinter.exitPrinterBuffer(); } catch(e2) {}
     }
 }
 
-// ---------- Sauvegarde et impression (point d'entrée principal) ----------
+// ---------- Sauvegarde et impression principale ----------
 async function processFinalTicket() {
     alert("processFinalTicket appelée !");
     if (!APP_STATE.currentCart.length) {
@@ -334,9 +329,8 @@ async function processFinalTicket() {
     }
 }
 
-// Exposer la fonction globalement
+// Expositions globales
 window.processFinalTicket = processFinalTicket;
 window.CartManager = CartManager;
 
-// Alerte pour confirmer le chargement
 alert("cartManager.js chargé - version finale Sunmi");
