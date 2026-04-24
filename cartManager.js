@@ -1,15 +1,15 @@
 // ==========================
-// cartManager.js - Version finale avec impression ESC/POS brute
+// cartManager.js - FINAL POUR SUNMI
+// avec impression native via Capacitor
 // ==========================
 
-// ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
+// ---------- Utilitaires existants (inchangés) ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
     let normalized = dateStr.replace(' ', 'T');
     return normalized;
 }
 
-// ---------- Utils ----------
 function isNumberBlocked(number, drawId) {
     if (APP_STATE.globalBlockedNumbers.includes(number)) return true;
     const drawBlocked = APP_STATE.drawBlockedNumbers[drawId] || [];
@@ -36,7 +36,7 @@ function generateRandomMarriageBet(amount) {
     return { game: 'auto_marriage', number: `${num1}&${num2}`, cleanNumber: `${num1}&${num2}`, amount: amount };
 }
 
-// ---------- Cart Manager ----------
+// ---------- Cart Manager (inchangé) ----------
 var CartManager = {
     updateFreeMarriages() {
         APP_STATE.currentCart = APP_STATE.currentCart.filter(b => !(b.free && b.freeType === 'special_marriage'));
@@ -209,97 +209,89 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// ---------- Impression native Sunmi avec commandes ESC/POS brutes ----------
+// ---------- NOUVELLE IMPRESSION NATIVE SUNMI (avec fallback) ----------
 async function printWithSunmi(ticket) {
-    // Récupération du plugin via Capacitor
-    const { SunmiPrinter } = Capacitor.Plugins;
-    if (!SunmiPrinter) throw new Error("Plugin Sunmi non trouvé dans l'APK.");
-
-    // Vérifier et forcer la liaison du service d'impression
+    // Récupération du plugin
+    let SunmiPrinter;
     try {
-        const serviceStatus = await SunmiPrinter.getServiceStatus();
-        if (serviceStatus.status !== 1) { // 1 = BOUND
-            console.log("Service non lié, tentative de bindService...");
-            await SunmiPrinter.bindService();
-            await new Promise(resolve => setTimeout(resolve, 500));
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SunmiPrinter) {
+            SunmiPrinter = window.Capacitor.Plugins.SunmiPrinter;
+        } else if (window.SunmiPrinter) {
+            SunmiPrinter = window.SunmiPrinter;
+        } else {
+            throw new Error("Plugin Sunmi non disponible");
         }
+        alert("Plugin trouvé");
     } catch(e) {
-        console.warn("Impossible de lier le service, on continue quand même", e);
+        alert("Erreur: " + e.message);
+        return;
     }
 
-    // Initialisation et vérification de l'état de l'imprimante
-    await SunmiPrinter.printerInit();
-    const printerStatus = await SunmiPrinter.updatePrinterState();
-    if (printerStatus.status !== 1) {
-        throw new Error(`Imprimante non prête (code: ${printerStatus.code}). Vérifiez le papier et la connexion.`);
-    }
+    try {
+        // Étape 0 : initialisation et vérification
+        alert("Initialisation de l'imprimante...");
+        await SunmiPrinter.printerInit();
+        alert("printerInit OK");
 
-    // Construction du ticket avec commandes ESC/POS brutes
-    const cfg = APP_STATE.lotteryConfig || CONFIG;
-    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
-    const slogan = cfg.slogan || '';
+        // Optionnel : vérifier l'état (1 = prêt)
+        let status = await SunmiPrinter.updatePrinterState();
+        alert("État imprimante: " + (status && status.status ? status.status : "inconnu"));
 
-    // Commandes ESC/POS
-    // \x1B\x40 : Initialise l'imprimante
-    // \x1B\x21\x00 : Désactive gras/double hauteur
-    // \x1D\x21\x00 : Désactive double-width
-    // \x1B\x61\x01 : Centre l'alignement
-    let escpos = "\x1B\x40\x1B\x21\x00\x1D\x21\x00\x1B\x61\x01";
-    escpos += `${lotteryName}\n`;
-    if (slogan) escpos += `${slogan}\n`;
-    escpos += `Ticket #: ${ticket.ticket_id || ticket.id}\n`;
-
-    let drawName = ticket.draw_name || ticket.drawName;
-    if (!drawName && APP_STATE.draws && ticket.draw_id) {
-        const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
-        drawName = draw ? draw.name : 'Tiraj Inkonu';
-    }
-    escpos += `Tiraj: ${drawName}\n`;
-
-    let formattedDate = 'Date inkonu';
-    if (ticket.date) {
-        const normalized = normalizeDateString(ticket.date);
-        const dateObj = new Date(normalized);
-        if (!isNaN(dateObj)) {
-            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' +
-                            dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+        // Construction du ticket (texte simple sans mise en forme complexe)
+        let content = "";
+        content += "\n";
+        content += "LOTATO\n";
+        content += "Ticket #: " + (ticket.ticket_id || ticket.id) + "\n";
+        let drawName = ticket.draw_name || ticket.drawName;
+        if (!drawName && APP_STATE.draws && ticket.draw_id) {
+            let draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
+            drawName = draw ? draw.name : "Tiraj Inkonu";
         }
+        content += "Tiraj: " + drawName + "\n";
+        let dateStr = ticket.date ? new Date(ticket.date).toLocaleString() : "Date inconnue";
+        content += "Date: " + dateStr + "\n";
+        content += "Ajan: " + (ticket.agent_name || ticket.agentName || "") + "\n";
+        content += "--------------------------------\n";
+        let bets = ticket.bets || [];
+        for (let b of bets) {
+            let gameAbbr = getGameAbbreviation(b.game || "", b);
+            let num = b.number || "";
+            if (b.game === 'auto_marriage' && num.includes('&')) num = num.replace('&', '*');
+            let amt = b.amount || 0;
+            content += gameAbbr + " " + num + "  " + amt + " G\n";
+        }
+        content += "--------------------------------\n";
+        let total = ticket.total_amount || ticket.total || 0;
+        content += "TOTAL : " + total + " Gdes\n";
+        content += "Merci et à bientôt!\n\n";
+
+        alert("Contenu préparé, envoi à l'imprimante...");
+        await SunmiPrinter.enterPrinterBuffer();
+        alert("enterPrinterBuffer OK");
+
+        // Envoi du texte
+        await SunmiPrinter.printText({ text: content });
+        alert("printText OK");
+
+        await SunmiPrinter.cutPaper();
+        alert("cutPaper OK");
+
+        await SunmiPrinter.exitPrinterBuffer();
+        alert("Impression terminée avec succès !");
+    } catch(e) {
+        alert("Erreur dans printWithSunmi: " + e.message);
+        console.error(e);
+        try { await SunmiPrinter.exitPrinterBuffer(); } catch(e2) {}
     }
-    escpos += `Date: ${formattedDate}\n`;
-    escpos += `Ajan: ${ticket.agent_name || ticket.agentName || ''}\n`;
-    escpos += `--------------------------------\n`;
-
-    // Alignement à gauche pour les paris
-    escpos += "\x1B\x61\x00";
-    const bets = ticket.bets || [];
-    for (const bet of bets) {
-        const gameAbbr = getGameAbbreviation(bet.game || '', bet);
-        let displayNumber = bet.number || '';
-        if (bet.game === 'auto_marriage' && displayNumber.includes('&')) displayNumber = displayNumber.replace('&', '*');
-        const amount = bet.amount || 0;
-        escpos += `${gameAbbr} ${displayNumber}  ${amount} G\n`;
-    }
-    escpos += `--------------------------------\n`;
-
-    // Total centré
-    escpos += "\x1B\x61\x01";
-    const total = ticket.total_amount || ticket.total || 0;
-    escpos += `TOTAL : ${total} Gdes\n`;
-    escpos += `\ntickets valable jusqu'à 90 jours\nRef : +509 \nLOTATO S.A.\n\n`;
-
-    // Découpe du papier (commande standard ESC/POS)
-    escpos += "\x1B\x69";
-
-    // Envoi des commandes brutes
-    await SunmiPrinter.enterPrinterBuffer();
-    await SunmiPrinter.sendRAWData({ data: escpos });
-    await SunmiPrinter.exitPrinterBuffer();
-    console.log("Impression Sunmi réussie");
 }
 
-// ---------- Sauvegarde et impression (point d'entrée) ----------
+// ---------- Sauvegarde et impression (point d'entrée principal) ----------
 async function processFinalTicket() {
-    if (!APP_STATE.currentCart.length) { alert("Panye vid"); return; }
+    alert("processFinalTicket appelée !");
+    if (!APP_STATE.currentCart.length) {
+        alert("Panye vid");
+        return;
+    }
 
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
@@ -342,40 +334,9 @@ async function processFinalTicket() {
     }
 }
 
-// ---------- Fallback HTML (pour popup, non utilisé sur Sunmi mais conservé) ----------
-function generateTicketHTML(ticket) {
-    const cfg = APP_STATE.lotteryConfig || CONFIG;
-    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
-    const slogan = cfg.slogan || '';
-    const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
-    let formattedDate = 'Date invalide';
-    if (ticket.date) {
-        const normalized = normalizeDateString(ticket.date);
-        const dateObj = new Date(normalized);
-        if (!isNaN(dateObj)) {
-            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
-        }
-    }
-    let drawName = ticket.draw_name || ticket.drawName;
-    if (!drawName && APP_STATE.draws && ticket.draw_id) {
-        const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
-        drawName = draw ? draw.name : 'Tiraj Inkonu';
-    } else if (!drawName) drawName = 'Tiraj Inkonu';
-    const betsHTML = (ticket.bets || []).map(b => {
-        const gameAbbr = getGameAbbreviation(b.game || '', b);
-        let displayNumber = b.number || '';
-        if (b.game === 'auto_marriage' && displayNumber.includes('&')) displayNumber = displayNumber.replace('&', '*');
-        return `<div class="bet-row"><span>${gameAbbr} ${displayNumber}</span><span>${b.amount || 0} G</span></div>`;
-    }).join('');
-    return `
-        <div class="header">${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}<strong>${lotteryName}</strong>${slogan ? `<small>${slogan}</small>` : ''}</div>
-        <div class="info"><p>Ticket #: ${ticket.ticket_id || ticket.id}</p><p>Tiraj: ${drawName}</p><p>Date: ${formattedDate}</p><p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p></div>
-        <hr>${betsHTML}<hr>
-        <div class="total-row"><span>TOTAL</span><span>${ticket.total_amount || ticket.total || 0} Gdes</span></div>
-        <div class="footer"><p>tickets valable jusqu'à 90 jours</p><p>Ref : +509 </p><p><strong>LOTATO S.A.</strong></p></div>
-    `;
-}
-
-// Expositions globales
-window.CartManager = CartManager;
+// Exposer la fonction globalement
 window.processFinalTicket = processFinalTicket;
+window.CartManager = CartManager;
+
+// Alerte pour confirmer le chargement
+alert("cartManager.js chargé - version finale Sunmi");
