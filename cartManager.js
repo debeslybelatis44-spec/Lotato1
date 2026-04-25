@@ -1,5 +1,6 @@
 // ==========================
 // cartManager.js - VERSION FINALE POUR SUNMI V2s
+// avec gestion forcée du service d'impression
 // ==========================
 
 // ---------- Fonctions utilitaires (inchangées) ----------
@@ -202,7 +203,7 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// ---------- Impression native Sunmi (avec gestion forcée du service) ----------
+// ---------- Impression native Sunmi avec gestion du service ----------
 async function printWithSunmi(ticket) {
     let SunmiPrinter;
     try {
@@ -220,22 +221,30 @@ async function printWithSunmi(ticket) {
     }
 
     try {
-        alert("Tentative de bindService...");
-        await SunmiPrinter.bindService();
-        alert("bindService effectué");
+        // Forcer la liaison du service (plusieurs tentatives)
+        let bound = false;
+        for (let i = 0; i < 5; i++) {
+            alert(`Tentative bindService (${i+1}/5)...`);
+            await SunmiPrinter.bindService();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            let serviceStatus = await SunmiPrinter.getServiceStatus();
+            bound = (serviceStatus && serviceStatus.status === 1);
+            if (bound) break;
+            alert(`Service non lié (status ${serviceStatus?.status}), nouvelle tentative...`);
+        }
+        if (!bound) throw new Error("Impossible de lier le service d'impression");
+        alert("Service lié OK");
 
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Vérification optionnelle de l'état du service
-        let serviceStatus = await SunmiPrinter.getServiceStatus();
-        alert("État service: " + (serviceStatus && serviceStatus.status === 1 ? "lié" : "non lié / code " + (serviceStatus?.status || "?")));
+        // Vérifier l'état de l'imprimante
+        let printerState = await SunmiPrinter.updatePrinterState();
+        alert(`État imprimante: code ${printerState?.code}, status ${printerState?.status}`);
+        if (printerState?.status !== 1) {
+            throw new Error("Imprimante non prête (code " + printerState?.code + ")");
+        }
 
         alert("printerInit...");
         await SunmiPrinter.printerInit();
         alert("printerInit OK");
-
-        let printerState = await SunmiPrinter.updatePrinterState();
-        alert("État imprimante: " + (printerState && printerState.status === 1 ? "prête" : "code " + (printerState?.code || "?")));
 
         // Construction du contenu
         let content = "";
@@ -251,8 +260,7 @@ async function printWithSunmi(ticket) {
         content += "Date: " + dateStr + "\n";
         content += "Ajan: " + (ticket.agent_name || ticket.agentName || "") + "\n";
         content += "--------------------------------\n";
-        let bets = ticket.bets || [];
-        for (let b of bets) {
+        for (let b of (ticket.bets || [])) {
             let gameAbbr = getGameAbbreviation(b.game || "", b);
             let num = b.number || "";
             if (b.game === 'auto_marriage' && num.includes('&')) num = num.replace('&', '*');
@@ -276,7 +284,7 @@ async function printWithSunmi(ticket) {
     } catch(e) {
         alert("❌ Erreur: " + e.message);
         console.error(e);
-        try { await SunmiPrinter.exitPrinterBuffer(); } catch(e2) {}
+        try { await SunmiPrinter?.exitPrinterBuffer(); } catch(e2) {}
     }
 }
 
