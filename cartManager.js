@@ -1,14 +1,16 @@
 // ==========================
 // cartManager.js - VERSION FINALE POUR SUNMI V2s
-// avec gestion forcée du service d'impression
+// utilise le plugin personnalisé via Capacitor.Plugins
 // ==========================
 
-// ---------- Fonctions utilitaires (inchangées) ----------
+// ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
-    return dateStr.replace(' ', 'T');
+    let normalized = dateStr.replace(' ', 'T');
+    return normalized;
 }
 
+// ---------- Utils ----------
 function isNumberBlocked(number, drawId) {
     if (APP_STATE.globalBlockedNumbers.includes(number)) return true;
     const drawBlocked = APP_STATE.drawBlockedNumbers[drawId] || [];
@@ -19,7 +21,9 @@ function checkNumberLimit(number, drawId, amountToAdd) {
     const key = `${drawId}_${number}`;
     const limit = APP_STATE.numberLimits[key];
     if (!limit) return { success: true };
-    const currentTotal = APP_STATE.currentCart.filter(bet => bet.drawId === drawId && bet.cleanNumber === number).reduce((sum, bet) => sum + (bet.amount || 0), 0);
+    const currentTotal = APP_STATE.currentCart
+        .filter(bet => bet.drawId === drawId && bet.cleanNumber === number)
+        .reduce((sum, bet) => sum + (bet.amount || 0), 0);
     const newTotal = currentTotal + amountToAdd;
     if (newTotal > limit) {
         return { success: false, message: `Limite atteinte : ${number} (${drawId}) – max ${limit} G, déjà ${currentTotal} G, tentative ${amountToAdd} G.` };
@@ -33,7 +37,7 @@ function generateRandomMarriageBet(amount) {
     return { game: 'auto_marriage', number: `${num1}&${num2}`, cleanNumber: `${num1}&${num2}`, amount: amount };
 }
 
-// ---------- Cart Manager (inchangé) ----------
+// ---------- Cart Manager ----------
 var CartManager = {
     updateFreeMarriages() {
         APP_STATE.currentCart = APP_STATE.currentCart.filter(b => !(b.free && b.freeType === 'special_marriage'));
@@ -68,6 +72,7 @@ var CartManager = {
         if (isNaN(amt) || amt <= 0) { alert("Montan pa valid"); return; }
         const game = APP_STATE.selectedGame;
 
+        // --- Gestion des jeux automatiques ---
         if (game === 'auto_marriage' || game === 'bo' || game === 'grap' || game === 'auto_lotto4' || game === 'auto_lotto5') {
             let autoBets = [];
             switch (game) {
@@ -106,6 +111,7 @@ var CartManager = {
             return;
         }
 
+        // --- Gestion des jeux NX (n0 à n9) ---
         if (/^n[0-9]$/.test(game)) {
             const lastDigit = parseInt(game.substring(1), 10);
             const numbers = [];
@@ -137,6 +143,7 @@ var CartManager = {
             return;
         }
 
+        // --- Gestion des jeux normaux (saisie manuelle) ---
         let num = numInput.value.trim();
         if (!GameEngine.validateEntry(game, num)) { alert("Nimewo pa valid"); return; }
         num = GameEngine.getCleanNumber(num);
@@ -203,8 +210,9 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// ---------- Impression native Sunmi avec gestion du service ----------
+// ---------- Impression native Sunmi via plugin personnalisé (sans import) ----------
 async function printWithSunmi(ticket) {
+    // Récupération du plugin depuis Capacitor
     let SunmiPrinter;
     try {
         if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SunmiPrinter) {
@@ -214,41 +222,22 @@ async function printWithSunmi(ticket) {
         } else {
             throw new Error("Plugin Sunmi non trouvé");
         }
-        alert("✅ Plugin trouvé");
-    } catch(e) {
+        alert("✅ Plugin Sunmi trouvé");
+    } catch (e) {
         alert("❌ " + e.message);
         return;
     }
 
     try {
-        // Forcer la liaison du service (plusieurs tentatives)
-        let bound = false;
-        for (let i = 0; i < 5; i++) {
-            alert(`Tentative bindService (${i+1}/5)...`);
-            await SunmiPrinter.bindService();
-            await new Promise(resolve => setTimeout(resolve, 500));
-            let serviceStatus = await SunmiPrinter.getServiceStatus();
-            bound = (serviceStatus && serviceStatus.status === 1);
-            if (bound) break;
-            alert(`Service non lié (status ${serviceStatus?.status}), nouvelle tentative...`);
-        }
-        if (!bound) throw new Error("Impossible de lier le service d'impression");
-        alert("Service lié OK");
+        // Liaison du service d'impression (méthode officielle Sunmi via InnerPrinterManager)
+        alert("Liaison du service d'impression...");
+        await SunmiPrinter.bindService();
+        alert("Service lié avec succès !");
 
-        // Vérifier l'état de l'imprimante
-        let printerState = await SunmiPrinter.updatePrinterState();
-        alert(`État imprimante: code ${printerState?.code}, status ${printerState?.status}`);
-        if (printerState?.status !== 1) {
-            throw new Error("Imprimante non prête (code " + printerState?.code + ")");
-        }
-
-        alert("printerInit...");
-        await SunmiPrinter.printerInit();
-        alert("printerInit OK");
-
-        // Construction du contenu
+        // Construction du contenu du ticket
         let content = "";
-        content += "\nLOTATO\n";
+        content += "\n";
+        content += "LOTATO\n";
         content += "Ticket #: " + (ticket.ticket_id || ticket.id) + "\n";
         let drawName = ticket.draw_name || ticket.drawName;
         if (!drawName && APP_STATE.draws && ticket.draw_id) {
@@ -260,7 +249,8 @@ async function printWithSunmi(ticket) {
         content += "Date: " + dateStr + "\n";
         content += "Ajan: " + (ticket.agent_name || ticket.agentName || "") + "\n";
         content += "--------------------------------\n";
-        for (let b of (ticket.bets || [])) {
+        let bets = ticket.bets || [];
+        for (let b of bets) {
             let gameAbbr = getGameAbbreviation(b.game || "", b);
             let num = b.number || "";
             if (b.game === 'auto_marriage' && num.includes('&')) num = num.replace('&', '*');
@@ -272,19 +262,18 @@ async function printWithSunmi(ticket) {
         content += "TOTAL : " + total + " Gdes\n";
         content += "Merci et à bientôt!\n\n";
 
-        alert("Envoi à l'imprimante...");
-        await SunmiPrinter.enterPrinterBuffer();
-        alert("enterPrinterBuffer OK");
+        // Envoi à l'imprimante
+        alert("Envoi du texte...");
         await SunmiPrinter.printText({ text: content });
-        alert("printText OK");
+        alert("Impression du texte réussie");
+
+        // Découpe du papier
         await SunmiPrinter.cutPaper();
-        alert("cutPaper OK");
-        await SunmiPrinter.exitPrinterBuffer();
         alert("✅ Impression terminée avec succès !");
-    } catch(e) {
-        alert("❌ Erreur: " + e.message);
+    } catch (e) {
+        alert("❌ Erreur lors de l'impression : " + e.message);
         console.error(e);
-        try { await SunmiPrinter?.exitPrinterBuffer(); } catch(e2) {}
+        try { await SunmiPrinter?.exitPrinterBuffer?.(); } catch(e2) {}
     }
 }
 
@@ -337,8 +326,9 @@ async function processFinalTicket() {
     }
 }
 
-// Expositions globales
-window.processFinalTicket = processFinalTicket;
+// ---------- Expositions globales ----------
 window.CartManager = CartManager;
+window.processFinalTicket = processFinalTicket;
 
-alert("cartManager.js chargé - version finale Sunmi");
+// Message de confirmation
+console.log("cartManager.js chargé - version finale avec plugin custom Sunmi");
