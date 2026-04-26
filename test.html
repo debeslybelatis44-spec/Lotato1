@@ -1,1 +1,41 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sunmi Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+</head>
+<body>
+    <button onclick="testPrint()">Test Ultra Simple</button>
+    <div id="log"></div>
+
+    <script>
+        function log(message) {
+            document.getElementById('log').innerHTML += `<div>${message}</div>`;
+        }
+
+        async function testPrint() {
+            const { SunmiPrinter } = Capacitor.Plugins;
+            if (!SunmiPrinter) {
+                log("Plugin Sunmi non trouvé");
+                return;
+            }
+            log("✅ Plugin trouvé");
+            try {
+                log("📞 Appel de bindService...");
+                await SunmiPrinter.bindService();
+                log("✅ Service lié !");
+                log("📤 Envoi du texte...");
+                await SunmiPrinter.printText({ text: "Hello Sunmi V2s !\n" });
+                log("✅ Texte envoyé !");
+                log("✂️ Découpe du papier...");
+                await SunmiPrinter.cutPaper();
+                log("✅ Impression terminée ! Vérifiez le ticket.");
+            } catch(e) {
+                log("❌ Erreur: " + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
