@@ -1,39 +1,44 @@
-
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sunmi Test</title>
+    <title>Sunmi Test Direct</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 </head>
 <body>
-    <button onclick="testPrint()">Test Ultra Simple</button>
+    <button onclick="testPrint()">Test Impression Directe</button>
     <div id="log"></div>
 
     <script>
-        function log(message) {
-            document.getElementById('log').innerHTML += `<div>${message}</div>`;
+        function log(msg) {
+            const div = document.getElementById('log');
+            div.innerHTML += `<div>${msg}</div>`;
         }
 
         async function testPrint() {
-            const { SunmiPrinter } = Capacitor.Plugins;
-            if (!SunmiPrinter) {
-                log("Plugin Sunmi non trouvé");
+            // Récupérer le plugin
+            const plugin = Capacitor.Plugins.SunmiPrinter;
+            if (!plugin) {
+                log("❌ Plugin SunmiPrinter non trouvé");
                 return;
             }
             log("✅ Plugin trouvé");
+
+            // Tenter d'imprimer directement (sans bindService)
             try {
-                log("📞 Appel de bindService...");
-                await SunmiPrinter.bindService();
-                log("✅ Service lié !");
-                log("📤 Envoi du texte...");
-                await SunmiPrinter.printText({ text: "Hello Sunmi V2s !\n" });
-                log("✅ Texte envoyé !");
-                log("✂️ Découpe du papier...");
-                await SunmiPrinter.cutPaper();
-                log("✅ Impression terminée ! Vérifiez le ticket.");
+                log("📝 Tentative d'impression directe...");
+                await plugin.printText({ text: "Test direct Sunmi V2s\nLigne 2\n" });
+                log("✅ printText réussi");
+                await plugin.cutPaper();
+                log("✅ Papier coupé");
+                log("🎉 Impression réussie !");
             } catch(e) {
                 log("❌ Erreur: " + e.message);
+                // Si erreur, essayer d'obtenir le statut
+                try {
+                    const status = await plugin.getServiceStatus();
+                    log("Statut du service: " + JSON.stringify(status));
+                } catch(s) { log("Impossible d'obtenir le statut"); }
             }
         }
     </script>
