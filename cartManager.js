@@ -1,6 +1,6 @@
 // ==========================
 // cartManager.js - VERSION FINALE POUR SUNMI V2s
-// utilise le plugin personnalisé via Capacitor.Plugins
+// avec polling de connexion du service
 // ==========================
 
 // ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
@@ -210,34 +210,39 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// ---------- Impression native Sunmi via plugin personnalisé (sans import) ----------
+// ---------- Impression native Sunmi via plugin personnalisé (avec polling) ----------
 async function printWithSunmi(ticket) {
-    // Récupération du plugin depuis Capacitor
-    let SunmiPrinter;
-    try {
-        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SunmiPrinter) {
-            SunmiPrinter = window.Capacitor.Plugins.SunmiPrinter;
-        } else if (window.SunmiPrinter) {
-            SunmiPrinter = window.SunmiPrinter;
-        } else {
-            throw new Error("Plugin Sunmi non trouvé");
-        }
-        alert("✅ Plugin Sunmi trouvé");
-    } catch (e) {
-        alert("❌ " + e.message);
+    const { SunmiPrinter } = Capacitor.Plugins;
+    if (!SunmiPrinter) {
+        alert("Plugin Sunmi non trouvé");
         return;
     }
-
     try {
-        // Liaison du service d'impression (méthode officielle Sunmi via InnerPrinterManager)
         alert("Liaison du service d'impression...");
-        await SunmiPrinter.bindService();
-        alert("Service lié avec succès !");
-
+        // Appeler bindService (ne pas attendre la résolution)
+        SunmiPrinter.bindService().catch(e => alert("bindService error: " + e.message));
+        
+        // Attendre que le service soit connecté (max 5 secondes, 10 tentatives)
+        let connected = false;
+        for (let i = 0; i < 10; i++) {
+            await new Promise(r => setTimeout(r, 500));
+            const status = await SunmiPrinter.getServiceStatus();
+            if (status && status.connected) {
+                connected = true;
+                break;
+            }
+            // Optionnel : afficher une alerte à chaque tentative pour debug
+            // alert(`En attente de connexion... (${i+1}/10)`);
+        }
+        if (!connected) {
+            alert("Service non connecté après 5 secondes. Vérifiez les permissions et que l'imprimante est prête.");
+            return;
+        }
+        alert("Service connecté ! Impression en cours...");
+        
         // Construction du contenu du ticket
         let content = "";
-        content += "\n";
-        content += "LOTATO\n";
+        content += "\nLOTATO\n";
         content += "Ticket #: " + (ticket.ticket_id || ticket.id) + "\n";
         let drawName = ticket.draw_name || ticket.drawName;
         if (!drawName && APP_STATE.draws && ticket.draw_id) {
@@ -261,19 +266,13 @@ async function printWithSunmi(ticket) {
         let total = ticket.total_amount || ticket.total || 0;
         content += "TOTAL : " + total + " Gdes\n";
         content += "Merci et à bientôt!\n\n";
-
-        // Envoi à l'imprimante
-        alert("Envoi du texte...");
+        
         await SunmiPrinter.printText({ text: content });
-        alert("Impression du texte réussie");
-
-        // Découpe du papier
         await SunmiPrinter.cutPaper();
         alert("✅ Impression terminée avec succès !");
-    } catch (e) {
-        alert("❌ Erreur lors de l'impression : " + e.message);
+    } catch(e) {
+        alert("❌ Erreur lors de l'impression: " + e.message);
         console.error(e);
-        try { await SunmiPrinter?.exitPrinterBuffer?.(); } catch(e2) {}
     }
 }
 
@@ -330,5 +329,4 @@ async function processFinalTicket() {
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
 
-// Message de confirmation
-console.log("cartManager.js chargé - version finale avec plugin custom Sunmi");
+console.log("cartManager.js chargé - version finale avec polling Sunmi");
