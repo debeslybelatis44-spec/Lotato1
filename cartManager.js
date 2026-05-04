@@ -375,20 +375,14 @@ async function processFinalTicket() {
         return;
     }
 
-    // Vérifier si PrintBridge Sunmi est actif
-    const sunmiActif = await isPrintBridgeActive();
-
-    // Ouvrir popup seulement si pas de Sunmi
-    let printWindow = null;
-    if (!sunmiActif) {
-        printWindow = window.open('', '_blank', 'width=500,height=700');
-        if (!printWindow) {
-            alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
-            return;
-        }
-        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
-        printWindow.document.close();
+    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    if (!printWindow) {
+        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
+        return;
     }
+
+    printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
+    printWindow.document.close();
 
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
@@ -422,8 +416,9 @@ async function processFinalTicket() {
             if (!res.ok) throw new Error("Erreur serveur");
 
             const data = await res.json();
+            // Ajout de la date actuelle pour l'impression immédiate
             data.ticket.date = new Date().toISOString();
-            await printThermalTicket(data.ticket, printWindow);
+            printThermalTicket(data.ticket, printWindow);
             APP_STATE.ticketsHistory.unshift(data.ticket);
         }
 
@@ -434,143 +429,116 @@ async function processFinalTicket() {
     } catch (err) {
         console.error(err);
         alert("❌ Erè pandan enpresyon");
-        if (printWindow) printWindow.close();
+        printWindow.close();
     }
 }
 
 // ---------- PRINT ----------
-// ═══════════════════════════════════════════════════════════════
-// LOTATO PrintBridge - Patch impression Sunmi V2S
-// Ajouter CE CODE dans cartManager.js
-// REMPLACE la fonction printThermalTicket existante
-// ═══════════════════════════════════════════════════════════════
+// ---------- PRINT ----------
+function printThermalTicket(ticket, printWindow) {
+    const html = generateTicketHTML(ticket);
 
-const PRINT_SERVER = 'http://localhost:8787';
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Ticket</title>
+            <style>
+                @page {
+                    size: 80mm auto;
+                    margin: 2mm;
+                }
+                body {
+                    font-family: 'Courier New', monospace;
+                    font-size: 25.6px;      /* réduit de 32px → 80% */
+                    font-weight: bold;
+                    width: 76mm;
+                    margin: 0 auto;
+                    padding: 4mm;
+                    background: white;
+                    color: black;
+                }
+                .header {
+                    text-align: center !important;
+                    border-bottom: 2px dashed #000;
+                    padding: 0 !important;
+                    margin: 0 0 2px 0 !important;
+                    line-height: 1;
+                }
+                .header img {
+                    display: block !important;
+                    margin: 0 auto !important;
+                    vertical-align: bottom !important;
+                    max-height: 350px;
+                    max-width: 100%;
+                }
+                .header strong {
+                    display: block;
+                    font-size: 32px;        /* réduit de 40px → 80% */
+                    font-weight: bold;
+                    margin: 0;
+                    line-height: 1;
+                }
+                .header small {
+                    display: block;
+                    font-size: 20.8px;      /* réduit de 26px → 80% */
+                    color: #555;
+                    margin: 0;
+                    line-height: 1;
+                }
+                .info {
+                    margin: 10px 0;
+                }
+                .info p {
+                    margin: 5px 0;
+                    font-size: 16px;        /* réduit de 20px → 80% */
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                hr {
+                    border: none;
+                    border-top: 2px dashed #000;
+                    margin: 10px 0;
+                }
+                .bet-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 5px 0;
+                    font-weight: bold;
+                    font-size: 25.6px;      /* réduit de 32px → 80% */
+                }
+                .total-row {
+                    display: flex;
+                    justify-content: space-between;
+                    font-weight: bold;
+                    margin-top: 10px;
+                    font-size: 28.8px;      /* réduit de 36px → 80% */
+                }
+                .footer {
+                    text-align: center;
+                    margin-top: 20px;
+                    font-style: italic;
+                    font-size: 22.4px;      /* réduit de 28px → 80% */
+                }
+                .footer p {
+                    font-weight: bold;
+                    margin: 3px 0;
+                }
+            </style>
+        </head>
+        <body>
+            ${html}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
 
-// Vérifie si le serveur PrintBridge est actif
-async function isPrintBridgeActive() {
-    try {
-        const res = await fetch(`${PRINT_SERVER}/status`, {
-            signal: AbortSignal.timeout(1500)
-        });
-        const data = await res.json();
-        return data.printer === 'connected';
-    } catch {
-        return false;
-    }
+    printWindow.onload = function() {
+        printWindow.focus();
+        printWindow.print();
+    };
 }
-
-// ── Nouvelle fonction printThermalTicket ─────────────────────────
-// Remplace l'ancienne qui utilisait window.open()
-async function printThermalTicket(ticket, printWindow) {
-
-    // Essayer d'abord le PrintBridge (Sunmi)
-    const bridgeActive = await isPrintBridgeActive();
-
-    if (bridgeActive) {
-        // Fermer la fenêtre popup si elle existe
-        if (printWindow && !printWindow.closed) {
-            printWindow.close();
-        }
-
-        // Construire les lignes du ticket
-        const cfg = APP_STATE.lotteryConfig || CONFIG;
-        const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
-        const drawName = ticket.draw_name || ticket.drawName || 'Tiraj';
-
-        let formattedDate = '';
-        if (ticket.date) {
-            try {
-                const d = new Date(ticket.date);
-                formattedDate = d.toLocaleDateString('fr-FR') + ' ' +
-                    d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-            } catch {}
-        }
-
-        const lines = [
-            `Ticket #: ${ticket.ticket_id || ticket.id || ''}`,
-            `Tiraj: ${drawName}`,
-            `Date: ${formattedDate}`,
-            `Ajan: ${ticket.agent_name || ticket.agentName || ''}`,
-            `--------------------------------`,
-        ];
-
-        // Ajouter les mises
-        (ticket.bets || []).forEach(b => {
-            const gameAbbr = typeof getGameAbbreviation === 'function'
-                ? getGameAbbreviation(b.game || '', b)
-                : (b.game || '');
-            let num = b.number || '';
-            if (b.game === 'auto_marriage') num = num.replace('&', '*');
-            lines.push(`${gameAbbr} ${num}  ${b.amount || 0} G`);
-        });
-
-        lines.push(`--------------------------------`);
-        lines.push(`TOTAL: ${ticket.total_amount || ticket.total || 0} Gdes`);
-        lines.push(`tickets valable 90 jours`);
-        lines.push(`LOTATO S.A.`);
-
-        try {
-            const res = await fetch(`${PRINT_SERVER}/print`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'ticket',
-                    header: lotteryName,
-                    lines: lines,
-                    footer: 'Bonne chance!'
-                })
-            });
-            const result = await res.json();
-            if (result.success) {
-                console.log('✅ Ticket imprimé via Sunmi');
-                return;
-            }
-        } catch (e) {
-            console.error('Erreur PrintBridge:', e);
-        }
-    }
-
-    // Fallback: impression classique navigateur (window.print)
-    if (printWindow && !printWindow.closed) {
-        const html = generateTicketHTML(ticket);
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Ticket</title>
-                <style>
-                    @page { size: 80mm auto; margin: 2mm; }
-                    body { font-family: 'Courier New', monospace; font-size: 32px;
-                           font-weight: bold; width: 76mm; margin: 0 auto;
-                           padding: 4mm; background: white; color: black; }
-                    .header { text-align: center; border-bottom: 2px dashed #000; }
-                    .header img { display: block; margin: 0 auto; max-height: 350px; max-width: 100%; }
-                    .header strong { display: block; font-size: 40px; }
-                    .info p { margin: 5px 0; font-size: 20px; }
-                    hr { border: none; border-top: 2px dashed #000; margin: 10px 0; }
-                    .bet-row { display: flex; justify-content: space-between; font-size: 32px; }
-                    .total-row { display: flex; justify-content: space-between; font-size: 36px; font-weight: bold; }
-                    .footer { text-align: center; font-size: 28px; }
-                </style>
-            </head>
-            <body>${html}</body>
-            </html>
-        `);
-        printWindow.document.close();
-        printWindow.onload = function() {
-            printWindow.focus();
-            printWindow.print();
-        };
-    } else {
-        alert('Impression échouée. Vérifiez que LOTATO PrintBridge est démarré.');
-    }
-}
-
-// Exposer globalement
-window.printThermalTicket = printThermalTicket;
-window.isPrintBridgeActive = isPrintBridgeActive;
-
 // ---------- Ticket HTML ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
