@@ -375,14 +375,20 @@ async function processFinalTicket() {
         return;
     }
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
-    if (!printWindow) {
-        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
-        return;
-    }
+    // Vérifier si PrintBridge Sunmi est actif
+    const sunmiActif = await isPrintBridgeActive();
 
-    printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
-    printWindow.document.close();
+    // Ouvrir popup seulement si pas de Sunmi
+    let printWindow = null;
+    if (!sunmiActif) {
+        printWindow = window.open('', '_blank', 'width=500,height=700');
+        if (!printWindow) {
+            alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
+            return;
+        }
+        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
+        printWindow.document.close();
+    }
 
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
@@ -416,9 +422,8 @@ async function processFinalTicket() {
             if (!res.ok) throw new Error("Erreur serveur");
 
             const data = await res.json();
-            // Ajout de la date actuelle pour l'impression immédiate
             data.ticket.date = new Date().toISOString();
-            printThermalTicket(data.ticket, printWindow);
+            await printThermalTicket(data.ticket, printWindow);
             APP_STATE.ticketsHistory.unshift(data.ticket);
         }
 
@@ -429,7 +434,7 @@ async function processFinalTicket() {
     } catch (err) {
         console.error(err);
         alert("❌ Erè pandan enpresyon");
-        printWindow.close();
+        if (printWindow) printWindow.close();
     }
 }
 
