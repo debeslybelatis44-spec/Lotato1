@@ -434,7 +434,6 @@ async function processFinalTicket() {
 }
 
 // ---------- PRINT ----------
-// ---------- PRINT ----------
 function printThermalTicket(ticket, printWindow) {
     const html = generateTicketHTML(ticket);
 
@@ -450,7 +449,7 @@ function printThermalTicket(ticket, printWindow) {
                 }
                 body {
                     font-family: 'Courier New', monospace;
-                    font-size: 25.6px;      /* réduit de 32px → 80% */
+                    font-size: 32px;
                     font-weight: bold;
                     width: 76mm;
                     margin: 0 auto;
@@ -474,14 +473,14 @@ function printThermalTicket(ticket, printWindow) {
                 }
                 .header strong {
                     display: block;
-                    font-size: 32px;        /* réduit de 40px → 80% */
+                    font-size: 40px;
                     font-weight: bold;
                     margin: 0;
                     line-height: 1;
                 }
                 .header small {
                     display: block;
-                    font-size: 20.8px;      /* réduit de 26px → 80% */
+                    font-size: 26px;
                     color: #555;
                     margin: 0;
                     line-height: 1;
@@ -491,7 +490,7 @@ function printThermalTicket(ticket, printWindow) {
                 }
                 .info p {
                     margin: 5px 0;
-                    font-size: 16px;        /* réduit de 20px → 80% */
+                    font-size: 20px;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
@@ -506,20 +505,20 @@ function printThermalTicket(ticket, printWindow) {
                     justify-content: space-between;
                     margin: 5px 0;
                     font-weight: bold;
-                    font-size: 25.6px;      /* réduit de 32px → 80% */
+                    font-size: 32px;
                 }
                 .total-row {
                     display: flex;
                     justify-content: space-between;
                     font-weight: bold;
                     margin-top: 10px;
-                    font-size: 28.8px;      /* réduit de 36px → 80% */
+                    font-size: 36px;
                 }
                 .footer {
                     text-align: center;
                     margin-top: 20px;
                     font-style: italic;
-                    font-size: 22.4px;      /* réduit de 28px → 80% */
+                    font-size: 28px;
                 }
                 .footer p {
                     font-weight: bold;
@@ -539,6 +538,7 @@ function printThermalTicket(ticket, printWindow) {
         printWindow.print();
     };
 }
+
 // ---------- Ticket HTML ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
