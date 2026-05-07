@@ -375,14 +375,20 @@ async function processFinalTicket() {
         return;
     }
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
-    if (!printWindow) {
-        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
-        return;
-    }
+    // Vérifier si PrintBridge Sunmi est actif
+    const sunmiActif = await isPrintBridgeActive();
 
-    printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
-    printWindow.document.close();
+    // Ouvrir popup seulement si pas de Sunmi
+    let printWindow = null;
+    if (!sunmiActif) {
+        printWindow = window.open('', '_blank', 'width=500,height=700');
+        if (!printWindow) {
+            alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
+            return;
+        }
+        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
+        printWindow.document.close();
+    }
 
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
@@ -416,9 +422,8 @@ async function processFinalTicket() {
             if (!res.ok) throw new Error("Erreur serveur");
 
             const data = await res.json();
-            // Ajout de la date actuelle pour l'impression immédiate
             data.ticket.date = new Date().toISOString();
-            printThermalTicket(data.ticket, printWindow);
+            await printThermalTicket(data.ticket, printWindow);
             APP_STATE.ticketsHistory.unshift(data.ticket);
         }
 
@@ -427,117 +432,188 @@ async function processFinalTicket() {
         alert("✅ Tikè sove & enprime");
 
     } catch (err) {
-        console.error(err);
-        alert("❌ Erè pandan enpresyon");
-        printWindow.close();
+        console.error('Erreur complète:', err);
+        // Si Sunmi pas disponible, essayer fallback navigateur
+        if (printWindow && !printWindow.closed) {
+            // Le ticket a peut-être été sauvé, essayer d'imprimer quand même
+            console.log('Tentative fallback impression navigateur');
+        } else {
+            alert("❌ Erè: " + (err.message || err));
+        }
     }
 }
 
 // ---------- PRINT ----------
-function printThermalTicket(ticket, printWindow) {
-    const html = generateTicketHTML(ticket);
+// ═══════════════════════════════════════════════════════════════
+// LOTATO PRO - Impression Sunmi V2S via WebView Bridge
+// ═══════════════════════════════════════════════════════════════
 
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Ticket</title>
-            <style>
-                @page {
-                    size: 80mm auto;
-                    margin: 2mm;
-                }
-                body {
-                    font-family: 'Courier New', monospace;
-                    font-size: 32px;
-                    font-weight: bold;
-                    width: 76mm;
-                    margin: 0 auto;
-                    padding: 4mm;
-                    background: white;
-                    color: black;
-                }
-                .header {
-                    text-align: center !important;
-                    border-bottom: 2px dashed #000;
-                    padding: 0 !important;
-                    margin: 0 0 2px 0 !important;
-                    line-height: 1;
-                }
-                .header img {
-                    display: block !important;
-                    margin: 0 auto !important;
-                    vertical-align: bottom !important;
-                    max-height: 350px;
-                    max-width: 100%;
-                }
-                .header strong {
-                    display: block;
-                    font-size: 40px;
-                    font-weight: bold;
-                    margin: 0;
-                    line-height: 1;
-                }
-                .header small {
-                    display: block;
-                    font-size: 26px;
-                    color: #555;
-                    margin: 0;
-                    line-height: 1;
-                }
-                .info {
-                    margin: 10px 0;
-                }
-                .info p {
-                    margin: 5px 0;
-                    font-size: 20px;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-                hr {
-                    border: none;
-                    border-top: 2px dashed #000;
-                    margin: 10px 0;
-                }
-                .bet-row {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 5px 0;
-                    font-weight: bold;
-                    font-size: 32px;
-                }
-                .total-row {
-                    display: flex;
-                    justify-content: space-between;
-                    font-weight: bold;
-                    margin-top: 10px;
-                    font-size: 36px;
-                }
-                .footer {
-                    text-align: center;
-                    margin-top: 20px;
-                    font-style: italic;
-                    font-size: 28px;
-                }
-                .footer p {
-                    font-weight: bold;
-                    margin: 3px 0;
-                }
-            </style>
-        </head>
-        <body>
-            ${html}
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
-
-    printWindow.onload = function() {
-        printWindow.focus();
-        printWindow.print();
-    };
+// Vérifie si le pont Sunmi est disponible (APK WebView)
+async function isPrintBridgeActive() {
+    return typeof window.SunmiBridge !== 'undefined' && window.SunmiBridge.isConnected();
 }
+
+// Impression ticket via SunmiBridge ou fallback navigateur
+async function printThermalTicket(ticket, printWindow) {
+
+    const cfg = APP_STATE.lotteryConfig || CONFIG;
+    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
+    const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || 'https://lotato1.onrender.com/512.png';
+    const drawName = ticket.draw_name || ticket.drawName || 'Tiraj';
+
+    let formattedDate = '';
+    if (ticket.date) {
+        try {
+            const d = new Date(ticket.date);
+            formattedDate = d.toLocaleDateString('fr-FR') + ' ' +
+                d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        } catch {}
+    }
+
+    const lines = [
+        `Ticket #: ${ticket.ticket_id || ticket.id || ''}`,
+        `Tiraj: ${drawName}`,
+        `Date: ${formattedDate}`,
+        `Ajan: ${ticket.agent_name || ticket.agentName || ''}`,
+        `--------------------------------`,
+    ];
+
+    (ticket.bets || []).forEach(b => {
+        const gameAbbr = typeof getGameAbbreviation === 'function'
+            ? getGameAbbreviation(b.game || '', b) : (b.game || '');
+        let num = b.number || '';
+        if (b.game === 'auto_marriage') num = num.replace('&', '*');
+        lines.push(`${gameAbbr} ${num}  ${b.amount || 0} G`);
+    });
+
+    lines.push(`--------------------------------`);
+    lines.push(`TOTAL: ${ticket.total_amount || ticket.total || 0} Gdes`);
+    lines.push(`tickets valable 90 jours`);
+    lines.push(`LOTATO S.A.`);
+
+    // ── Essayer Sunmi d'abord ────────────────────────────────────
+    const sunmiActif = await isPrintBridgeActive();
+    if (sunmiActif) {
+        if (printWindow && !printWindow.closed) printWindow.close();
+        try {
+            window.SunmiBridge.printTicket(JSON.stringify({
+                header: lotteryName,
+                lines: lines,
+                footer: 'Bonne chance!'
+            }));
+            console.log('✅ Ticket envoyé à Sunmi');
+            return;
+        } catch(e) {
+            console.error('Erreur SunmiBridge:', e);
+        }
+    }
+
+    // ── Fallback: popup navigateur avec bouton imprimer ──────────
+    const html = generateTicketHTML(ticket);
+    const popupHTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Ticket LOTATO</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f0f0f0; }
+    
+    /* Bouton imprimer - visible à l'écran, caché à l'impression */
+    .print-btn {
+        display: block;
+        width: 100%;
+        padding: 16px;
+        background: #F0A500;
+        color: #000;
+        font-size: 18px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+        text-align: center;
+    }
+    .print-btn:hover { background: #d4920a; }
+
+    @media print {
+        .print-btn { display: none !important; }
+        body { background: white; }
+    }
+
+    @page { size: 80mm auto; margin: 2mm; }
+
+    .ticket {
+        width: 76mm;
+        margin: 0 auto;
+        background: white;
+        padding: 4mm;
+        font-size: 22px;
+        font-weight: bold;
+        color: black;
+    }
+    .header { text-align: center; padding-bottom: 8px; border-bottom: 2px dashed #000; }
+    .header img { display: block; margin: 0 auto 6px auto; max-width: 120px; max-height: 120px; }
+    .header strong { display: block; font-size: 28px; }
+    .info { margin: 8px 0; }
+    .info p { margin: 4px 0; font-size: 18px; }
+    hr { border: none; border-top: 2px dashed #000; margin: 8px 0; }
+    .bet-row { display: flex; justify-content: space-between; font-size: 22px; margin: 3px 0; }
+    .total-row { display: flex; justify-content: space-between; font-size: 26px; font-weight: bold; margin-top: 6px; }
+    .footer { text-align: center; font-size: 18px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">🖨️ IMPRIMER LE TICKET</button>
+
+<div class="ticket">
+    <div class="header">
+        <img src="${logoUrl}" alt="Logo" onerror="this.style.display='none'">
+        <strong>${lotteryName}</strong>
+    </div>
+    <div class="info">
+        <p>Ticket #: ${ticket.ticket_id || ticket.id || ''}</p>
+        <p>Tiraj: ${drawName}</p>
+        <p>Date: ${formattedDate}</p>
+        <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
+    </div>
+    <hr>
+    ${(ticket.bets || []).map(b => {
+        const g = typeof getGameAbbreviation === 'function' ? getGameAbbreviation(b.game||'',b) : (b.game||'');
+        let n = b.number || '';
+        if (b.game === 'auto_marriage') n = n.replace('&','*');
+        return `<div class="bet-row"><span>${g} ${n}</span><span>${b.amount||0} G</span></div>`;
+    }).join('')}
+    <hr>
+    <div class="total-row">
+        <span>TOTAL</span>
+        <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
+    </div>
+    <div class="footer">
+        <p>tickets valable 90 jours</p>
+        <p><strong>LOTATO S.A.</strong></p>
+    </div>
+</div>
+
+</body>
+</html>`;
+
+    if (printWindow && !printWindow.closed) {
+        printWindow.document.open();
+        printWindow.document.write(popupHTML);
+        printWindow.document.close();
+    } else {
+        // Ouvrir une nouvelle popup si nécessaire
+        const w = window.open('', '_blank', 'width=420,height=700');
+        if (w) {
+            w.document.open();
+            w.document.write(popupHTML);
+            w.document.close();
+        }
+    }
+}
+
+window.printThermalTicket = printThermalTicket;
+window.isPrintBridgeActive = isPrintBridgeActive;
 
 // ---------- Ticket HTML ----------
 function generateTicketHTML(ticket) {
