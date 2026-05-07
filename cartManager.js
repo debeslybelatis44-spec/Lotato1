@@ -450,7 +450,18 @@ async function processFinalTicket() {
 
 // Vérifie si le pont Sunmi est disponible (APK WebView)
 async function isPrintBridgeActive() {
-    return typeof window.SunmiBridge !== 'undefined' && window.SunmiBridge.isConnected();
+    if (typeof window.SunmiBridge === 'undefined') {
+        console.log('SunmiBridge: non disponible');
+        return false;
+    }
+    // Attendre que la connexion soit établie (max 3 secondes)
+    for (let i = 0; i < 6; i++) {
+        const connected = window.SunmiBridge.isConnected();
+        console.log(`SunmiBridge tentative ${i+1}: ${connected}`);
+        if (connected) return true;
+        await new Promise(r => setTimeout(r, 500));
+    }
+    return false;
 }
 
 // Impression ticket via SunmiBridge ou fallback navigateur
