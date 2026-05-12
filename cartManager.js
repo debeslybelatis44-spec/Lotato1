@@ -20,17 +20,47 @@ async function loadAdvancedSettings() {
             if (res.ok) {
                 APP_STATE.advancedSettings = await res.json();
             } else {
-                // valeurs par défaut
-                APP_STATE.advancedSettings = { ... };
+                // valeurs par défaut (objet complet, pas "...")
+                APP_STATE.advancedSettings = {
+                    freeMarriage: {
+                        tiers: [
+                            { min: 0, max: 50, count: 1 },
+                            { min: 51, max: 150, count: 2 },
+                            { min: 151, max: null, count: 3 }
+                        ],
+                        winAmount: 1000
+                    },
+                    print: { fontSize: 32 },
+                    footer: {
+                        line1: "tickets valable jusqu'à 90 jours",
+                        line2: "Ref : +509 ",
+                        line3: "LOTATO S.A."
+                    }
+                };
             }
         } catch (e) {
             console.error(e);
-            // valeurs par défaut
+            // mêmes valeurs par défaut en cas d'erreur réseau
+            APP_STATE.advancedSettings = {
+                freeMarriage: {
+                    tiers: [
+                        { min: 0, max: 50, count: 1 },
+                        { min: 51, max: 150, count: 2 },
+                        { min: 151, max: null, count: 3 }
+                    ],
+                    winAmount: 1000
+                },
+                print: { fontSize: 32 },
+                footer: {
+                    line1: "tickets valable jusqu'à 90 jours",
+                    line2: "Ref : +509 ",
+                    line3: "LOTATO S.A."
+                }
+            };
         }
     }
     return APP_STATE.advancedSettings;
 }
-
 // ---------- Utils ----------
 function isNumberBlocked(number, drawId) {
     if (APP_STATE.globalBlockedNumbers.includes(number)) return true;
