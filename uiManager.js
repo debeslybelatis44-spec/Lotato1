@@ -633,7 +633,6 @@ async function loadReports() {
         APP_STATE.ticketsHistory = allTickets;
 
         const filteredTickets = filterTicketsByDate(allTickets, window.reportFilters);
-
         const finalTickets = window.reportFilters.drawId !== 'all'
             ? filteredTickets.filter(t => (t.draw_id === window.reportFilters.drawId || t.drawId === window.reportFilters.drawId))
             : filteredTickets;
@@ -647,27 +646,65 @@ async function loadReports() {
 
             if (ticket.checked || ticket.verified) {
                 const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                if (winAmount > 0) { totalWins += winAmount; }
-                else { totalLoss += ticketAmount; }
+                if (winAmount > 0) totalWins += winAmount;
+                else totalLoss += ticketAmount;
             }
         });
 
-        const totalProfit = totalBets - totalWins;
+        // Calcul de la commission pour l'agent
+        const userRole = localStorage.getItem('user_role');
+        let commissionPercent = 0;
+        let commission = 0;
+        let totalProfit = totalBets - totalWins;
+        let finalBalance = totalProfit;
 
+        if (userRole === 'agent') {
+            commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+            commission = totalBets * (commissionPercent / 100);
+            finalBalance = totalProfit - commission;
+        }
+
+        // Mise à jour des éléments standards
         document.getElementById('total-tickets').textContent = totalTickets;
         document.getElementById('total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
         document.getElementById('total-wins').textContent = totalWins.toLocaleString('fr-FR') + ' Gdes';
         document.getElementById('total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').textContent = totalProfit.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').style.color = (totalProfit >= 0) ? 'var(--success)' : 'var(--danger)';
 
+        // Mise à jour de la balance (avec commission déduite)
+        const balanceElement = document.getElementById('balance');
+        balanceElement.textContent = finalBalance.toLocaleString('fr-FR') + ' Gdes';
+        balanceElement.style.color = (finalBalance >= 0) ? 'var(--success)' : 'var(--danger)';
+
+        // Ajout ou mise à jour de la ligne commission
+        let commissionRow = document.getElementById('commission-row');
+        if (userRole === 'agent' && commissionPercent > 0) {
+            if (!commissionRow) {
+                const generalCard = document.getElementById('general-report-card');
+                const lossRow = document.getElementById('total-loss')?.closest('.report-row');
+                if (generalCard && lossRow) {
+                    const newRow = document.createElement('div');
+                    newRow.className = 'report-row';
+                    newRow.id = 'commission-row';
+                    newRow.innerHTML = `
+                        <span>Komisyon Ajan (${commissionPercent}%) :</span>
+                        <span class="val" id="commission-value">${commission.toLocaleString('fr-FR')} Gdes</span>
+                    `;
+                    lossRow.insertAdjacentElement('afterend', newRow);
+                }
+            } else {
+                document.getElementById('commission-value').textContent = commission.toLocaleString('fr-FR') + ' Gdes';
+                commissionRow.querySelector('span:first-child').innerHTML = `Komisyon Ajan (${commissionPercent}%) :`;
+            }
+        } else {
+            if (commissionRow) commissionRow.remove();
+        }
+
+        // Gestion de la période et du sélecteur de tirage (inchangé)
         let periodText = '';
         if (window.reportFilters.period === 'today') periodText = 'Jodi a';
         else if (window.reportFilters.period === 'yesterday') periodText = 'Yè';
         else if (window.reportFilters.period === 'week') periodText = 'Semèn sa a';
-        else if (window.reportFilters.period === 'custom') {
-            periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
-        }
+        else if (window.reportFilters.period === 'custom') periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
 
         const existingPeriodInfo = document.querySelector('.period-info');
         if (existingPeriodInfo) existingPeriodInfo.remove();
@@ -701,6 +738,8 @@ async function loadReports() {
             const el = document.getElementById(id);
             if (el) el.textContent = id === 'total-tickets' ? '0' : '0 Gdes';
         });
+        const commissionRow = document.getElementById('commission-row');
+        if (commissionRow) commissionRow.remove();
     }
 }
 
@@ -767,7 +806,18 @@ function printReport() {
             else totalLoss += amount;
         }
     });
-    const balance = totalBets - totalWins;
+
+    const balanceBeforeCommission = totalBets - totalWins;
+    const userRole = localStorage.getItem('user_role');
+    let commissionPercent = 0;
+    let commission = 0;
+    let finalBalance = balanceBeforeCommission;
+
+    if (userRole === 'agent') {
+        commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        commission = totalBets * (commissionPercent / 100);
+        finalBalance = balanceBeforeCommission - commission;
+    }
 
     let periodText = '';
     if (window.reportFilters.period === 'today') periodText = 'Jodi a';
@@ -818,7 +868,8 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
         <div class="row"><span>Total Paris:</span><span>${totalBets.toLocaleString('fr-FR')} G</span></div>
         <div class="row"><span>Total Ganyen:</span><span>${totalWins.toLocaleString('fr-FR')} G</span></div>
         <div class="row"><span>Pèdi:</span><span>${totalLoss.toLocaleString('fr-FR')} G</span></div>
-        <div class="row total-row"><span>Balans:</span><span>${balance.toLocaleString('fr-FR')} G</span></div>
+        ${userRole === 'agent' && commissionPercent > 0 ? `<div class="row"><span>Komisyon (${commissionPercent}%) :</span><span>${commission.toLocaleString('fr-FR')} G</span></div>` : ''}
+        <div class="row total-row"><span>Balans Final:</span><span>${finalBalance.toLocaleString('fr-FR')} G</span></div>
     </div>
     <div class="footer">
         <p>Rapò jenere le: ${new Date().toLocaleString('fr-FR')}</p>
