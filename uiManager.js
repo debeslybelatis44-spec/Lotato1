@@ -1104,79 +1104,80 @@ window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
 // ==================== BLOC COMMISSION AGENT ====================
 (function() {
-    // Sauvegarde des fonctions originales
     const originalLoadReports = window.loadReports;
     const originalPrintReport = window.printReport;
 
-    // Nouvelle fonction loadReports avec commission
     window.loadReports = async function() {
         await originalLoadReports();
-        
+
         const userRole = localStorage.getItem('user_role');
         if (userRole !== 'agent') return;
-        
-        // Récupérer le total des mises affiché dans le DOM
+
         const totalBetsElem = document.getElementById('total-bets');
         if (!totalBetsElem) return;
         let totalBets = parseFloat(totalBetsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
-        
+
         const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
         if (commissionPercent === 0) return;
-        
+
         const commission = totalBets * commissionPercent / 100;
-        
-        // Ajouter la carte de commission si elle n'existe pas
-        let commissionCard = document.getElementById('agent-commission-card');
-        if (!commissionCard) {
-            const statsGrid = document.querySelector('.reports-summary .stats-grid') || document.querySelector('.stats-grid');
-            if (statsGrid) {
-                commissionCard = document.createElement('div');
-                commissionCard.className = 'stat-card';
-                commissionCard.id = 'agent-commission-card';
-                commissionCard.innerHTML = `
-                    <div class="stat-label">KOMISYON (${commissionPercent}%)</div>
-                    <div class="stat-value" id="agent-commission-value">0 Gdes</div>
-                `;
-                statsGrid.appendChild(commissionCard);
-            }
+
+        let statsContainer = document.querySelector('.reports-summary');
+        if (!statsContainer) return;
+
+        let oldCard = document.getElementById('agent-commission-card');
+        if (oldCard) oldCard.remove();
+
+        const commissionCard = document.createElement('div');
+        commissionCard.id = 'agent-commission-card';
+        commissionCard.className = 'stat-card';
+        commissionCard.innerHTML = `
+            <div class="stat-label">KOMISYON (${commissionPercent}%)</div>
+            <div class="stat-value" id="agent-commission-value">0 Gdes</div>
+        `;
+
+        const balanceCard = document.querySelector('#balance')?.closest('.stat-card');
+        if (balanceCard && balanceCard.parentNode) {
+            balanceCard.insertAdjacentElement('afterend', commissionCard);
+        } else {
+            statsContainer.appendChild(commissionCard);
         }
+
         const commissionValue = document.getElementById('agent-commission-value');
         if (commissionValue) {
             commissionValue.textContent = commission.toLocaleString('fr-FR') + ' Gdes';
         }
     };
 
-    // Nouvelle fonction printReport avec commission
     window.printReport = function() {
-        // Récupérer les mêmes données que l'affichage
         const totalTickets = document.getElementById('total-tickets')?.innerText || '0';
         const totalBetsStr = document.getElementById('total-bets')?.innerText || '0 Gdes';
         const totalWinsStr = document.getElementById('total-wins')?.innerText || '0 Gdes';
         const totalLossStr = document.getElementById('total-loss')?.innerText || '0 Gdes';
         const balanceStr = document.getElementById('balance')?.innerText || '0 Gdes';
-        
+
         let totalBets = parseFloat(totalBetsStr.replace(/[^0-9.-]/g, '')) || 0;
         const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
         const commission = totalBets * commissionPercent / 100;
-        const commissionLine = (commissionPercent > 0) 
+        const commissionLine = (commissionPercent > 0)
             ? `<div class="row"><span>Komisyon (${commissionPercent}%) :</span><span>${commission.toLocaleString('fr-FR')} G</span></div>`
             : '';
-        
+
         const drawSelector = document.getElementById('draw-report-selector');
         const selectedDraw = drawSelector ? drawSelector.options[drawSelector.selectedIndex].text : 'Rapò';
-        
+
         let periodText = '';
         if (window.reportFilters?.period === 'today') periodText = 'Jodi a';
         else if (window.reportFilters?.period === 'yesterday') periodText = 'Yè';
         else if (window.reportFilters?.period === 'week') periodText = 'Semèn sa a';
         else if (window.reportFilters?.period === 'custom') periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
         else periodText = 'Jodi a';
-        
+
         const cfg = APP_STATE?.lotteryConfig || CONFIG || {};
         const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTERIE';
         const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
         const slogan = cfg.slogan || '';
-        
+
         const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -1222,7 +1223,7 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
     </div>
 </body>
 </html>`;
-        
+
         printHTMLContent(html, `Rapò ${selectedDraw}`);
     };
 })();
