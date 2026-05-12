@@ -1102,3 +1102,128 @@ window.loadDrawReport = loadDrawReport;
 window.logout = logout;
 window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
+// ==================== BLOC COMMISSION AGENT ====================
+(function() {
+    // Sauvegarde des fonctions originales
+    const originalLoadReports = window.loadReports;
+    const originalPrintReport = window.printReport;
+
+    // Nouvelle fonction loadReports avec commission
+    window.loadReports = async function() {
+        await originalLoadReports();
+        
+        const userRole = localStorage.getItem('user_role');
+        if (userRole !== 'agent') return;
+        
+        // Récupérer le total des mises affiché dans le DOM
+        const totalBetsElem = document.getElementById('total-bets');
+        if (!totalBetsElem) return;
+        let totalBets = parseFloat(totalBetsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
+        
+        const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        if (commissionPercent === 0) return;
+        
+        const commission = totalBets * commissionPercent / 100;
+        
+        // Ajouter la carte de commission si elle n'existe pas
+        let commissionCard = document.getElementById('agent-commission-card');
+        if (!commissionCard) {
+            const statsGrid = document.querySelector('.reports-summary .stats-grid') || document.querySelector('.stats-grid');
+            if (statsGrid) {
+                commissionCard = document.createElement('div');
+                commissionCard.className = 'stat-card';
+                commissionCard.id = 'agent-commission-card';
+                commissionCard.innerHTML = `
+                    <div class="stat-label">KOMISYON (${commissionPercent}%)</div>
+                    <div class="stat-value" id="agent-commission-value">0 Gdes</div>
+                `;
+                statsGrid.appendChild(commissionCard);
+            }
+        }
+        const commissionValue = document.getElementById('agent-commission-value');
+        if (commissionValue) {
+            commissionValue.textContent = commission.toLocaleString('fr-FR') + ' Gdes';
+        }
+    };
+
+    // Nouvelle fonction printReport avec commission
+    window.printReport = function() {
+        // Récupérer les mêmes données que l'affichage
+        const totalTickets = document.getElementById('total-tickets')?.innerText || '0';
+        const totalBetsStr = document.getElementById('total-bets')?.innerText || '0 Gdes';
+        const totalWinsStr = document.getElementById('total-wins')?.innerText || '0 Gdes';
+        const totalLossStr = document.getElementById('total-loss')?.innerText || '0 Gdes';
+        const balanceStr = document.getElementById('balance')?.innerText || '0 Gdes';
+        
+        let totalBets = parseFloat(totalBetsStr.replace(/[^0-9.-]/g, '')) || 0;
+        const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        const commission = totalBets * commissionPercent / 100;
+        const commissionLine = (commissionPercent > 0) 
+            ? `<div class="row"><span>Komisyon (${commissionPercent}%) :</span><span>${commission.toLocaleString('fr-FR')} G</span></div>`
+            : '';
+        
+        const drawSelector = document.getElementById('draw-report-selector');
+        const selectedDraw = drawSelector ? drawSelector.options[drawSelector.selectedIndex].text : 'Rapò';
+        
+        let periodText = '';
+        if (window.reportFilters?.period === 'today') periodText = 'Jodi a';
+        else if (window.reportFilters?.period === 'yesterday') periodText = 'Yè';
+        else if (window.reportFilters?.period === 'week') periodText = 'Semèn sa a';
+        else if (window.reportFilters?.period === 'custom') periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
+        else periodText = 'Jodi a';
+        
+        const cfg = APP_STATE?.lotteryConfig || CONFIG || {};
+        const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTERIE';
+        const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
+        const slogan = cfg.slogan || '';
+        
+        const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+@page { size: 80mm auto; margin: 2mm; }
+body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold;
+       width: 76mm; margin: 0 auto; padding: 4mm; background: white; color: black; }
+.header { text-align: center; border-bottom: 2px dashed #000; padding: 0; margin: 0 0 10px 0; line-height: 1.2; }
+.header img { max-height: 180px; max-width: 100%; margin-bottom: 5px; display: block; margin: 0 auto; }
+.header h1 { font-size: 40px; margin: 5px 0; }
+.header h2 { font-size: 32px; margin: 5px 0; font-weight: normal; }
+.header p { margin: 2px 0; font-size: 24px; }
+.period-info { text-align: center; font-size: 24px; margin: 10px 0; padding: 5px; background: #f0f0f0; }
+.section { margin: 15px 0; }
+.section-title { font-size: 32px; font-weight: bold; border-bottom: 1px solid #000; margin-bottom: 8px; }
+.row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 28px; }
+.total-row { font-weight: bold; border-top: 1px solid #000; padding-top: 8px; margin-top: 8px; }
+.footer { margin-top: 20px; text-align: center; font-size: 20px; border-top: 1px dashed #000; padding-top: 10px; }
+</style>
+</head>
+<body>
+    <div class="header">
+        ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
+        <h1>${lotteryName}</h1>
+        ${slogan ? `<p>${slogan}</p>` : ''}
+        <h2>${selectedDraw}</h2>
+        <p>${new Date().toLocaleDateString('fr-FR')} - Ajan: ${APP_STATE?.agentName || localStorage.getItem('agent_name') || ''}</p>
+    </div>
+    <div class="period-info">Peryòd: ${periodText}</div>
+    <div class="section">
+        <div class="section-title">Rekapitilatif</div>
+        <div class="row"><span>Total Tikè:</span><span>${totalTickets}</span></div>
+        <div class="row"><span>Total Paris:</span><span>${totalBets.toLocaleString('fr-FR')} G</span></div>
+        <div class="row"><span>Total Ganyen:</span><span>${totalWinsStr}</span></div>
+        <div class="row"><span>Pèdi:</span><span>${totalLossStr}</span></div>
+        ${commissionLine}
+        <div class="row total-row"><span>Balans:</span><span>${balanceStr}</span></div>
+    </div>
+    <div class="footer">
+        <p>Rapò jenere le: ${new Date().toLocaleString('fr-FR')}</p>
+        <p>© ${lotteryName}</p>
+    </div>
+</body>
+</html>`;
+        
+        printHTMLContent(html, `Rapò ${selectedDraw}`);
+    };
+})();
+// ==================== FIN BLOC ====================
