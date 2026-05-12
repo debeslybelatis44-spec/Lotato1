@@ -1,14 +1,64 @@
 // ==========================
-// cartManager.js (corrigé - date normalisée sans forçage UTC)
+// cartManager.js (version avec paramètres avancés)
 // ==========================
 
 // ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
-    // Remplacer l'espace par 'T' pour un format ISO partiel
     let normalized = dateStr.replace(' ', 'T');
-    // Ne pas ajouter 'Z' pour éviter de forcer UTC
     return normalized;
+}
+
+// ---------- Récupération des paramètres avancés (mariages gratuits, impression, footer) ----------
+async function loadAdvancedSettings() {
+    if (!APP_STATE.advancedSettings) {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const res = await fetch(`${API_CONFIG.BASE_URL}/api/owner/advanced-settings`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                APP_STATE.advancedSettings = await res.json();
+            } else {
+                // valeurs par défaut
+                APP_STATE.advancedSettings = {
+                    freeMarriage: {
+                        tiers: [
+                            { min: 0, max: 50, count: 1 },
+                            { min: 51, max: 150, count: 2 },
+                            { min: 151, max: null, count: 3 }
+                        ],
+                        winAmount: 1000
+                    },
+                    print: { fontSize: 32 },
+                    footer: {
+                        line1: "tickets valable jusqu'à 90 jours",
+                        line2: "Ref : +509 ",
+                        line3: "LOTATO S.A."
+                    }
+                };
+            }
+        } catch (e) {
+            console.error(e);
+            APP_STATE.advancedSettings = {
+                freeMarriage: {
+                    tiers: [
+                        { min: 0, max: 50, count: 1 },
+                        { min: 51, max: 150, count: 2 },
+                        { min: 151, max: null, count: 3 }
+                    ],
+                    winAmount: 1000
+                },
+                print: { fontSize: 32 },
+                footer: {
+                    line1: "tickets valable jusqu'à 90 jours",
+                    line2: "Ref : +509 ",
+                    line3: "LOTATO S.A."
+                }
+            };
+        }
+    }
+    return APP_STATE.advancedSettings;
 }
 
 // ---------- Utils ----------
@@ -64,14 +114,31 @@ var CartManager = {
             }
         });
 
+        // Récupérer la configuration (valeurs par défaut ou chargées)
+        const cfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.freeMarriage) || {
+            tiers: [
+                { min: 0, max: 50, count: 1 },
+                { min: 51, max: 150, count: 2 },
+                { min: 151, max: null, count: 3 }
+            ],
+            winAmount: 1000
+        };
+        const tiers = cfg.tiers;
+
         Object.keys(payantsByDraw).forEach(drawId => {
             const payants = payantsByDraw[drawId];
             const totalPayant = payants.reduce((sum, b) => sum + b.amount, 0);
 
             let requiredFree = 0;
-            if (totalPayant >= 1 && totalPayant <= 50) requiredFree = 1;
-            else if (totalPayant >= 51 && totalPayant <= 150) requiredFree = 2;
-            else if (totalPayant >= 151) requiredFree = 3;
+            for (const tier of tiers) {
+                if (tier.max === null && totalPayant >= tier.min) {
+                    requiredFree = tier.count;
+                    break;
+                } else if (tier.max !== null && totalPayant >= tier.min && totalPayant <= tier.max) {
+                    requiredFree = tier.count;
+                    break;
+                }
+            }
 
             for (let i = 0; i < requiredFree; i++) {
                 const freeBet = generateRandomMarriageBet(0);
@@ -416,7 +483,6 @@ async function processFinalTicket() {
             if (!res.ok) throw new Error("Erreur serveur");
 
             const data = await res.json();
-            // Ajout de la date actuelle pour l'impression immédiate
             data.ticket.date = new Date().toISOString();
             printThermalTicket(data.ticket, printWindow);
             APP_STATE.ticketsHistory.unshift(data.ticket);
@@ -539,15 +605,20 @@ function printThermalTicket(ticket, printWindow) {
     };
 }
 
-// ---------- Ticket HTML ----------
+// ---------- Ticket HTML (version avec paramètres avancés) ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
+    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 32 };
+    const footerCfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.footer) || {
+        line1: "tickets valable jusqu'à 90 jours",
+        line2: "Ref : +509 ",
+        line3: "LOTATO S.A."
+    };
 
     const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
     const slogan = cfg.slogan || '';
     const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
 
-    // Normalisation de la date
     let formattedDate = 'Date invalide';
     if (ticket.date) {
         const normalized = normalizeDateString(ticket.date);
@@ -558,7 +629,6 @@ function generateTicketHTML(ticket) {
         }
     }
 
-    // Récupération du nom du tirage
     let drawName = ticket.draw_name || ticket.drawName;
     if (!drawName && APP_STATE.draws && ticket.draw_id) {
         const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
@@ -581,35 +651,42 @@ function generateTicketHTML(ticket) {
         `;
     }).join('');
 
+    const fontSize = advanced.fontSize;
+
     return `
-        <div class="header">
-            ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
-            <strong>${lotteryName}</strong>
-            ${slogan ? `<small>${slogan}</small>` : ''}
-        </div>
-
-        <div class="info">
-            <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
-            <p>Tiraj: ${drawName}</p>
-            <p>Date: ${formattedDate}</p>
-            <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
-        </div>
-
-        <hr>
-        ${betsHTML}
-        <hr>
-
-        <div class="total-row">
-            <span>TOTAL</span>
-            <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
-        </div>
-
-        <div class="footer">
-            <p>tickets valable jusqu'à 90 jours</p>
-            <p>Ref : +509 </p>
-            <p><strong>LOTATO S.A.</strong></p>
+        <div style="font-size: ${fontSize}px; font-family: 'Courier New', monospace;">
+            <div class="header">
+                ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
+                <strong style="font-size: ${fontSize + 4}px;">${lotteryName}</strong>
+                ${slogan ? `<small style="font-size: ${fontSize - 6}px;">${slogan}</small>` : ''}
+            </div>
+            <div class="info">
+                <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
+                <p>Tiraj: ${drawName}</p>
+                <p>Date: ${formattedDate}</p>
+                <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
+            </div>
+            <hr>
+            ${betsHTML}
+            <hr>
+            <div class="total-row" style="font-size: ${fontSize + 4}px;">
+                <span>TOTAL</span>
+                <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
+            </div>
+            <div class="footer" style="font-size: ${fontSize}px;">
+                <p>${footerCfg.line1}</p>
+                <p>${footerCfg.line2}</p>
+                <p><strong>${footerCfg.line3}</strong></p>
+            </div>
         </div>
     `;
+}
+
+// ---------- Chargement initial des paramètres avancés ----------
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => loadAdvancedSettings());
+} else {
+    loadAdvancedSettings();
 }
 
 // ---------- Global ----------
