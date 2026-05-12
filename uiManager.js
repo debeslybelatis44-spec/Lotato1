@@ -1105,7 +1105,6 @@ window.replayTicket = replayTicket;
 // ==================== BLOC COMMISSION AGENT ====================
 (function() {
     const originalLoadReports = window.loadReports;
-    const originalPrintReport = window.printReport;
 
     window.loadReports = async function() {
         await originalLoadReports();
@@ -1117,38 +1116,34 @@ window.replayTicket = replayTicket;
         if (!totalBetsElem) return;
         let totalBets = parseFloat(totalBetsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
 
-        const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        let commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
         if (commissionPercent === 0) return;
 
         const commission = totalBets * commissionPercent / 100;
 
-        let statsContainer = document.querySelector('.reports-summary');
-        if (!statsContainer) return;
-
-        let oldCard = document.getElementById('agent-commission-card');
-        if (oldCard) oldCard.remove();
-
-        const commissionCard = document.createElement('div');
-        commissionCard.id = 'agent-commission-card';
-        commissionCard.className = 'stat-card';
-        commissionCard.innerHTML = `
-            <div class="stat-label">KOMISYON (${commissionPercent}%)</div>
-            <div class="stat-value" id="agent-commission-value">0 Gdes</div>
-        `;
-
-        const balanceCard = document.querySelector('#balance')?.closest('.stat-card');
-        if (balanceCard && balanceCard.parentNode) {
-            balanceCard.insertAdjacentElement('afterend', commissionCard);
-        } else {
-            statsContainer.appendChild(commissionCard);
+        let commissionCard = document.getElementById('agent-commission-card');
+        if (!commissionCard) {
+            const generalCard = document.getElementById('general-report-card');
+            if (generalCard) {
+                commissionCard = document.createElement('div');
+                commissionCard.id = 'agent-commission-card';
+                commissionCard.className = 'report-card';
+                commissionCard.style.marginTop = '15px';
+                commissionCard.innerHTML = `
+                    <div class="report-row">
+                        <span>Komisyon (${commissionPercent}%) :</span>
+                        <span class="val" id="agent-commission-value">0 Gdes</span>
+                    </div>
+                `;
+                generalCard.insertAdjacentElement('afterend', commissionCard);
+            }
         }
 
-        const commissionValue = document.getElementById('agent-commission-value');
-        if (commissionValue) {
-            commissionValue.textContent = commission.toLocaleString('fr-FR') + ' Gdes';
-        }
+        const valueSpan = document.getElementById('agent-commission-value');
+        if (valueSpan) valueSpan.textContent = commission.toLocaleString('fr-FR') + ' Gdes';
     };
 
+    const originalPrintReport = window.printReport;
     window.printReport = function() {
         const totalTickets = document.getElementById('total-tickets')?.innerText || '0';
         const totalBetsStr = document.getElementById('total-bets')?.innerText || '0 Gdes';
@@ -1228,3 +1223,4 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
     };
 })();
 // ==================== FIN BLOC ====================
+
