@@ -262,7 +262,7 @@ app.post('/api/auth/login', async (req, res) => {
   const { username, password, role } = req.body;
   try {
     const result = await pool.query(
-      'SELECT id, name, username, password, role, owner_id FROM users WHERE username = $1 AND role = $2',
+      'SELECT id, name, username, password, role, owner_id, commission_percentage FROM users WHERE username = $1 AND role = $2',
       [username, role]
     );
     if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
@@ -296,7 +296,8 @@ app.post('/api/auth/login', async (req, res) => {
       role: user.role,
       ownerId: payload.ownerId,
       agentId: user.role === 'agent' ? user.id : undefined,
-      supervisorId: user.role === 'supervisor' ? user.id : undefined
+      supervisorId: user.role === 'supervisor' ? user.id : undefined,
+      commissionPercentage: user.commission_percentage || 0
     });
   } catch (err) {
     console.error(err);
