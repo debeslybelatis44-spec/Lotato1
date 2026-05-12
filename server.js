@@ -1483,6 +1483,41 @@ app.post('/api/owner/advanced-settings', authenticate, requireRole('owner'), asy
     res.status(500).json({ error: 'Erreur sauvegarde' });
   }
 });
+// accessible aux agents, superviseurs et propriétaires
+app.get('/api/agent/advanced-settings', authenticate, requireStaff, async (req, res) => {
+  const ownerId = req.user.ownerId;
+  try {
+    const result = await pool.query(
+      `SELECT advanced_settings FROM lottery_settings WHERE owner_id = $1`,
+      [ownerId]
+    );
+    if (result.rows.length === 0 || !result.rows[0].advanced_settings) {
+      // Valeurs par défaut
+      const defaults = {
+        freeMarriage: {
+          tiers: [
+            { min: 0, max: 50, count: 1 },
+            { min: 51, max: 150, count: 2 },
+            { min: 151, max: null, count: 3 }
+          ],
+          winAmount: 1000
+        },
+        print: { fontSize: 32 },
+        footer: {
+          line1: "tickets valable jusqu'à 90 jours",
+          line2: "Ref : +509 ",
+          line3: "LOTATO S.A."
+        }
+      };
+      return res.json(defaults);
+    }
+    const settings = result.rows[0].advanced_settings;
+    res.json(typeof settings === 'string' ? JSON.parse(settings) : settings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 app.get('/api/owner/quota', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
