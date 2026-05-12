@@ -14,47 +14,18 @@ async function loadAdvancedSettings() {
     if (!APP_STATE.advancedSettings) {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_CONFIG.BASE_URL}/api/owner/advanced-settings`, {
+            const res = await fetch(`${API_CONFIG.BASE_URL}/api/agent/advanced-settings`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
                 APP_STATE.advancedSettings = await res.json();
             } else {
-                APP_STATE.advancedSettings = {
-                    freeMarriage: {
-                        tiers: [
-                            { min: 0, max: 50, count: 1 },
-                            { min: 51, max: 150, count: 2 },
-                            { min: 151, max: null, count: 3 }
-                        ],
-                        winAmount: 1000
-                    },
-                    print: { fontSize: 32 },
-                    footer: {
-                        line1: "tickets valable jusqu'à 90 jours",
-                        line2: "Ref : +509 ",
-                        line3: "LOTATO S.A."
-                    }
-                };
+                // valeurs par défaut
+                APP_STATE.advancedSettings = { ... };
             }
         } catch (e) {
             console.error(e);
-            APP_STATE.advancedSettings = {
-                freeMarriage: {
-                    tiers: [
-                        { min: 0, max: 50, count: 1 },
-                        { min: 51, max: 150, count: 2 },
-                        { min: 151, max: null, count: 3 }
-                    ],
-                    winAmount: 1000
-                },
-                print: { fontSize: 32 },
-                footer: {
-                    line1: "tickets valable jusqu'à 90 jours",
-                    line2: "Ref : +509 ",
-                    line3: "LOTATO S.A."
-                }
-            };
+            // valeurs par défaut
         }
     }
     return APP_STATE.advancedSettings;
