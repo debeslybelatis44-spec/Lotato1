@@ -526,6 +526,8 @@
                     localStorage.setItem('auth_token', authResult.token);
                     localStorage.setItem('user_role', role);
                     localStorage.setItem('user_name', authResult.name || username);
+                    localStorage.setItem('agent_commission', data.commissionPercentage || 0);
+localStorage.setItem('user_role', data.role);
                     if (authResult.ownerId) {
                         localStorage.setItem('owner_id', authResult.ownerId);
                     }
