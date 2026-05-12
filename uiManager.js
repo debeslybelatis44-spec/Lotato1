@@ -1157,3 +1157,151 @@ window.loadDrawReport = loadDrawReport;
 window.logout = logout;
 window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
+// ========== GESTION COMMISSION AGENT (AJOUT SIMPLE) ==========
+(function() {
+    const userRole = localStorage.getItem('user_role');
+    if (userRole !== 'agent') return; // seulement pour les agents
+
+    // Récupérer le pourcentage
+    let commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+    if (commissionPercent === 0) return;
+
+    // Fonction pour mettre à jour l'affichage de la commission et la balance
+    function updateCommissionDisplay() {
+        const totalBetsElem = document.getElementById('total-bets');
+        const balanceElem = document.getElementById('balance');
+        if (!totalBetsElem || !balanceElem) return;
+
+        let totalBets = parseFloat(totalBetsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
+        let commission = totalBets * commissionPercent / 100;
+
+        // Lire la balance actuelle (sans commission déduite)
+        let currentBalance = parseFloat(balanceElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
+
+        // Nouvelle balance après déduction de la commission
+        let newBalance = currentBalance - commission;
+        balanceElem.innerText = newBalance.toLocaleString('fr-FR') + ' Gdes';
+        balanceElem.style.color = newBalance >= 0 ? 'var(--success)' : 'var(--danger)';
+
+        // Ajouter la ligne de commission si elle n'existe pas
+        let commissionRow = document.getElementById('agent-commission-row');
+        if (!commissionRow) {
+            const generalCard = document.getElementById('general-report-card');
+            if (generalCard) {
+                const newRow = document.createElement('div');
+                newRow.className = 'report-row';
+                newRow.id = 'agent-commission-row';
+                newRow.innerHTML = `
+                    <span>Komisyon Ajan (${commissionPercent}%) :</span>
+                    <span class="val" id="agent-commission-value">${commission.toLocaleString('fr-FR')} Gdes</span>
+                `;
+                // Insérer avant la ligne "Balans Total"
+                const balanceRow = document.getElementById('balance')?.closest('.report-row');
+                if (balanceRow) {
+                    balanceRow.insertAdjacentElement('beforebegin', newRow);
+                } else {
+                    generalCard.appendChild(newRow);
+                }
+            }
+        } else {
+            document.getElementById('agent-commission-value').innerText = commission.toLocaleString('fr-FR') + ' Gdes';
+            commissionRow.querySelector('span:first-child').innerHTML = `Komisyon Ajan (${commissionPercent}%) :`;
+        }
+    }
+
+    // Exécuter au chargement de la page
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', updateCommissionDisplay);
+    } else {
+        updateCommissionDisplay();
+    }
+
+    // Observer les changements de filtres (quand l'utilisateur applique un filtre)
+    const applyBtn = document.getElementById('apply-report-filters');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function() {
+            setTimeout(updateCommissionDisplay, 500); // laisser le temps au chargement des données
+        });
+    }
+
+    // Modifier la fonction printReport pour inclure la commission
+    const originalPrintReport = window.printReport;
+    window.printReport = function() {
+        // Récupérer les valeurs du DOM (qui sont déjà corrigées)
+        const totalTickets = document.getElementById('total-tickets')?.innerText || '0';
+        const totalBetsStr = document.getElementById('total-bets')?.innerText || '0 Gdes';
+        const totalWinsStr = document.getElementById('total-wins')?.innerText || '0 Gdes';
+        const totalLossStr = document.getElementById('total-loss')?.innerText || '0 Gdes';
+        const balanceStr = document.getElementById('balance')?.innerText || '0 Gdes';
+        
+        let totalBets = parseFloat(totalBetsStr.replace(/[^0-9.-]/g, '')) || 0;
+        let commission = totalBets * commissionPercent / 100;
+        const commissionLine = (commissionPercent > 0) 
+            ? `<div class="row"><span>Komisyon (${commissionPercent}%) :</span><span>${commission.toLocaleString('fr-FR')} G</span></div>`
+            : '';
+        
+        const drawSelector = document.getElementById('draw-report-selector');
+        const selectedDraw = drawSelector ? drawSelector.options[drawSelector.selectedIndex].text : 'Rapò';
+        
+        let periodText = '';
+        if (window.reportFilters?.period === 'today') periodText = 'Jodi a';
+        else if (window.reportFilters?.period === 'yesterday') periodText = 'Yè';
+        else if (window.reportFilters?.period === 'week') periodText = 'Semèn sa a';
+        else if (window.reportFilters?.period === 'custom') periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
+        else periodText = 'Jodi a';
+        
+        const cfg = APP_STATE?.lotteryConfig || CONFIG || {};
+        const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTERIE';
+        const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
+        const slogan = cfg.slogan || '';
+        
+        const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+@page { size: 80mm auto; margin: 2mm; }
+body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold;
+       width: 76mm; margin: 0 auto; padding: 4mm; background: white; color: black; }
+.header { text-align: center; border-bottom: 2px dashed #000; padding: 0; margin: 0 0 10px 0; line-height: 1.2; }
+.header img { max-height: 180px; max-width: 100%; margin-bottom: 5px; display: block; margin: 0 auto; }
+.header h1 { font-size: 40px; margin: 5px 0; }
+.header h2 { font-size: 32px; margin: 5px 0; font-weight: normal; }
+.header p { margin: 2px 0; font-size: 24px; }
+.period-info { text-align: center; font-size: 24px; margin: 10px 0; padding: 5px; background: #f0f0f0; }
+.section { margin: 15px 0; }
+.section-title { font-size: 32px; font-weight: bold; border-bottom: 1px solid #000; margin-bottom: 8px; }
+.row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 28px; }
+.total-row { font-weight: bold; border-top: 1px solid #000; padding-top: 8px; margin-top: 8px; }
+.footer { margin-top: 20px; text-align: center; font-size: 20px; border-top: 1px dashed #000; padding-top: 10px; }
+</style>
+</head>
+<body>
+    <div class="header">
+        ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
+        <h1>${lotteryName}</h1>
+        ${slogan ? `<p>${slogan}</p>` : ''}
+        <h2>${selectedDraw}</h2>
+        <p>${new Date().toLocaleDateString('fr-FR')} - Ajan: ${APP_STATE?.agentName || localStorage.getItem('agent_name') || ''}</p>
+    </div>
+    <div class="period-info">Peryòd: ${periodText}</div>
+    <div class="section">
+        <div class="section-title">Rekapitilatif</div>
+        <div class="row"><span>Total Tikè:</span><span>${totalTickets}</span></div>
+        <div class="row"><span>Total Paris:</span><span>${totalBets.toLocaleString('fr-FR')} G</span></div>
+        <div class="row"><span>Total Ganyen:</span><span>${totalWinsStr}</span></div>
+        <div class="row"><span>Pèdi:</span><span>${totalLossStr}</span></div>
+        ${commissionLine}
+        <div class="row total-row"><span>Balans Final:</span><span>${balanceStr}</span></div>
+    </div>
+    <div class="footer">
+        <p>Rapò jenere le: ${new Date().toLocaleString('fr-FR')}</p>
+        <p>© ${lotteryName}</p>
+    </div>
+</body>
+</html>`;
+        
+        printHTMLContent(html, `Rapò ${selectedDraw}`);
+    };
+})();
+// ========== FIN GESTION COMMISSION ==========
