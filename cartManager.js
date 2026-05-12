@@ -30,10 +30,10 @@ async function loadAdvancedSettings() {
                         ],
                         winAmount: 1000
                     },
-                    print: { fontSize: 32 },
+                    print: { fontSize: 24 },
                     footer: {
                         line1: "tickets valable jusqu'à 90 jours",
-                        line2: "Ref : +509 ",
+                        line2: " :  ",
                         line3: "LOTATO S.A."
                     }
                 };
@@ -50,10 +50,10 @@ async function loadAdvancedSettings() {
                     ],
                     winAmount: 1000
                 },
-                print: { fontSize: 32 },
+                print: { fontSize: 24 },
                 footer: {
                     line1: "tickets valable jusqu'à 90 jours",
-                    line2: "Ref : +509 ",
+                    line2: " :  ",
                     line3: "LOTATO S.A."
                 }
             };
@@ -454,7 +454,7 @@ async function processFinalTicket() {
 
 // ---------- Construire le HTML complet pour impression ----------
 function buildFullPrintHTML(bodyHTML) {
-    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 32 };
+    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 24 };
     const fontSize = advanced.fontSize || 32;
     return `<!DOCTYPE html>
 <html>
@@ -508,7 +508,7 @@ function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
     const footerCfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.footer) || {
         line1: "tickets valable jusqu'à 90 jours",
-        line2: "Ref : +509 ",
+        line2: " ",
         line3: "LOTATO S.A."
     };
 
@@ -559,7 +559,7 @@ function generateTicketHTML(ticket) {
         ${betsHTML}
         <hr>
         <div class="total-row">
-            <span>TOTAL</span>
+            <span>TOTAL:</span>
             <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
         </div>
         <div class="footer">
