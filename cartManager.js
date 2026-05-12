@@ -1,5 +1,5 @@
 // ==========================
-// cartManager.js (version avec paramètres avancés)
+// cartManager.js (version avec paramètres avancés + Android WebView)
 // ==========================
 
 // ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
@@ -20,7 +20,6 @@ async function loadAdvancedSettings() {
             if (res.ok) {
                 APP_STATE.advancedSettings = await res.json();
             } else {
-                // valeurs par défaut
                 APP_STATE.advancedSettings = {
                     freeMarriage: {
                         tiers: [
@@ -68,7 +67,6 @@ function isNumberBlocked(number, drawId) {
     return drawBlocked.includes(number);
 }
 
-// Vérifie si le montant dépasse la limite pour ce numéro et ce tirage
 function checkNumberLimit(number, drawId, amountToAdd) {
     const key = `${drawId}_${number}`;
     const limit = APP_STATE.numberLimits[key];
@@ -114,7 +112,6 @@ var CartManager = {
             }
         });
 
-        // Récupérer la configuration (valeurs par défaut ou chargées)
         const cfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.freeMarriage) || {
             tiers: [
                 { min: 0, max: 50, count: 1 },
@@ -174,25 +171,14 @@ var CartManager = {
 
         const game = APP_STATE.selectedGame;
 
-        // --- Gestion des jeux automatiques ---
         if (game === 'auto_marriage' || game === 'bo' || game === 'grap' || game === 'auto_lotto4' || game === 'auto_lotto5') {
             let autoBets = [];
             switch (game) {
-                case 'auto_marriage':
-                    autoBets = GameEngine.generateAutoMarriageBets(amt);
-                    break;
-                case 'bo':
-                    autoBets = SpecialGames.generateBOBets(amt);
-                    break;
-                case 'grap':
-                    autoBets = SpecialGames.generateGRAPBets(amt);
-                    break;
-                case 'auto_lotto4':
-                    autoBets = GameEngine.generateAutoLotto4Bets(amt);
-                    break;
-                case 'auto_lotto5':
-                    autoBets = GameEngine.generateAutoLotto5Bets(amt);
-                    break;
+                case 'auto_marriage': autoBets = GameEngine.generateAutoMarriageBets(amt); break;
+                case 'bo': autoBets = SpecialGames.generateBOBets(amt); break;
+                case 'grap': autoBets = SpecialGames.generateGRAPBets(amt); break;
+                case 'auto_lotto4': autoBets = GameEngine.generateAutoLotto4Bets(amt); break;
+                case 'auto_lotto5': autoBets = GameEngine.generateAutoLotto5Bets(amt); break;
             }
 
             if (autoBets.length === 0) {
@@ -210,10 +196,7 @@ var CartManager = {
                     if (!check.success) errors.push(check.message);
                 }
             }
-            if (errors.length > 0) {
-                alert("❌ Limites dépassées :\n" + errors.join("\n"));
-                return;
-            }
+            if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
 
             for (const drawId of draws) {
                 for (const bet of autoBets) {
@@ -228,12 +211,7 @@ var CartManager = {
             draws.forEach(drawId => {
                 const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
                 autoBets.forEach(bet => {
-                    APP_STATE.currentCart.push({
-                        ...bet,
-                        id: Date.now() + Math.random(),
-                        drawId: drawId,
-                        drawName: drawName
-                    });
+                    APP_STATE.currentCart.push({ ...bet, id: Date.now() + Math.random(), drawId, drawName });
                 });
             });
 
@@ -243,7 +221,6 @@ var CartManager = {
             return;
         }
 
-        // --- Gestion des jeux NX (n0 à n9) ---
         if (/^n[0-9]$/.test(game)) {
             const lastDigit = parseInt(game.substring(1), 10);
             const numbers = [];
@@ -252,7 +229,6 @@ var CartManager = {
             }
 
             const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
-
             const errors = [];
             for (const drawId of draws) {
                 for (const num of numbers) {
@@ -260,10 +236,7 @@ var CartManager = {
                     if (!check.success) errors.push(check.message);
                 }
             }
-            if (errors.length > 0) {
-                alert("❌ Limites dépassées :\n" + errors.join("\n"));
-                return;
-            }
+            if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
 
             for (const drawId of draws) {
                 for (const num of numbers) {
@@ -279,12 +252,8 @@ var CartManager = {
                 numbers.forEach(num => {
                     APP_STATE.currentCart.push({
                         id: Date.now() + Math.random(),
-                        game: game,
-                        number: num,
-                        cleanNumber: num,
-                        amount: amt,
-                        drawId: drawId,
-                        drawName: drawName,
+                        game, number: num, cleanNumber: num,
+                        amount: amt, drawId, drawName,
                         timestamp: new Date().toISOString()
                     });
                 });
@@ -297,27 +266,17 @@ var CartManager = {
             return;
         }
 
-        // --- Gestion des jeux normaux (saisie manuelle) ---
         let num = numInput.value.trim();
-
-        if (!GameEngine.validateEntry(game, num)) {
-            alert("Nimewo pa valid");
-            return;
-        }
-
+        if (!GameEngine.validateEntry(game, num)) { alert("Nimewo pa valid"); return; }
         num = GameEngine.getCleanNumber(num);
 
         const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
-
         const errors = [];
         for (const drawId of draws) {
             const check = checkNumberLimit(num, drawId, amt);
             if (!check.success) errors.push(check.message);
         }
-        if (errors.length > 0) {
-            alert("❌ Limites dépassées :\n" + errors.join("\n"));
-            return;
-        }
+        if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
 
         for (const drawId of draws) {
             if (isNumberBlocked(num, drawId)) {
@@ -331,19 +290,15 @@ var CartManager = {
                 const optionBets = GameEngine.generateLottoBetsWithOptions(game, num, amt);
                 optionBets.forEach(bet => {
                     APP_STATE.currentCart.push({
-                        ...bet,
-                        drawId: drawId,
+                        ...bet, drawId,
                         drawName: APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId
                     });
                 });
             } else {
                 APP_STATE.currentCart.push({
                     id: Date.now() + Math.random(),
-                    game: game,
-                    number: num,
-                    cleanNumber: num,
-                    amount: amt,
-                    drawId: drawId,
+                    game, number: num, cleanNumber: num,
+                    amount: amt, drawId,
                     drawName: APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId,
                     timestamp: new Date().toISOString()
                 });
@@ -400,39 +355,23 @@ var CartManager = {
 
 // ---------- Fonction d'abréviation des jeux ----------
 function getGameAbbreviation(gameName, bet) {
-    if (bet && bet.free && bet.freeType === 'special_marriage') {
-        return 'marg';
-    }
+    if (bet && bet.free && bet.freeType === 'special_marriage') return 'marg';
     const map = {
-        'borlette': 'bor',
-        'lotto3': 'lo3',
-        'lotto4': 'lo4',
-        'lotto5': 'lo5',
-        'auto_marriage': 'mara',
-        'auto_lotto4': 'loa4',
-        'auto_lotto5': 'loa5',
-        'mariage': 'mar',
-        'lotto 3': 'lo3',
-        'lotto 4': 'lo4',
-        'lotto 5': 'lo5',
-        'loto3': 'lo3',
-        'loto4': 'lo4',
-        'loto5': 'lo5',
-        'bo': 'bo',
-        'grap': 'grap',
-        'n0': 'n0',
-        'n1': 'n1',
-        'n2': 'n2',
-        'n3': 'n3',
-        'n4': 'n4',
-        'n5': 'n5',
-        'n6': 'n6',
-        'n7': 'n7',
-        'n8': 'n8',
-        'n9': 'n9'
+        'borlette': 'bor', 'lotto3': 'lo3', 'lotto4': 'lo4', 'lotto5': 'lo5',
+        'auto_marriage': 'mara', 'auto_lotto4': 'loa4', 'auto_lotto5': 'loa5',
+        'mariage': 'mar', 'lotto 3': 'lo3', 'lotto 4': 'lo4', 'lotto 5': 'lo5',
+        'loto3': 'lo3', 'loto4': 'lo4', 'loto5': 'lo5',
+        'bo': 'bo', 'grap': 'grap',
+        'n0': 'n0', 'n1': 'n1', 'n2': 'n2', 'n3': 'n3', 'n4': 'n4',
+        'n5': 'n5', 'n6': 'n6', 'n7': 'n7', 'n8': 'n8', 'n9': 'n9'
     };
     const key = (gameName || '').trim().toLowerCase();
     return map[key] || gameName;
+}
+
+// ---------- Détection Android WebView ----------
+function isAndroidWebView() {
+    return /Android/i.test(navigator.userAgent) && typeof window.AndroidPrint !== 'undefined';
 }
 
 // ---------- Save & Print Ticket ----------
@@ -442,20 +381,23 @@ async function processFinalTicket() {
         return;
     }
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
-    if (!printWindow) {
-        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
-        return;
-    }
-
-    printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
-    printWindow.document.close();
-
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
         if (!betsByDraw[b.drawId]) betsByDraw[b.drawId] = [];
         betsByDraw[b.drawId].push(b);
     });
+
+    // Ouvrir la fenêtre popup seulement si on est PAS sur Android
+    let printWindow = null;
+    if (!isAndroidWebView()) {
+        printWindow = window.open('', '_blank', 'width=500,height=700');
+        if (!printWindow) {
+            alert("Autorize popups pou enprime.");
+            return;
+        }
+        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px;text-align:center;">Génération du ticket en cours...</p></body></html>');
+        printWindow.document.close();
+    }
 
     try {
         for (const drawId in betsByDraw) {
@@ -484,7 +426,17 @@ async function processFinalTicket() {
 
             const data = await res.json();
             data.ticket.date = new Date().toISOString();
-            printThermalTicket(data.ticket, printWindow);
+
+            if (isAndroidWebView()) {
+                // ✅ Android : envoyer le HTML complet directement
+                const ticketHTML = generateTicketHTML(data.ticket);
+                const fullHTML = buildFullPrintHTML(ticketHTML);
+                window.AndroidPrint.printHTML(fullHTML);
+            } else {
+                // ✅ Navigateur normal : window.open comme avant
+                printThermalTicket(data.ticket, printWindow);
+            }
+
             APP_STATE.ticketsHistory.unshift(data.ticket);
         }
 
@@ -495,108 +447,53 @@ async function processFinalTicket() {
     } catch (err) {
         console.error(err);
         alert("❌ Erè pandan enpresyon");
-        printWindow.close();
+        if (printWindow) printWindow.close();
     }
 }
 
-// ---------- PRINT ----------
+// ---------- Construire le HTML complet pour impression ----------
+function buildFullPrintHTML(bodyHTML) {
+    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 32 };
+    const fontSize = advanced.fontSize || 32;
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+@page { size: 80mm auto; margin: 2mm; }
+body {
+    font-family: 'Courier New', monospace;
+    font-size: ${fontSize}px;
+    font-weight: bold;
+    width: 76mm;
+    margin: 0 auto;
+    padding: 4mm;
+    background: white;
+    color: black;
+}
+.header { text-align: center; border-bottom: 2px dashed #000; padding: 0; margin: 0 0 2px 0; line-height: 1; }
+.header img { display: block; margin: 0 auto; max-height: 350px; max-width: 100%; }
+.header strong { display: block; font-size: ${fontSize + 8}px; font-weight: bold; margin: 0; }
+.header small { display: block; font-size: ${fontSize - 6}px; color: #555; margin: 0; }
+.info { margin: 10px 0; }
+.info p { margin: 5px 0; font-size: ${fontSize - 12}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+hr { border: none; border-top: 2px dashed #000; margin: 10px 0; }
+.bet-row { display: flex; justify-content: space-between; margin: 5px 0; font-weight: bold; font-size: ${fontSize}px; }
+.total-row { display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px; font-size: ${fontSize + 4}px; }
+.footer { text-align: center; margin-top: 20px; font-style: italic; font-size: ${fontSize - 4}px; }
+.footer p { font-weight: bold; margin: 3px 0; }
+</style>
+</head>
+<body>${bodyHTML}</body>
+</html>`;
+}
+
+// ---------- PRINT (navigateur normal) ----------
 function printThermalTicket(ticket, printWindow) {
     const html = generateTicketHTML(ticket);
+    const fullHTML = buildFullPrintHTML(html);
 
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Ticket</title>
-            <style>
-                @page {
-                    size: 80mm auto;
-                    margin: 2mm;
-                }
-                body {
-                    font-family: 'Courier New', monospace;
-                    font-size: 32px;
-                    font-weight: bold;
-                    width: 76mm;
-                    margin: 0 auto;
-                    padding: 4mm;
-                    background: white;
-                    color: black;
-                }
-                .header {
-                    text-align: center !important;
-                    border-bottom: 2px dashed #000;
-                    padding: 0 !important;
-                    margin: 0 0 2px 0 !important;
-                    line-height: 1;
-                }
-                .header img {
-                    display: block !important;
-                    margin: 0 auto !important;
-                    vertical-align: bottom !important;
-                    max-height: 350px;
-                    max-width: 100%;
-                }
-                .header strong {
-                    display: block;
-                    font-size: 40px;
-                    font-weight: bold;
-                    margin: 0;
-                    line-height: 1;
-                }
-                .header small {
-                    display: block;
-                    font-size: 26px;
-                    color: #555;
-                    margin: 0;
-                    line-height: 1;
-                }
-                .info {
-                    margin: 10px 0;
-                }
-                .info p {
-                    margin: 5px 0;
-                    font-size: 20px;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-                hr {
-                    border: none;
-                    border-top: 2px dashed #000;
-                    margin: 10px 0;
-                }
-                .bet-row {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 5px 0;
-                    font-weight: bold;
-                    font-size: 32px;
-                }
-                .total-row {
-                    display: flex;
-                    justify-content: space-between;
-                    font-weight: bold;
-                    margin-top: 10px;
-                    font-size: 36px;
-                }
-                .footer {
-                    text-align: center;
-                    margin-top: 20px;
-                    font-style: italic;
-                    font-size: 28px;
-                }
-                .footer p {
-                    font-weight: bold;
-                    margin: 3px 0;
-                }
-            </style>
-        </head>
-        <body>
-            ${html}
-        </body>
-        </html>
-    `);
+    printWindow.document.write(fullHTML);
     printWindow.document.close();
 
     printWindow.onload = function() {
@@ -605,10 +502,9 @@ function printThermalTicket(ticket, printWindow) {
     };
 }
 
-// ---------- Ticket HTML (version avec paramètres avancés) ----------
+// ---------- Ticket HTML ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
-    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 32 };
     const footerCfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.footer) || {
         line1: "tickets valable jusqu'à 90 jours",
         line2: "Ref : +509 ",
@@ -624,7 +520,7 @@ function generateTicketHTML(ticket) {
         const normalized = normalizeDateString(ticket.date);
         const dateObj = new Date(normalized);
         if (!isNaN(dateObj)) {
-            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + 
+            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' +
                             dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
         }
     }
@@ -643,41 +539,32 @@ function generateTicketHTML(ticket) {
         if (b.game === 'auto_marriage' && displayNumber.includes('&')) {
             displayNumber = displayNumber.replace('&', '*');
         }
-        return `
-            <div class="bet-row">
-                <span>${gameAbbr} ${displayNumber}</span>
-                <span>${b.amount || 0} G</span>
-            </div>
-        `;
+        return `<div class="bet-row"><span>${gameAbbr} ${displayNumber}</span><span>${b.amount || 0} G</span></div>`;
     }).join('');
 
-    const fontSize = advanced.fontSize;
-
     return `
-        <div style="font-size: ${fontSize}px; font-family: 'Courier New', monospace;">
-            <div class="header">
-                ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
-                <strong style="font-size: ${fontSize + 4}px;">${lotteryName}</strong>
-                ${slogan ? `<small style="font-size: ${fontSize - 6}px;">${slogan}</small>` : ''}
-            </div>
-            <div class="info">
-                <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
-                <p>Tiraj: ${drawName}</p>
-                <p>Date: ${formattedDate}</p>
-                <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
-            </div>
-            <hr>
-            ${betsHTML}
-            <hr>
-            <div class="total-row" style="font-size: ${fontSize + 4}px;">
-                <span>TOTAL</span>
-                <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
-            </div>
-            <div class="footer" style="font-size: ${fontSize}px;">
-                <p>${footerCfg.line1}</p>
-                <p>${footerCfg.line2}</p>
-                <p><strong>${footerCfg.line3}</strong></p>
-            </div>
+        <div class="header">
+            ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
+            <strong>${lotteryName}</strong>
+            ${slogan ? `<small>${slogan}</small>` : ''}
+        </div>
+        <div class="info">
+            <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
+            <p>Tiraj: ${drawName}</p>
+            <p>Date: ${formattedDate}</p>
+            <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
+        </div>
+        <hr>
+        ${betsHTML}
+        <hr>
+        <div class="total-row">
+            <span>TOTAL</span>
+            <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
+        </div>
+        <div class="footer">
+            <p>${footerCfg.line1}</p>
+            <p>${footerCfg.line2}</p>
+            <p><strong>${footerCfg.line3}</strong></p>
         </div>
     `;
 }
