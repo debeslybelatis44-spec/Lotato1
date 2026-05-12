@@ -503,62 +503,67 @@
         }
 
         async function handleLogin(event) {
-            event.preventDefault();
-            if (isLoggingIn) return;
-            hideMessages();
+    event.preventDefault();
+    if (isLoggingIn) return;
+    hideMessages();
 
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
-            const role = currentRole;
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const role = currentRole;
 
-            if (!username || !password) {
-                showError('Veuillez remplir tous les champs');
-                return;
+    if (!username || !password) {
+        showError('Veuillez remplir tous les champs');
+        return;
+    }
+
+    localStorage.setItem('last_username', username);
+    setLoading(true);
+
+    try {
+        const authResult = await authenticate(username, password, role);
+
+        if (authResult.success && authResult.token) {
+            localStorage.setItem('auth_token', authResult.token);
+            localStorage.setItem('user_role', role);
+            localStorage.setItem('user_name', authResult.name || username);
+
+            // Stockage optionnel de la commission pour les agents
+            if (role === CONFIG.ROLES.AGENT && authResult.commissionPercentage !== undefined) {
+                localStorage.setItem('agent_commission', authResult.commissionPercentage);
             }
 
-            localStorage.setItem('last_username', username);
-            setLoading(true);
-
-            try {
-                const authResult = await authenticate(username, password, role);
-
-                if (authResult.success && authResult.token) {
-                    localStorage.setItem('auth_token', authResult.token);
-                    localStorage.setItem('user_role', role);
-                    localStorage.setItem('user_name', authResult.name || username);
-                    localStorage.setItem('agent_commission', data.commissionPercentage || 0);
-localStorage.setItem('user_role', data.role);
-                    if (authResult.ownerId) {
-                        localStorage.setItem('owner_id', authResult.ownerId);
-                    }
-
-                    if (role === CONFIG.ROLES.AGENT) {
-                        localStorage.setItem('agent_id', authResult.agentId || username);
-                        localStorage.setItem('agent_name', authResult.name || username);
-                    }
-                    if (role === CONFIG.ROLES.SUPERVISOR) {
-                        localStorage.setItem('supervisor_id', authResult.id || username);
-                    }
-                    if (role === CONFIG.ROLES.OWNER) {
-                        localStorage.setItem('owner_id', authResult.id || username);
-                    }
-
-                    setLoading(false);
-                    showSuccess('Connexion réussie! Redirection...');
-                    setTimeout(() => {
-                        window.location.href = CONFIG.REDIRECTS[role.toUpperCase()];
-                    }, 1000);
-                } else {
-                    showError(authResult.error || 'Identifiants incorrects');
-                    setLoading(false);
-                }
-            } catch (error) {
-                console.error('Erreur de connexion:', error);
-                showError(error.message || 'Erreur de connexion au serveur.');
-                setLoading(false);
+            // Stockage de l'ownerId pour tous les rôles (si fourni)
+            if (authResult.ownerId) {
+                localStorage.setItem('owner_id', authResult.ownerId);
             }
+
+            // Stockages spécifiques selon le rôle
+            if (role === CONFIG.ROLES.AGENT) {
+                localStorage.setItem('agent_id', authResult.agentId || username);
+                localStorage.setItem('agent_name', authResult.name || username);
+            }
+            if (role === CONFIG.ROLES.SUPERVISOR) {
+                localStorage.setItem('supervisor_id', authResult.id || username);
+            }
+            if (role === CONFIG.ROLES.OWNER) {
+                localStorage.setItem('owner_id', authResult.id || username);
+            }
+
+            setLoading(false);
+            showSuccess('Connexion réussie! Redirection...');
+            setTimeout(() => {
+                window.location.href = CONFIG.REDIRECTS[role.toUpperCase()];
+            }, 1000);
+        } else {
+            showError(authResult.error || 'Identifiants incorrects');
+            setLoading(false);
         }
-
+    } catch (error) {
+        console.error('Erreur de connexion:', error);
+        showError(error.message || 'Erreur de connexion au serveur.');
+        setLoading(false);
+    }
+}
         document.addEventListener('DOMContentLoaded', () => {
             checkExistingSession();
             document.getElementById('username').focus();
