@@ -2051,14 +2051,14 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
           const amount = parseFloat(bet.amount) || 0;
           let gain = 0;
 
-          if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
-            if (clean.length === 2) {
-              if (clean === lot1) gain += amount * multipliers.lot1;
-              if (clean === lot2) gain += amount * multipliers.lot2;
-              if (clean === lot3_num) gain += amount * multipliers.lot3;
-            }
-          } else if (game === 'lotto3') {
-            if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
+         if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+  if (clean.length === 2) {
+    if (clean === lot1) gain += amount * multipliers.lot1;
+    if (clean === lot2) gain += amount * multipliers.lot2;
+    if (clean === lot3_num) gain += amount * multipliers.lot3;
+  }
+} else if (game === 'lotto3') {
+  if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
 } else if (game === 'mariage' || game === 'auto_marriage') {
   if (clean.length === 4) {
     const first = clean.slice(0,2), second = clean.slice(2,4);
@@ -2071,7 +2071,6 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
       if (win) break;
     }
     if (win) {
-      // Gain fixe de 2500 G pour tous les mariages gratuits
       if (bet.free && bet.freeType === 'special_marriage') {
         gain = 2500;
       } else {
@@ -2079,22 +2078,22 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
       }
     }
   }
-          } else if (game === 'lotto4' || game === 'auto_lotto4') {
-            if (clean.length === 4 && bet.option) {
-              let expected = '';
-              if (bet.option == 1) expected = lot1 + lot2;
-              else if (bet.option == 2) expected = lot2 + lot3_num;
-              else if (bet.option == 3) expected = lot1 + lot3_num;
-              if (clean === expected) gain = amount * multipliers.lotto4;
-            }
-          } else if (game === 'lotto5' || game === 'auto_lotto5') {
-            if (clean.length === 5 && bet.option) {
-              let expected = '';
-              if (bet.option == 1) expected = lotto3 + lot2;
-              else if (bet.option == 2) expected = lotto3 + lot3_num;
-              if (clean === expected) gain = amount * multipliers.lotto5;
-            }
-          }
+} else if (game === 'lotto4' || game === 'auto_lotto4') {
+  if (clean.length === 4 && bet.option) {
+    let expected = '';
+    if (bet.option == 1) expected = lot1 + lot2;
+    else if (bet.option == 2) expected = lot2 + lot3_num;
+    else if (bet.option == 3) expected = lot1 + lot3_num;
+    if (clean === expected) gain = amount * multipliers.lotto4;
+  }
+} else if (game === 'lotto5' || game === 'auto_lotto5') {
+  if (clean.length === 5 && bet.option) {
+    let expected = '';
+    if (bet.option == 1) expected = lotto3 + lot2;
+    else if (bet.option == 2) expected = lotto3 + lot3_num;
+    if (clean === expected) gain = amount * multipliers.lotto5;
+  }
+}
           totalWin += gain;
         }
       }
