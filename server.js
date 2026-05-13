@@ -621,10 +621,11 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       }
     }
 
-   const paidBets = bets.filter(b => !b.free);
-const totalPaid = paidBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
-let requiredFree = 0;
-if (totalPaid >= 100) requiredFree = 4;   // 4 mariages gratuits à partir de 100 Gdes
+    const paidBets = bets.filter(b => !b.free);
+    const totalPaid = paidBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+    let requiredFree = 0;
+if (totalPaid >= 100) requiredFree = 4;
+// sinon 0
     const newFreeBets = [];
     for (let i = 0; i < requiredFree; i++) {
       const n1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
@@ -636,7 +637,7 @@ if (totalPaid >= 100) requiredFree = 4;   // 4 mariages gratuits à partir de 10
         amount: 0,
         free: true,
         freeType: 'special_marriage',
-        freeWin: 2500
+        freeWin: 1000
       });
     }
     const finalBets = [...bets, ...newFreeBets];
@@ -1069,8 +1070,9 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
       if (win) break;
     }
     if (win) {
+  // Gain fixe de 2500 G pour tous les mariages gratuits
   if (bet.free && bet.freeType === 'special_marriage') {
-    gain = 2500;   // Montant fixe pour les mariages gratuits
+    gain = 2500;  // valeur fixe demandée
   } else {
     gain = amount * multipliers.mariage;
   }
@@ -1442,7 +1444,7 @@ app.get('/api/owner/advanced-settings', authenticate, requireRole('owner'), asyn
         print: { fontSize: 32 },
         footer: {
           line1: "tickets valable jusqu'à 90 jours",
-          line2: "Ref : +509 ",
+          line2: "",
           line3: "LOTATO S.A."
         }
       };
@@ -1978,19 +1980,27 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
             }
           } else if (game === 'lotto3') {
             if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
-          } else if (game === 'mariage' || game === 'auto_marriage') {
-            if (clean.length === 4) {
-              const first = clean.slice(0,2), second = clean.slice(2,4);
-              const pairs = [lot1, lot2, lot3_num];
-              let win = false;
-              for (let i = 0; i < 3; i++) {
-                for (let j = 0; j < 3; j++) {
-                  if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-                }
-                if (win) break;
-              }
-              if (win) gain = amount * multipliers.mariage;
-            }
+} else if (game === 'mariage' || game === 'auto_marriage') {
+  if (clean.length === 4) {
+    const first = clean.slice(0,2), second = clean.slice(2,4);
+    const pairs = [lot1, lot2, lot3_num];
+    let win = false;
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+      }
+      if (win) break;
+    }
+    if (win) {
+      // Gain fixe pour mariage gratuit
+      if (bet.free && bet.freeType === 'special_marriage') {
+        gain = 2500;
+      } else {
+        gain = amount * multipliers.mariage;
+      }
+    }
+  }
+}
           } else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (clean.length === 4 && bet.option) {
               let expected = '';
