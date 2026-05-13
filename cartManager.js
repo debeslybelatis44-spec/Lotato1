@@ -24,9 +24,9 @@ async function loadAdvancedSettings() {
                 APP_STATE.advancedSettings = {
                     freeMarriage: {
                         tiers: [
-                            { min: 0, max: 50, count: 1 },
-                            { min: 51, max: 150, count: 2 },
-                            { min: 151, max: null, count: 3 }
+                            { min: 100, max: 500, count: 4 },
+                            { min: 501, max: 1500, count: 4 },
+                            { min: 1501, max: null, count: 4 }
                         ],
                         winAmount: 1000
                     },
@@ -44,13 +44,13 @@ async function loadAdvancedSettings() {
             APP_STATE.advancedSettings = {
                 freeMarriage: {
                     tiers: [
-                        { min: 0, max: 50, count: 1 },
-                        { min: 51, max: 150, count: 2 },
-                        { min: 151, max: null, count: 3 }
+                        { min: 100, max: 500, count: 4 },
+                        { min: 501, max: 1500, count: 4 },
+                        { min: 1501, max: null, count: 4 }
                     ],
-                    winAmount: 1000
+                    winAmount: 2500
                 },
-                print: { fontSize: 24 },
+                print: { fontSize: 25 },
                 footer: {
                     line1: "tickets valable jusqu'à 90 jours",
                     line2: " :  ",
@@ -115,11 +115,11 @@ var CartManager = {
 
         const cfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.freeMarriage) || {
             tiers: [
-                { min: 0, max: 50, count: 1 },
-                { min: 51, max: 150, count: 2 },
-                { min: 151, max: null, count: 3 }
+                { min: 100, max: 500, count: 4 },
+                { min: 501, max: 1500, count: 4 },
+                { min: 1501, max: null, count: 4 }
             ],
-            winAmount: 1000
+            winAmount: 2500
         };
         const tiers = cfg.tiers;
 
