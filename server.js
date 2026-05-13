@@ -218,6 +218,50 @@ async function checkDatabaseConnection() {
     process.exit(1);
   }
 }
+const cron = require('node-cron');
+
+// Tâche exécutée toutes les minutes pour fermer les tirages 3 minutes avant l'heure
+cron.schedule('* * * * *', async () => {
+    try {
+        // Heure actuelle du serveur fuseau Haïti
+        const now = moment().tz('America/Port-au-Prince');
+        const currentTime = now.format('HH:mm:ss');
+
+        // Fermeture : time <= (current_time + 3 minutes) ? 
+        // On veut fermer si l'heure du tirage - 3 min <= heure actuelle
+        // Calculer l'heure limite = time - 3 minutes
+        // Comparaison en SQL : TIME(now) >= (draw_time - interval '3 minutes')
+        const result = await pool.query(
+            `UPDATE draws
+             SET active = false
+             WHERE active = true
+               AND (time - INTERVAL '3 minutes') <= (NOW() AT TIME ZONE 'America/Port-au-Prince')::time
+               -- On ne ferme pas les tirages déjà passés (éviter de fermer plusieurs fois)
+               AND time > (NOW() AT TIME ZONE 'America/Port-au-Prince')::time - INTERVAL '1 day'  -- garde les tirages du jour
+            `
+        );
+
+        if (result.rowCount > 0) {
+            console.log(`🔒 ${result.rowCount} tirage(s) fermé(s) automatiquement à ${currentTime}`);
+        }
+    } catch (err) {
+        console.error('❌ Erreur lors de la fermeture automatique :', err);
+    }
+});
+
+// Tâche exécutée à minuit (00:00) pour réactiver tous les tirages
+cron.schedule('0 0 * * *', async () => {
+    try {
+        const result = await pool.query(
+            `UPDATE draws
+             SET active = true
+             WHERE active = false`
+        );
+        console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée`);
+    } catch (err) {
+        console.error('❌ Erreur lors de la réactivation des tirages :', err);
+    }
+});
 
 // ==================== Middleware ====================
 const authenticate = async (req, res, next) => {
@@ -505,10 +549,29 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
 
   try {
-    const drawCheck = await pool.query('SELECT active FROM draws WHERE id = $1', [drawId]);
-    if (drawCheck.rows.length === 0 || !drawCheck.rows[0].active) {
-      return res.status(403).json({ error: 'Tirage bloqué ou inexistant' });
-    }
+    const drawCheck = await pool.query('SELECT active, time FROM draws WHERE id = $1', [drawId]);
+if (drawCheck.rows.length === 0) {
+  return res.status(404).json({ error: 'Tirage introuvable' });
+}
+const draw = drawCheck.rows[0];
+if (!draw.active) {
+  return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
+}
+
+// Vérification horaire (3 minutes avant l'heure du tirage)
+const now = moment().tz('America/Port-au-Prince');
+const [hours, minutes] = draw.time.split(':');
+const drawTime = moment().tz('America/Port-au-Prince').set({
+  hour: parseInt(hours),
+  minute: parseInt(minutes),
+  second: 0
+});
+const blockFrom = drawTime.clone().subtract(3, 'minutes');
+if (now.isSameOrAfter(blockFrom)) {
+  return res.status(403).json({
+    error: `Tirage fermé. Aucune mise possible depuis ${blockFrom.format('HH:mm')} (3 minutes avant l'heure du tirage).`
+  });
+}
 
     const globalBlocked = await pool.query('SELECT number FROM global_blocked_numbers WHERE owner_id = $1', [ownerId]);
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
@@ -772,6 +835,84 @@ app.get('/api/reports/draw', authenticate, async (req, res) => {
       balance: parseFloat(row.balance)
     });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+});
+// ==================== Rapports avancés pour les agents (comme server1) ====================
+app.get('/api/agent/reports', authenticate, async (req, res) => {
+  if (req.user.role !== 'agent') {
+    return res.status(403).json({ error: 'Accès réservé aux agents' });
+  }
+
+  const agentId = req.user.id;
+  const ownerId = req.user.ownerId;
+  const { period, fromDate, toDate, drawId } = req.query;
+
+  let conditions = ['t.agent_id = $1', 't.owner_id = $2'];
+  let params = [agentId, ownerId];
+  let paramIndex = 3;
+
+  if (drawId && drawId !== 'all') {
+    conditions.push(`t.draw_id = $${paramIndex++}`);
+    params.push(drawId);
+  }
+
+  let dateCondition = '';
+  if (period === 'today') {
+    dateCondition = 'DATE(t.date) = CURRENT_DATE';
+  } else if (period === 'yesterday') {
+    dateCondition = 'DATE(t.date) = CURRENT_DATE - INTERVAL \'1 day\'';
+  } else if (period === 'week') {
+    dateCondition = 't.date >= DATE_TRUNC(\'week\', CURRENT_DATE)';
+  } else if (period === 'month') {
+    dateCondition = 't.date >= DATE_TRUNC(\'month\', CURRENT_DATE)';
+  } else if (period === 'custom' && fromDate && toDate) {
+    dateCondition = `DATE(t.date) BETWEEN $${paramIndex++} AND $${paramIndex++}`;
+    params.push(fromDate, toDate);
+  }
+  if (dateCondition) {
+    conditions.push(dateCondition);
+  }
+
+  const whereClause = conditions.join(' AND ');
+
+  // Statistiques globales (summary)
+  const summaryQuery = `
+    SELECT 
+      COUNT(*) as total_tickets,
+      COALESCE(SUM(t.total_amount), 0) as total_bets,
+      COALESCE(SUM(t.win_amount), 0) as total_wins,
+      COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
+    FROM tickets t
+    WHERE ${whereClause}
+  `;
+
+  try {
+    const summaryResult = await pool.query(summaryQuery, params);
+    const summary = summaryResult.rows[0];
+
+    let detail = [];
+    // Si aucun drawId spécifique, détail par tirage
+    if (!drawId || drawId === 'all') {
+      const detailQuery = `
+        SELECT d.name as draw_name, d.id as draw_id,
+               COUNT(t.id) as tickets,
+               COALESCE(SUM(t.total_amount), 0) as bets,
+               COALESCE(SUM(t.win_amount), 0) as wins,
+               COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
+        FROM tickets t
+        JOIN draws d ON t.draw_id = d.id
+        WHERE ${whereClause}
+        GROUP BY d.id, d.name
+        ORDER BY result DESC
+      `;
+      const detailResult = await pool.query(detailQuery, params);
+      detail = detailResult.rows;
+    }
+
+    res.json({ summary, detail });
+  } catch (err) {
+    console.error('❌ Erreur rapport agent avancé:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 app.get('/api/winners', authenticate, async (req, res) => {
