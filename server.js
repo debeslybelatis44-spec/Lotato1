@@ -621,12 +621,10 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
       }
     }
 
-    const paidBets = bets.filter(b => !b.free);
-    const totalPaid = paidBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
-    let requiredFree = 0;
-    if (totalPaid >= 1 && totalPaid <= 50) requiredFree = 1;
-    else if (totalPaid >= 51 && totalPaid <= 150) requiredFree = 2;
-    else if (totalPaid >= 151) requiredFree = 3;
+   const paidBets = bets.filter(b => !b.free);
+const totalPaid = paidBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+let requiredFree = 0;
+if (totalPaid >= 100) requiredFree = 4;   // 4 mariages gratuits à partir de 100 Gdes
     const newFreeBets = [];
     for (let i = 0; i < requiredFree; i++) {
       const n1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
@@ -638,7 +636,7 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
         amount: 0,
         free: true,
         freeType: 'special_marriage',
-        freeWin: 1000
+        freeWin: 2500
       });
     }
     const finalBets = [...bets, ...newFreeBets];
@@ -1071,21 +1069,12 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
       if (win) break;
     }
     if (win) {
-      let freeWinAmount = 1000;
-      if (bet.free && bet.freeType === 'special_marriage') {
-        const advRes = await pool.query(
-          `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`,
-          [ownerId]
-        );
-        if (advRes.rows[0] && advRes.rows[0].win_amount) {
-          freeWinAmount = parseFloat(advRes.rows[0].win_amount);
-        }
-        gain = freeWinAmount;
-      } else {
-        gain = amount * multipliers.mariage;
-      }
-    }
+  if (bet.free && bet.freeType === 'special_marriage') {
+    gain = 2500;   // Montant fixe pour les mariages gratuits
+  } else {
+    gain = amount * multipliers.mariage;
   }
+}
           } else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (clean.length === 4 && bet.option) {
               let expected = '';
