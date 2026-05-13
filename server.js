@@ -2079,7 +2079,6 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
       }
     }
   }
-}
           } else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (clean.length === 4 && bet.option) {
               let expected = '';
