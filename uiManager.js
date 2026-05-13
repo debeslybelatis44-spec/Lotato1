@@ -1,4 +1,4 @@
-// uiManager.js - Version complète et corrigée
+// uiManager.js
 
 // Variable globale pour le terme de recherche
 window.historySearchTerm = '';
@@ -10,9 +10,6 @@ window.reportFilters = {
     toDate: '',
     drawId: 'all'
 };
-
-// Stockage des données du rapport courant
-window.currentReportData = null;
 
 // ---------- Détection Android WebView ----------
 function isAndroidWebView() {
@@ -70,7 +67,7 @@ async function fetchTicketsWithFilters(filters) {
     return data.tickets || [];
 }
 
-// Filtrer les tickets par date (fallback)
+// Filtrer les tickets par date
 function filterTicketsByDate(tickets, filters) {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -633,8 +630,17 @@ function reprintTicket(ticketId) {
     printHTMLContent(fullHTML, `Tikè #${ticketId}`);
 }
 
-// ==================== NOUVELLES FONCTIONS POUR RAPPORTS AGENTS ====================
 
+    } catch (error) {
+        console.error('Erreur chargement rapports:', error);
+        ['total-tickets','total-bets','total-wins','total-loss','balance'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = id === 'total-tickets' ? '0' : '0 Gdes';
+        });
+        const commissionRow = document.getElementById('commission-row');
+        if (commissionRow) commissionRow.remove();
+    }
+}
 // Nouvelle fonction pour les rapports avancés (utilise /api/agent/reports)
 async function fetchAgentReports(period, fromDate, toDate, drawId) {
     const token = localStorage.getItem('auth_token');
@@ -827,7 +833,6 @@ async function loadReports() {
         if (commissionRow) commissionRow.remove();
     }
 }
-
 // Afficher le détail par tirage
 function renderDrawDetails(detailArray) {
     let container = document.getElementById('draw-details-container');
@@ -878,43 +883,39 @@ function renderDrawDetails(detailArray) {
     html += `</tbody></table>`;
     container.innerHTML = html;
 }
-
-// Impression rapport compatible Android (version définitive)
+// ✅ Impression rapport compatible Android
 function printReport() {
-    if (!window.currentReportData) {
-        alert("Aucune donnée de rapport disponible. Veuillez d'abord charger un rapport.");
-        return;
-    }
-    
-    const data = window.currentReportData;
-    const summary = data.summary || {};
-    const detail = data.detail || [];
-    const { period, fromDate, toDate, drawId } = window.reportFilters;
-    const selectedDrawName = drawId === 'all' ? 'Tout tiraj' : (APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId);
-    const agentName = APP_STATE.agentName || localStorage.getItem('agent_name') || 'Ajan';
-    const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
-    const totalBets = summary.total_bets || 0;
-    const commission = totalBets * (commissionPercent / 100);
-    const finalBalance = (summary.net_result || 0) - commission;
-    
-    let periodText = '';
-    if (period === 'today') periodText = 'Jodi a';
-    else if (period === 'yesterday') periodText = 'Yè';
-    else if (period === 'week') periodText = 'Semèn sa a';
-    else if (period === 'custom') periodText = `Soti ${fromDate} rive ${toDate}`;
-    
-    const cfg = APP_STATE.lotteryConfig || CONFIG;
-    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTERIE';
-    const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
-    const slogan = cfg.slogan || '';
-    
-    let detailRows = '';
-    detail.forEach(d => {
-        const result = d.result || (d.bets - d.wins);
-        detailRows += `<tr><td style="padding:4px;">${d.draw_name}</td><td style="padding:4px;">${d.tickets}</td><td style="padding:4px;">${d.bets.toLocaleString('fr-FR')} G</td><td style="padding:4px;">${d.wins.toLocaleString('fr-FR')} G</td><td style="padding:4px;color:${result>=0?'green':'red'}">${result.toLocaleString('fr-FR')} G</td></tr>`;
-    });
-    
-    const html = `<!DOCTYPE html>
+    // Utiliser les données du nouveau rapport si disponibles
+    if (window.currentReportData) {
+        const data = window.currentReportData;
+        const summary = data.summary || {};
+        const detail = data.detail || [];
+        const { period, fromDate, toDate, drawId } = window.reportFilters;
+        const selectedDrawName = drawId === 'all' ? 'Tout tiraj' : (APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId);
+        const agentName = APP_STATE.agentName || localStorage.getItem('agent_name') || 'Ajan';
+        const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        const totalBets = summary.total_bets || 0;
+        const commission = totalBets * (commissionPercent / 100);
+        const finalBalance = (summary.net_result || 0) - commission;
+        
+        let periodText = '';
+        if (period === 'today') periodText = 'Jodi a';
+        else if (period === 'yesterday') periodText = 'Yè';
+        else if (period === 'week') periodText = 'Semèn sa a';
+        else if (period === 'custom') periodText = `Soti ${fromDate} rive ${toDate}`;
+        
+        const cfg = APP_STATE.lotteryConfig || CONFIG;
+        const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTERIE';
+        const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
+        const slogan = cfg.slogan || '';
+        
+        let detailRows = '';
+        detail.forEach(d => {
+            const result = d.result || (d.bets - d.wins);
+            detailRows += `<tr><td>${d.draw_name}</td><td>${d.tickets}</td><td>${d.bets.toLocaleString('fr-FR')} G</td><td>${d.wins.toLocaleString('fr-FR')} G</td><td style="color:${result>=0?'green':'red'}">${result.toLocaleString('fr-FR')} G</td></tr>`;
+        });
+        
+        const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><style>
 @page { size: 80mm auto; margin: 2mm; }
@@ -951,10 +952,17 @@ th, td { border: 1px solid #000; padding: 4px; }
 ${detailRows ? `<div class="section"><div class="section-title">Détail pa tiraj</div><table><thead><tr><th>Tiraj</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>${detailRows}</tbody></table></div>` : ''}
 <div class="footer"><p>Rapò jenere le: ${new Date().toLocaleString('fr-FR')}</p><p>© ${lotteryName}</p></div>
 </body></html>`;
-    printHTMLContent(html, `Rapò ${selectedDrawName}`);
+        printHTMLContent(html, `Rapò ${selectedDrawName}`);
+        return;
+    }
+    
+    // Fallback : ancienne méthode (si pas de données)
+    const drawSelector = document.getElementById('draw-report-selector');
+    if (!drawSelector) return;
+    const selectedDraw = drawSelector.options[drawSelector.selectedIndex].text;
+    const selectedDrawId = drawSelector.value;
+    // ... (ancien code de printReport avec filterTicketsByDate)
 }
-
-// ==================== FIN NOUVELLES FONCTIONS ====================
 
 async function loadWinners() {
     try {
@@ -1224,6 +1232,7 @@ window.deleteTicketFromCard = deleteTicketFromCard;
 window.viewTicketDetails = viewTicketDetails;
 window.markAsPaid = markAsPaid;
 window.printReport = printReport;
+window.loadDrawReport = loadDrawReport;
 window.logout = logout;
 window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
