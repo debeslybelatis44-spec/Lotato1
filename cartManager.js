@@ -14,7 +14,7 @@ async function loadAdvancedSettings() {
     if (!APP_STATE.advancedSettings) {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_CONFIG.BASE_URL}/api/agent/advanced-settings`, {
+            const res = await fetch(`${API_CONFIG.BASE_URL}/agent/advanced-settings`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
