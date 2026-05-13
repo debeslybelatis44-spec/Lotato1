@@ -76,5 +76,21 @@ let APP_STATE = {
     draws: null,
     globalBlockedNumbers: [],
     drawBlockedNumbers: {},
-    numberLimits: {}
+    numberLimits: {},
+    advancedSettings: {   // <-- AJOUTER ICI
+        freeMarriage: {
+            tiers: [
+                { min: 0, max: 50, count: 1 },
+                { min: 51, max: 150, count: 2 },
+                { min: 151, max: null, count: 3 }
+            ],
+            winAmount: 1000
+        },
+        print: { fontSize: 32 },
+        footer: {
+            line1: "tickets valable jusqu'à 90 jours",
+            line2: "Ref : +509 ",
+            line3: "LOTATO S.A."
+        }
+    }
 };
