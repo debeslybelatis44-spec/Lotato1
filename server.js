@@ -622,10 +622,12 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
     }
 
     const paidBets = bets.filter(b => !b.free);
-const totalPaid = paidBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
-let requiredFree = 0;
-if (totalPaid >= 100) requiredFree = 4;
-const newFreeBets = [];
+    const totalPaid = paidBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+    let requiredFree = 0;
+    if (totalPaid >= 100 && totalPaid <= 5000) requiredFree = 4;
+    else if (totalPaid >= 151 && totalPaid <= 153) requiredFree = 4;
+    else if (totalPaid >= 5000) requiredFree = 4;
+    const newFreeBets = [];
     for (let i = 0; i < requiredFree; i++) {
       const n1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
       const n2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
@@ -636,7 +638,7 @@ const newFreeBets = [];
         amount: 0,
         free: true,
         freeType: 'special_marriage',
-        freeWin: 1000
+        freeWin: 2500
       });
     }
     const finalBets = [...bets, ...newFreeBets];
@@ -745,84 +747,6 @@ app.get('/api/reports', authenticate, async (req, res) => {
       balance: parseFloat(row.balance)
     });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
-})
-// ==================== Rapports avancés pour les agents (comme server1) ====================
-app.get('/api/agent/reports', authenticate, async (req, res) => {
-  if (req.user.role !== 'agent') {
-    return res.status(403).json({ error: 'Accès réservé aux agents' });
-  }
-
-  const agentId = req.user.id;
-  const ownerId = req.user.ownerId;
-  const { period, fromDate, toDate, drawId } = req.query;
-
-  let conditions = ['t.agent_id = $1', 't.owner_id = $2'];
-  let params = [agentId, ownerId];
-  let paramIndex = 3;
-
-  if (drawId && drawId !== 'all') {
-    conditions.push(`t.draw_id = $${paramIndex++}`);
-    params.push(drawId);
-  }
-
-  let dateCondition = '';
-  if (period === 'today') {
-    dateCondition = 'DATE(t.date) = CURRENT_DATE';
-  } else if (period === 'yesterday') {
-    dateCondition = 'DATE(t.date) = CURRENT_DATE - INTERVAL \'1 day\'';
-  } else if (period === 'week') {
-    dateCondition = 't.date >= DATE_TRUNC(\'week\', CURRENT_DATE)';
-  } else if (period === 'month') {
-    dateCondition = 't.date >= DATE_TRUNC(\'month\', CURRENT_DATE)';
-  } else if (period === 'custom' && fromDate && toDate) {
-    dateCondition = `DATE(t.date) BETWEEN $${paramIndex++} AND $${paramIndex++}`;
-    params.push(fromDate, toDate);
-  }
-  if (dateCondition) {
-    conditions.push(dateCondition);
-  }
-
-  const whereClause = conditions.join(' AND ');
-
-  // Statistiques globales (summary)
-  const summaryQuery = `
-    SELECT 
-      COUNT(*) as total_tickets,
-      COALESCE(SUM(t.total_amount), 0) as total_bets,
-      COALESCE(SUM(t.win_amount), 0) as total_wins,
-      COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
-    FROM tickets t
-    WHERE ${whereClause}
-  `;
-
-  try {
-    const summaryResult = await pool.query(summaryQuery, params);
-    const summary = summaryResult.rows[0];
-
-    let detail = [];
-    // Si aucun drawId spécifique, détail par tirage
-    if (!drawId || drawId === 'all') {
-      const detailQuery = `
-        SELECT d.name as draw_name, d.id as draw_id,
-               COUNT(t.id) as tickets,
-               COALESCE(SUM(t.total_amount), 0) as bets,
-               COALESCE(SUM(t.win_amount), 0) as wins,
-               COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
-        FROM tickets t
-        JOIN draws d ON t.draw_id = d.id
-        WHERE ${whereClause}
-        GROUP BY d.id, d.name
-        ORDER BY result DESC
-      `;
-      const detailResult = await pool.query(detailQuery, params);
-      detail = detailResult.rows;
-    }
-
-    res.json({ summary, detail });
-  } catch (err) {
-    console.error('❌ Erreur rapport agent avancé:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
 });
 
 app.get('/api/reports/draw', authenticate, async (req, res) => {
@@ -1147,15 +1071,21 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
       if (win) break;
     }
     if (win) {
-      // Gain fixe de 2500 G pour tous les mariages gratuits
+      let freeWinAmount = 2500;
       if (bet.free && bet.freeType === 'special_marriage') {
-        gain = 2500;
+        const advRes = await pool.query(
+          `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`,
+          [ownerId]
+        );
+        if (advRes.rows[0] && advRes.rows[0].win_amount) {
+          freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+        }
+        gain = freeWinAmount;
       } else {
         gain = amount * multipliers.mariage;
       }
     }
   }
-}
           } else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (clean.length === 4 && bet.option) {
               let expected = '';
@@ -2051,49 +1981,43 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
           const amount = parseFloat(bet.amount) || 0;
           let gain = 0;
 
-         if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
-  if (clean.length === 2) {
-    if (clean === lot1) gain += amount * multipliers.lot1;
-    if (clean === lot2) gain += amount * multipliers.lot2;
-    if (clean === lot3_num) gain += amount * multipliers.lot3;
-  }
-} else if (game === 'lotto3') {
-  if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
-} else if (game === 'mariage' || game === 'auto_marriage') {
-  if (clean.length === 4) {
-    const first = clean.slice(0,2), second = clean.slice(2,4);
-    const pairs = [lot1, lot2, lot3_num];
-    let win = false;
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) {
-        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-      }
-      if (win) break;
-    }
-    if (win) {
-      if (bet.free && bet.freeType === 'special_marriage') {
-        gain = 2500;
-      } else {
-        gain = amount * multipliers.mariage;
-      }
-    }
-  }
-} else if (game === 'lotto4' || game === 'auto_lotto4') {
-  if (clean.length === 4 && bet.option) {
-    let expected = '';
-    if (bet.option == 1) expected = lot1 + lot2;
-    else if (bet.option == 2) expected = lot2 + lot3_num;
-    else if (bet.option == 3) expected = lot1 + lot3_num;
-    if (clean === expected) gain = amount * multipliers.lotto4;
-  }
-} else if (game === 'lotto5' || game === 'auto_lotto5') {
-  if (clean.length === 5 && bet.option) {
-    let expected = '';
-    if (bet.option == 1) expected = lotto3 + lot2;
-    else if (bet.option == 2) expected = lotto3 + lot3_num;
-    if (clean === expected) gain = amount * multipliers.lotto5;
-  }
-}
+          if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+            if (clean.length === 2) {
+              if (clean === lot1) gain += amount * multipliers.lot1;
+              if (clean === lot2) gain += amount * multipliers.lot2;
+              if (clean === lot3_num) gain += amount * multipliers.lot3;
+            }
+          } else if (game === 'lotto3') {
+            if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
+          } else if (game === 'mariage' || game === 'auto_marriage') {
+            if (clean.length === 4) {
+              const first = clean.slice(0,2), second = clean.slice(2,4);
+              const pairs = [lot1, lot2, lot3_num];
+              let win = false;
+              for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                  if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+                }
+                if (win) break;
+              }
+              if (win) gain = amount * multipliers.mariage;
+            }
+          } else if (game === 'lotto4' || game === 'auto_lotto4') {
+            if (clean.length === 4 && bet.option) {
+              let expected = '';
+              if (bet.option == 1) expected = lot1 + lot2;
+              else if (bet.option == 2) expected = lot2 + lot3_num;
+              else if (bet.option == 3) expected = lot1 + lot3_num;
+              if (clean === expected) gain = amount * multipliers.lotto4;
+            }
+          } else if (game === 'lotto5' || game === 'auto_lotto5') {
+            if (clean.length === 5 && bet.option) {
+              let expected = '';
+              if (bet.option == 1) expected = lotto3 + lot2;
+              else if (bet.option == 2) expected = lotto3 + lot3_num;
+              if (clean === expected) gain = amount * multipliers.lotto5;
+            }
+          }
           totalWin += gain;
         }
       }
