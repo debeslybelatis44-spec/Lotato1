@@ -470,8 +470,8 @@ async function processFinalTicket() {
 
 // ---------- Construire le HTML complet pour impression ----------
 function buildFullPrintHTML(bodyHTML) {
-    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 24 };
-    const fontSize = advanced.fontSize || 32;
+    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 22 };
+    const fontSize = advanced.fontSize || 28;
     return `<!DOCTYPE html>
 <html>
 <head>
