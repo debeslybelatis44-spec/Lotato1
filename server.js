@@ -1593,16 +1593,15 @@ app.get('/api/owner/advanced-settings', authenticate, requireRole('owner'), asyn
       const defaults = {
         freeMarriage: {
           tiers: [
-            { min: 0, max: 50, count: 1 },
-            { min: 51, max: 150, count: 2 },
-            { min: 151, max: null, count: 3 }
+            { min: 100, max: 500, count: 4 },
+            { min: 501, max: 1500, count: 2 },
+            { min: 1501, max: null, count: 3 }
           ],
-          winAmount: 1000
+          winAmount: 2500
         },
-        print: { fontSize: 32 },
+        print: { fontSize: 28 },
         footer: {
           line1: "tickets valable jusqu'à 90 jours",
-          line2: "Ref : +509 ",
           line3: "LOTATO S.A."
         }
       };
