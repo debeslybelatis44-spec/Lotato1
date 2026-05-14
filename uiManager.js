@@ -1192,21 +1192,17 @@ window.loadDrawReport = loadDrawReport;
 window.logout = logout;
 window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
-
-// ==================== BLOC COMMISSION AGENT (inchangé) ====================
+// ==================== BLOC COMMISSION AGENT (corrigé : soustraction) ====================
 (function() {
-    // Sauvegarde des fonctions originales
     const originalLoadReports = window.loadReports;
     const originalPrintReport = window.printReport;
 
-    // Nouvelle fonction loadReports avec commission
     window.loadReports = async function() {
         await originalLoadReports();
         
         const userRole = localStorage.getItem('user_role');
         if (userRole !== 'agent') return;
         
-        // Récupérer le total des mises affiché dans le DOM
         const totalBetsElem = document.getElementById('total-bets');
         if (!totalBetsElem) return;
         let totalBets = parseFloat(totalBetsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
@@ -1214,9 +1210,11 @@ window.replayTicket = replayTicket;
         const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
         if (commissionPercent === 0) return;
         
-        const commission = totalBets * commissionPercent / 100;
+        const commissionAmount = totalBets * commissionPercent / 100;
+        // Montant après déduction de la commission
+        const netAmount = totalBets - commissionAmount;
         
-        // Ajouter la carte de commission si elle n'existe pas
+        // Ajouter la carte de commission (ou mettre à jour)
         let commissionCard = document.getElementById('agent-commission-card');
         if (!commissionCard) {
             const statsGrid = document.querySelector('.reports-summary .stats-grid') || document.querySelector('.stats-grid');
@@ -1227,19 +1225,25 @@ window.replayTicket = replayTicket;
                 commissionCard.innerHTML = `
                     <div class="stat-label">KOMISYON (${commissionPercent}%)</div>
                     <div class="stat-value" id="agent-commission-value">0 Gdes</div>
+                    <div class="stat-label" style="margin-top:5px;">NET AP REVÈSE</div>
+                    <div class="stat-value" id="agent-net-value">0 Gdes</div>
                 `;
                 statsGrid.appendChild(commissionCard);
             }
         }
         const commissionValue = document.getElementById('agent-commission-value');
         if (commissionValue) {
-            commissionValue.textContent = commission.toLocaleString('fr-FR') + ' Gdes';
+            commissionValue.textContent = `- ${commissionAmount.toLocaleString('fr-FR')} Gdes`;
+            commissionValue.style.color = 'var(--danger)';
+        }
+        const netValue = document.getElementById('agent-net-value');
+        if (netValue) {
+            netValue.textContent = netAmount.toLocaleString('fr-FR') + ' Gdes';
+            netValue.style.color = 'var(--success)';
         }
     };
 
-    // Nouvelle fonction printReport avec commission
     window.printReport = function() {
-        // Récupérer les mêmes données que l'affichage
         const totalTickets = document.getElementById('total-tickets')?.innerText || '0';
         const totalBetsStr = document.getElementById('total-bets')?.innerText || '0 Gdes';
         const totalWinsStr = document.getElementById('total-wins')?.innerText || '0 Gdes';
@@ -1249,8 +1253,12 @@ window.replayTicket = replayTicket;
         let totalBets = parseFloat(totalBetsStr.replace(/[^0-9.-]/g, '')) || 0;
         const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
         const commission = totalBets * commissionPercent / 100;
+        const netAfterCommission = totalBets - commission;
+        
+        // Ligne de commission avec soustraction
         const commissionLine = (commissionPercent > 0) 
-            ? `<div class="row"><span>Komisyon (${commissionPercent}%) :</span><span>${commission.toLocaleString('fr-FR')} G</span></div>`
+            ? `<div class="row"><span>Komisyon (${commissionPercent}%) :</span><span>- ${commission.toLocaleString('fr-FR')} G</span></div>
+               <div class="row"><span>NET AP REVÈSE :</span><span>${netAfterCommission.toLocaleString('fr-FR')} G</span></div>`
             : '';
         
         const drawSelector = document.getElementById('draw-report-selector');
@@ -1305,7 +1313,7 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
         <div class="row"><span>Total Ganyen:</span><span>${totalWinsStr}</span></div>
         <div class="row"><span>Pèdi:</span><span>${totalLossStr}</span></div>
         ${commissionLine}
-        <div class="row total-row"><span>Balans:</span><span>${balanceStr}</span></div>
+        <div class="row total-row"><span>Balans (Ganyen - Paris) :</span><span>${balanceStr}</span></div>
     </div>
     <div class="footer">
         <p>Rapò jenere le: ${new Date().toLocaleString('fr-FR')}</p>
