@@ -497,13 +497,23 @@ app.get('/api/owners/active', async (req, res) => {
 app.get('/api/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
-    const result = await pool.query('SELECT name, slogan, logo_url, multipliers, limits FROM lottery_settings WHERE owner_id = $1', [ownerId]);
-    if (result.rows.length === 0) return res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {} });
+    const result = await pool.query(
+      'SELECT name, slogan, logo_url, multipliers, limits, address, phone_numbers FROM lottery_settings WHERE owner_id = $1',
+      [ownerId]
+    );
+    if (result.rows.length === 0) return res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {}, address: '', phone_numbers: '' });
     const row = result.rows[0];
-    res.json({ name: row.name, slogan: row.slogan, logoUrl: row.logo_url, multipliers: row.multipliers, limits: row.limits });
+    res.json({
+      name: row.name,
+      slogan: row.slogan,
+      logoUrl: row.logo_url,
+      multipliers: row.multipliers,
+      limits: row.limits,
+      address: row.address || '',
+      phone_numbers: row.phone_numbers || ''
+    });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
-
 app.get('/api/draws', authenticate, async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
@@ -1549,25 +1559,23 @@ app.get('/api/owner/settings', authenticate, requireRole('owner'), async (req, r
 
 app.post('/api/owner/settings', authenticate, requireRole('owner'), upload.single('logo'), async (req, res) => {
   const ownerId = req.user.id;
-  let { name, slogan, logoUrl, multipliers, limits } = req.body;
-  if (req.file) {
-    const base64 = req.file.buffer.toString('base64');
-    const mime = req.file.mimetype;
-    logoUrl = `data:${mime};base64,${base64}`;
-  }
+  let { name, slogan, logoUrl, multipliers, limits, address, phone_numbers } = req.body;
+  // ... (gestion du logo)
   if (multipliers && typeof multipliers === 'string') multipliers = JSON.parse(multipliers);
   if (limits && typeof limits === 'string') limits = JSON.parse(limits);
   try {
     await pool.query(
-      `INSERT INTO lottery_settings (owner_id, name, slogan, logo_url, multipliers, limits)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO lottery_settings (owner_id, name, slogan, logo_url, multipliers, limits, address, phone_numbers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (owner_id) DO UPDATE SET
          name = EXCLUDED.name,
          slogan = EXCLUDED.slogan,
          logo_url = EXCLUDED.logo_url,
          multipliers = EXCLUDED.multipliers,
-         limits = EXCLUDED.limits`,
-      [ownerId, name || 'LOTATO PRO', slogan || '', logoUrl || '', JSON.stringify(multipliers || {}), JSON.stringify(limits || {})]
+         limits = EXCLUDED.limits,
+         address = EXCLUDED.address,
+         phone_numbers = EXCLUDED.phone_numbers`,
+      [ownerId, name || 'LOTATO PRO', slogan || '', logoUrl || '', JSON.stringify(multipliers || {}), JSON.stringify(limits || {}), address || '', phone_numbers || '']
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
