@@ -281,6 +281,10 @@
             <div class="form-group"><label>Agent</label><select id="ticket-filter-agent"><option value="all">Tous</option></select></div>
             <div class="form-group"><label>Tirage</label><select id="ticket-filter-draw"><option value="all">Tous</option></select></div>
             <div class="form-group"><label>Période</label><select id="ticket-filter-period" onchange="toggleTicketCustomDates()"><option value="today">Aujourd'hui</option><option value="yesterday">Hier</option><option value="week">Cette semaine</option><option value="month">Ce mois</option><option value="custom">Personnalisée</option></select></div>
+            <div class="form-group">
+    <label>Numéro ticket (ID ou ticket_id)</label>
+    <input type="text" id="search-ticket-id" placeholder="Ex: 123 ou TKT-456">
+</div>
             <div id="ticket-custom-dates" style="display:none; grid-column:span 2; grid-template-columns:1fr 1fr; gap:10px;"><div class="form-group"><label>Du</label><input type="date" id="ticket-filter-from"></div><div class="form-group"><label>Au</label><input type="date" id="ticket-filter-to"></div></div>
             <div class="form-group"><label>Statut gain</label><select id="ticket-filter-gain"><option value="all">Tous</option><option value="win">Gagnant (win_amount > 0)</option><option value="nowin">Non gagnant</option></select></div>
             <div class="form-group"><label>Statut paiement</label><select id="ticket-filter-paid"><option value="all">Tous</option><option value="paid">Payé</option><option value="unpaid">Non payé</option></select></div>
@@ -1191,39 +1195,62 @@
     }
 
     // ---------- TICKETS ----------
-    let currentTicketPage = 0;
-    async function loadTickets(reset = true) {
-        if (reset) { currentTicketPage = 0; document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>'; }
-        const token = localStorage.getItem('auth_token');
-        const params = new URLSearchParams();
-        const supervisor = document.getElementById('ticket-filter-supervisor').value;
-        const agent = document.getElementById('ticket-filter-agent').value;
-        const draw = document.getElementById('ticket-filter-draw').value;
-        const period = document.getElementById('ticket-filter-period').value;
-        const from = document.getElementById('ticket-filter-from').value;
-        const to = document.getElementById('ticket-filter-to').value;
-        const gain = document.getElementById('ticket-filter-gain').value;
-        const paid = document.getElementById('ticket-filter-paid').value;
-        if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
-        if (agent && agent !== 'all') params.append('agentId', agent);
-        if (draw && draw !== 'all') params.append('drawId', draw);
-        if (period) params.append('period', period);
-        if (from) params.append('fromDate', from);
-        if (to) params.append('toDate', to);
-        if (gain && gain !== 'all') params.append('gain', gain);
-        if (paid && paid !== 'all') params.append('paid', paid);
-        params.append('page', currentTicketPage);
-        params.append('limit', 20);
+  let currentTicketPage = 0;
+async function loadTickets(reset = true) {
+    if (reset) { currentTicketPage = 0; document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>'; }
+    const token = localStorage.getItem('auth_token');
+    
+    // Recherche par numéro de ticket prioritaire
+    const searchTicketId = document.getElementById('search-ticket-id')?.value.trim();
+    if (searchTicketId) {
         try {
-            const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
-            if (!res.ok) throw new Error('Erreur chargement tickets');
-            const data = await res.json();
-            if (reset) displayTickets(data.tickets);
-            else appendTickets(data.tickets);
-            document.getElementById('tickets-load-more').style.display = data.hasMore ? 'block' : 'none';
-        } catch (e) { handleFetchError(e, 'loadTickets'); document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>'; }
+            const res = await fetch(`${API_URL}/api/owner/tickets/${encodeURIComponent(searchTicketId)}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const ticket = await res.json();
+                displaySingleTicket(ticket);
+            } else if (res.status === 404) {
+                document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Ticket non trouvé</p>';
+            } else {
+                throw new Error('Erreur lors de la recherche');
+            }
+        } catch (e) {
+            handleFetchError(e, 'searchTicket');
+            document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors de la recherche du ticket</p>';
+        }
+        return;
     }
-
+    
+    // Sinon, chargement normal avec pagination et filtres
+    const params = new URLSearchParams();
+    const supervisor = document.getElementById('ticket-filter-supervisor').value;
+    const agent = document.getElementById('ticket-filter-agent').value;
+    const draw = document.getElementById('ticket-filter-draw').value;
+    const period = document.getElementById('ticket-filter-period').value;
+    const from = document.getElementById('ticket-filter-from').value;
+    const to = document.getElementById('ticket-filter-to').value;
+    const gain = document.getElementById('ticket-filter-gain').value;
+    const paid = document.getElementById('ticket-filter-paid').value;
+    if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
+    if (agent && agent !== 'all') params.append('agentId', agent);
+    if (draw && draw !== 'all') params.append('drawId', draw);
+    if (period) params.append('period', period);
+    if (from) params.append('fromDate', from);
+    if (to) params.append('toDate', to);
+    if (gain && gain !== 'all') params.append('gain', gain);
+    if (paid && paid !== 'all') params.append('paid', paid);
+    params.append('page', currentTicketPage);
+    params.append('limit', 20);
+    try {
+        const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Erreur chargement tickets');
+        const data = await res.json();
+        if (reset) displayTickets(data.tickets);
+        else appendTickets(data.tickets);
+        document.getElementById('tickets-load-more').style.display = data.hasMore ? 'block' : 'none';
+    } catch (e) { handleFetchError(e, 'loadTickets'); document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>'; }
+}
     function displayTickets(tickets) {
         const container = document.getElementById('tickets-list-container');
         if (!tickets || tickets.length === 0) { container.innerHTML = '<p>Aucun ticket trouvé</p>'; return; }
@@ -1237,6 +1264,15 @@
         html += '</tbody></table></div>';
         container.innerHTML = html;
     }
+    function displaySingleTicket(ticket) {
+    if (!ticket) {
+        document.getElementById('tickets-list-container').innerHTML = '<p>Aucun ticket trouvé</p>';
+        return;
+    }
+    const tickets = [ticket];
+    displayTickets(tickets);
+    document.getElementById('tickets-load-more').style.display = 'none';
+}
 
     function appendTickets(tickets) {
         const container = document.getElementById('tickets-list-container');
@@ -1312,17 +1348,20 @@
         document.getElementById('ticket-custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
     }
     function resetTicketFilters() {
-        document.getElementById('ticket-filter-supervisor').value = 'all';
-        document.getElementById('ticket-filter-agent').value = 'all';
-        document.getElementById('ticket-filter-draw').value = 'all';
-        document.getElementById('ticket-filter-period').value = 'today';
-        document.getElementById('ticket-filter-from').value = '';
-        document.getElementById('ticket-filter-to').value = '';
-        document.getElementById('ticket-filter-gain').value = 'all';
-        document.getElementById('ticket-filter-paid').value = 'all';
-        toggleTicketCustomDates();
-        loadTickets();
-    }
+    document.getElementById('ticket-filter-supervisor').value = 'all';
+    document.getElementById('ticket-filter-agent').value = 'all';
+    document.getElementById('ticket-filter-draw').value = 'all';
+    document.getElementById('ticket-filter-period').value = 'today';
+    document.getElementById('ticket-filter-from').value = '';
+    document.getElementById('ticket-filter-to').value = '';
+    document.getElementById('ticket-filter-gain').value = 'all';
+    document.getElementById('ticket-filter-paid').value = 'all';
+    // Vider la recherche par numéro
+    const searchInput = document.getElementById('search-ticket-id');
+    if (searchInput) searchInput.value = '';
+    toggleTicketCustomDates();
+    loadTickets();
+}
 
     // ---------- CONFIGURATION ----------
     async function loadSettings() {
@@ -1447,19 +1486,19 @@ document.getElementById('config-phones').value = data.phone_numbers || '';
             const data = await res.json();
             if (data.freeMarriage) {
                 currentTiers = data.freeMarriage.tiers || [
-                    { min: 0, max: 50, count: 1 },
-                    { min: 51, max: 150, count: 2 },
-                    { min: 151, max: null, count: 3 }
+                    { min: 100, max: 500, count: 4 },
+                    { min: 501, max: 1050, count: 4 },
+                    { min: 1501, max: null, count: 4 }
                 ];
                 renderTiers();
-                document.getElementById('free-marriage-win').value = data.freeMarriage.winAmount || 1000;
+                document.getElementById('free-marriage-win').value = data.freeMarriage.winAmount || 2500;
             }
             if (data.print) {
-                document.getElementById('print-font-size').value = data.print.fontSize || 32;
+                document.getElementById('print-font-size').value = data.print.fontSize || 28;
             }
             if (data.footer) {
                 document.getElementById('footer-line1').value = data.footer.line1 || "tickets valable jusqu'à 90 jours";
-                document.getElementById('footer-line2').value = data.footer.line2 || "Ref : +509 ";
+                
                 document.getElementById('footer-line3').value = data.footer.line3 || "LOTATO S.A.";
             }
             showMessage('advanced-settings-message', 'Réglages chargés', true);
