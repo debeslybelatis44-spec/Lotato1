@@ -625,82 +625,172 @@ function reprintTicket(ticketId) {
     printHTMLContent(fullHTML, `Tikè #${ticketId}`);
 }
 
+// ==================== NOUVELLE VERSION DE loadReports (avec appel API agent) ====================
 async function loadReports() {
     try {
         initReportFilters();
 
-        const allTickets = await fetchTickets();
-        APP_STATE.ticketsHistory = allTickets;
+        const token = localStorage.getItem('auth_token');
+        const role = localStorage.getItem('user_role');
+        const period = window.reportFilters.period;
+        const drawId = window.reportFilters.drawId;
+        const fromDate = window.reportFilters.fromDate;
+        const toDate = window.reportFilters.toDate;
 
-        const filteredTickets = filterTicketsByDate(allTickets, window.reportFilters);
-
-        const finalTickets = window.reportFilters.drawId !== 'all'
-            ? filteredTickets.filter(t => (t.draw_id === window.reportFilters.drawId || t.drawId === window.reportFilters.drawId))
-            : filteredTickets;
-
-        let totalTickets = finalTickets.length;
-        let totalBets = 0, totalWins = 0, totalLoss = 0;
-
-        finalTickets.forEach(ticket => {
-            const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
-            totalBets += ticketAmount;
-
-            if (ticket.checked || ticket.verified) {
-                const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                if (winAmount > 0) { totalWins += winAmount; }
-                else { totalLoss += ticketAmount; }
+        // --- CAS AGENT : appel à l'API dédiée /api/agent/reports ---
+        if (role === 'agent') {
+            let url = `/api/agent/reports?period=${encodeURIComponent(period)}`;
+            if (drawId && drawId !== 'all') url += `&drawId=${encodeURIComponent(drawId)}`;
+            if (period === 'custom' && fromDate && toDate) {
+                url += `&fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`;
             }
-        });
 
-        const totalProfit = totalBets - totalWins;
-
-        document.getElementById('total-tickets').textContent = totalTickets;
-        document.getElementById('total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('total-wins').textContent = totalWins.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').textContent = totalProfit.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').style.color = (totalProfit >= 0) ? 'var(--success)' : 'var(--danger)';
-
-        let periodText = '';
-        if (window.reportFilters.period === 'today') periodText = 'Jodi a';
-        else if (window.reportFilters.period === 'yesterday') periodText = 'Yè';
-        else if (window.reportFilters.period === 'week') periodText = 'Semèn sa a';
-        else if (window.reportFilters.period === 'custom') {
-            periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
-        }
-
-        const existingPeriodInfo = document.querySelector('.period-info');
-        if (existingPeriodInfo) existingPeriodInfo.remove();
-
-        const periodInfo = document.createElement('div');
-        periodInfo.className = 'period-info';
-        periodInfo.style.cssText = 'text-align: center; margin: 10px 0; font-size: 0.9rem; color: var(--text-dim);';
-        periodInfo.innerHTML = `Peryòd: <strong>${periodText}</strong>`;
-
-        const reportsSummary = document.querySelector('.reports-summary');
-        if (reportsSummary) reportsSummary.insertAdjacentElement('afterend', periodInfo);
-
-        const drawSelector = document.getElementById('draw-report-selector');
-        if (drawSelector) {
-            drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
-            const draws = (APP_STATE.draws && APP_STATE.draws.length > 0) ? APP_STATE.draws : (CONFIG && CONFIG.DRAWS ? CONFIG.DRAWS : []);
-            draws.forEach(draw => {
-                const option = document.createElement('option');
-                option.value = draw.id;
-                option.textContent = draw.name;
-                if (draw.id == window.reportFilters.drawId) option.selected = true;
-                drawSelector.appendChild(option);
+            const response = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            const summary = data.summary;
+
+            // Mise à jour des indicateurs principaux
+            document.getElementById('total-tickets').textContent = summary.total_tickets || 0;
+            document.getElementById('total-bets').textContent = (summary.total_bets || 0).toLocaleString('fr-FR') + ' Gdes';
+            document.getElementById('total-wins').textContent = (summary.total_wins || 0).toLocaleString('fr-FR') + ' Gdes';
+            const totalLoss = (summary.total_bets || 0) - (summary.total_wins || 0);
+            document.getElementById('total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
+            const balance = summary.net_result || 0;
+            document.getElementById('balance').textContent = balance.toLocaleString('fr-FR') + ' Gdes';
+            document.getElementById('balance').style.color = balance >= 0 ? 'var(--success)' : 'var(--danger)';
+
+            // Mise à jour du sélecteur de tirage (draw-report-selector)
+            const drawSelector = document.getElementById('draw-report-selector');
+            if (drawSelector && APP_STATE.draws && APP_STATE.draws.length) {
+                drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
+                APP_STATE.draws.forEach(draw => {
+                    const opt = document.createElement('option');
+                    opt.value = draw.id;
+                    opt.textContent = draw.name;
+                    if (draw.id == drawId) opt.selected = true;
+                    drawSelector.appendChild(opt);
+                });
+            }
+
+            // Affichage du détail par tirage (si fourni)
+            const existingDetail = document.getElementById('agent-detail-container');
+            if (existingDetail) existingDetail.remove();
+
+            if (data.detail && data.detail.length > 0) {
+                const detailDiv = document.createElement('div');
+                detailDiv.id = 'agent-detail-container';
+                detailDiv.innerHTML = `
+                    <div class="section-title"><i class="fas fa-chart-line"></i> Détail par tirage</div>
+                    <div class="list-container">
+                        <table class="table">
+                            <thead><tr><th>Tiraj</th><th>Tikè</th><th>Mises</th><th>Ganyen</th><th>Rezilta</th></tr></thead>
+                            <tbody>
+                                ${data.detail.map(d => `
+                                    <tr>
+                                        <td>${d.draw_name}</td>
+                                        <td>${d.tickets}</td>
+                                        <td>${(d.bets || 0).toLocaleString()} G</td>
+                                        <td>${(d.wins || 0).toLocaleString()} G</td>
+                                        <td class="${(d.result || 0) >= 0 ? 'profit' : 'loss'}">${(d.result || 0).toLocaleString()} G</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                document.getElementById('reports-screen').appendChild(detailDiv);
+            }
+
+            // Message de période
+            let periodText = '';
+            if (period === 'today') periodText = 'Jodi a';
+            else if (period === 'yesterday') periodText = 'Yè';
+            else if (period === 'week') periodText = 'Semèn sa a';
+            else if (period === 'custom') periodText = `Soti ${fromDate} rive ${toDate}`;
+            let periodInfo = document.querySelector('.period-info');
+            if (!periodInfo) {
+                periodInfo = document.createElement('div');
+                periodInfo.className = 'period-info';
+                periodInfo.style.cssText = 'text-align: center; margin: 10px 0; font-size: 0.9rem; color: var(--text-dim);';
+                const reportsSummary = document.querySelector('.reports-summary');
+                if (reportsSummary) reportsSummary.insertAdjacentElement('afterend', periodInfo);
+                else document.getElementById('reports-screen')?.appendChild(periodInfo);
+            }
+            periodInfo.innerHTML = `Peryòd: <strong>${periodText}</strong>`;
+
+            // Pour les autres rôles (supervisor, owner), on conserve l'ancienne méthode (filtrage client)
+        } else {
+            const allTickets = await fetchTickets();
+            APP_STATE.ticketsHistory = allTickets;
+
+            const filteredTickets = filterTicketsByDate(allTickets, window.reportFilters);
+            const finalTickets = drawId !== 'all'
+                ? filteredTickets.filter(t => (t.draw_id == drawId || t.drawId == drawId))
+                : filteredTickets;
+
+            let totalTickets = finalTickets.length;
+            let totalBets = 0, totalWins = 0, totalLoss = 0;
+            finalTickets.forEach(ticket => {
+                const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
+                totalBets += ticketAmount;
+                if (ticket.checked || ticket.verified) {
+                    const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
+                    if (winAmount > 0) totalWins += winAmount;
+                    else totalLoss += ticketAmount;
+                }
+            });
+            const balance = totalBets - totalWins;
+
+            document.getElementById('total-tickets').textContent = totalTickets;
+            document.getElementById('total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
+            document.getElementById('total-wins').textContent = totalWins.toLocaleString('fr-FR') + ' Gdes';
+            document.getElementById('total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
+            document.getElementById('balance').textContent = balance.toLocaleString('fr-FR') + ' Gdes';
+            document.getElementById('balance').style.color = balance >= 0 ? 'var(--success)' : 'var(--danger)';
+
+            // Mise à jour du sélecteur de tirage
+            const drawSelector = document.getElementById('draw-report-selector');
+            if (drawSelector && APP_STATE.draws && APP_STATE.draws.length) {
+                drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
+                APP_STATE.draws.forEach(draw => {
+                    const opt = document.createElement('option');
+                    opt.value = draw.id;
+                    opt.textContent = draw.name;
+                    if (draw.id == drawId) opt.selected = true;
+                    drawSelector.appendChild(opt);
+                });
+            }
+
+            // Message de période
+            let periodText = '';
+            if (window.reportFilters.period === 'today') periodText = 'Jodi a';
+            else if (window.reportFilters.period === 'yesterday') periodText = 'Yè';
+            else if (window.reportFilters.period === 'week') periodText = 'Semèn sa a';
+            else if (window.reportFilters.period === 'custom') {
+                periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
+            }
+            const existingPeriodInfo = document.querySelector('.period-info');
+            if (existingPeriodInfo) existingPeriodInfo.remove();
+            const periodInfo = document.createElement('div');
+            periodInfo.className = 'period-info';
+            periodInfo.style.cssText = 'text-align: center; margin: 10px 0; font-size: 0.9rem; color: var(--text-dim);';
+            periodInfo.innerHTML = `Peryòd: <strong>${periodText}</strong>`;
+            const reportsSummary = document.querySelector('.reports-summary');
+            if (reportsSummary) reportsSummary.insertAdjacentElement('afterend', periodInfo);
         }
-
-        await loadDrawReport(window.reportFilters.drawId);
-
     } catch (error) {
-        console.error('Erreur chargement rapports:', error);
+        console.error('Erreur loadReports:', error);
         ['total-tickets','total-bets','total-wins','total-loss','balance'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = id === 'total-tickets' ? '0' : '0 Gdes';
         });
+        const summaryDiv = document.querySelector('.reports-summary');
+        if (summaryDiv) summaryDiv.innerHTML = `<div class="alert alert-danger">Erreur : ${error.message}</div>`;
+        else alert('Erreur chargement rapport : ' + error.message);
     }
 }
 
@@ -745,7 +835,7 @@ async function loadDrawReport(drawId = null) {
     }
 }
 
-// ✅ Impression rapport compatible Android
+// ✅ Impression rapport (sera surchargée par le bloc commission)
 function printReport() {
     const drawSelector = document.getElementById('draw-report-selector');
     const selectedDraw = drawSelector.options[drawSelector.selectedIndex].text;
@@ -1102,7 +1192,8 @@ window.loadDrawReport = loadDrawReport;
 window.logout = logout;
 window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
-// ==================== BLOC COMMISSION AGENT ====================
+
+// ==================== BLOC COMMISSION AGENT (inchangé) ====================
 (function() {
     // Sauvegarde des fonctions originales
     const originalLoadReports = window.loadReports;
