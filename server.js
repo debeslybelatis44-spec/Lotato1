@@ -497,13 +497,23 @@ app.get('/api/owners/active', async (req, res) => {
 app.get('/api/lottery-settings', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
-    const result = await pool.query('SELECT name, slogan, logo_url, multipliers, limits FROM lottery_settings WHERE owner_id = $1', [ownerId]);
-    if (result.rows.length === 0) return res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {} });
+    const result = await pool.query(
+      'SELECT name, slogan, logo_url, multipliers, limits, address, phone_numbers FROM lottery_settings WHERE owner_id = $1',
+      [ownerId]
+    );
+    if (result.rows.length === 0) return res.json({ name: 'LOTATO PRO', slogan: '', logoUrl: '', multipliers: {}, limits: {}, address: '', phone_numbers: '' });
     const row = result.rows[0];
-    res.json({ name: row.name, slogan: row.slogan, logoUrl: row.logo_url, multipliers: row.multipliers, limits: row.limits });
+    res.json({
+      name: row.name,
+      slogan: row.slogan,
+      logoUrl: row.logo_url,
+      multipliers: row.multipliers,
+      limits: row.limits,
+      address: row.address || '',
+      phone_numbers: row.phone_numbers || ''
+    });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
-
 app.get('/api/draws', authenticate, async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
@@ -1549,25 +1559,23 @@ app.get('/api/owner/settings', authenticate, requireRole('owner'), async (req, r
 
 app.post('/api/owner/settings', authenticate, requireRole('owner'), upload.single('logo'), async (req, res) => {
   const ownerId = req.user.id;
-  let { name, slogan, logoUrl, multipliers, limits } = req.body;
-  if (req.file) {
-    const base64 = req.file.buffer.toString('base64');
-    const mime = req.file.mimetype;
-    logoUrl = `data:${mime};base64,${base64}`;
-  }
+  let { name, slogan, logoUrl, multipliers, limits, address, phone_numbers } = req.body;
+  // ... (gestion du logo)
   if (multipliers && typeof multipliers === 'string') multipliers = JSON.parse(multipliers);
   if (limits && typeof limits === 'string') limits = JSON.parse(limits);
   try {
     await pool.query(
-      `INSERT INTO lottery_settings (owner_id, name, slogan, logo_url, multipliers, limits)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO lottery_settings (owner_id, name, slogan, logo_url, multipliers, limits, address, phone_numbers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (owner_id) DO UPDATE SET
          name = EXCLUDED.name,
          slogan = EXCLUDED.slogan,
          logo_url = EXCLUDED.logo_url,
          multipliers = EXCLUDED.multipliers,
-         limits = EXCLUDED.limits`,
-      [ownerId, name || 'LOTATO PRO', slogan || '', logoUrl || '', JSON.stringify(multipliers || {}), JSON.stringify(limits || {})]
+         limits = EXCLUDED.limits,
+         address = EXCLUDED.address,
+         phone_numbers = EXCLUDED.phone_numbers`,
+      [ownerId, name || 'LOTATO PRO', slogan || '', logoUrl || '', JSON.stringify(multipliers || {}), JSON.stringify(limits || {}), address || '', phone_numbers || '']
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
@@ -2177,174 +2185,6 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
     console.error('❌ Erreur publication superadmin:', err);
     res.status(500).json({ error: 'Erreur serveur lors de la publication' });
   }
-});
-// ==================== NOUVEAUTÉS : ABONNEMENTS & PUBLICATION MULTI-PROPRIÉTAIRES ====================
-// 1. Ajout des colonnes d'abonnement (exécuté à chaque démarrage, sans erreur si déjà présentes)
-(async () => {
-  try {
-    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_payment_date TIMESTAMP`);
-    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) DEFAULT 'pending'`);
-    console.log('✅ Colonnes abonnement vérifiées/ajoutées');
-  } catch (err) {
-    console.error('⚠️ Erreur ajout colonnes abonnement:', err.message);
-  }
-})();
-
-// 2. Fonction utilitaire pour mettre à jour le statut d'abonnement d'un propriétaire
-async function updateSubscriptionStatus(ownerId) {
-  const res = await pool.query(
-    `SELECT created_at, last_payment_date FROM users WHERE id = $1 AND role = 'owner'`,
-    [ownerId]
-  );
-  if (res.rows.length === 0) return;
-  const owner = res.rows[0];
-  const now = new Date();
-  let status = 'pending';
-  if (owner.last_payment_date) {
-    const lastPayment = new Date(owner.last_payment_date);
-    const monthsDiff = (now.getFullYear() - lastPayment.getFullYear()) * 12 + (now.getMonth() - lastPayment.getMonth());
-    if (monthsDiff < 1) status = 'paid';
-  } else {
-    // Premier mois gratuit à partir de la date d'inscription
-    const created = new Date(owner.created_at);
-    const monthsSinceCreation = (now.getFullYear() - created.getFullYear()) * 12 + (now.getMonth() - created.getMonth());
-    if (monthsSinceCreation < 1) status = 'paid';
-  }
-  await pool.query(`UPDATE users SET subscription_status = $1 WHERE id = $2`, [status, ownerId]);
-  return status;
-}
-
-// 3. Route superadmin pour marquer un paiement (abonnement)
-app.post('/api/superadmin/owners/:id/pay', authenticate, requireSuperAdmin, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const now = new Date();
-    await pool.query(
-      `UPDATE users SET last_payment_date = $1, subscription_status = 'paid' WHERE id = $2 AND role = 'owner'`,
-      [now, id]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur mise à jour paiement' });
-  }
-});
-
-// 4. Route GET /api/superadmin/owners (version enrichie avec created_at, last_payment_date, subscription_status)
-//    Remplace l'existante si elle est déjà définie, ou ajoute-la si absente.
-//    Pour éviter les conflits, on vérifie si la route existe déjà, sinon on la définit.
-//    Ici on la redéfinit volontairement (la dernière définition prévaut).
-app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT u.id, u.name, u.username as email, u.blocked as active, u.quota, u.phone, u.created_at,
-             u.last_payment_date, u.subscription_status,
-             (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
-      FROM users u WHERE u.role = 'owner' ORDER BY u.created_at DESC
-    `);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// 5. Route superadmin pour publication des résultats pour plusieurs propriétaires
-app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin, async (req, res) => {
-  const { ownerIds, drawId, numbers, lotto3 } = req.body;
-  if (!ownerIds || !Array.isArray(ownerIds) || ownerIds.length === 0 || !drawId || !numbers || numbers.length !== 3 || !lotto3) {
-    return res.status(400).json({ error: 'Données invalides' });
-  }
-  const results = [];
-  for (const ownerId of ownerIds) {
-    try {
-      // Vérifier que le propriétaire existe
-      const ownerCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
-      if (ownerCheck.rows.length === 0) {
-        results.push({ ownerId, success: false, error: 'Propriétaire introuvable' });
-        continue;
-      }
-      // Enregistrer les résultats gagnants
-      await pool.query(
-        `INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`,
-        [ownerId, drawId, JSON.stringify(numbers), lotto3]
-      );
-      // Récupérer les multiplicateurs du propriétaire
-      const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
-      let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
-      if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
-        const raw = settingsRes.rows[0].multipliers;
-        multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      }
-      const [lot1, lot2, lot3_num] = numbers;
-      // Mettre à jour les tickets non encore vérifiés
-      const ticketsRes = await pool.query(
-        `SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false`,
-        [ownerId, drawId]
-      );
-      for (const ticket of ticketsRes.rows) {
-        let totalWin = 0;
-        const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
-        if (Array.isArray(bets)) {
-          for (const bet of bets) {
-            const game = bet.game || bet.specialType;
-            const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
-            const amount = parseFloat(bet.amount) || 0;
-            let gain = 0;
-            if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
-              if (clean.length === 2) {
-                if (clean === lot1) gain += amount * multipliers.lot1;
-                if (clean === lot2) gain += amount * multipliers.lot2;
-                if (clean === lot3_num) gain += amount * multipliers.lot3;
-              }
-            } else if (game === 'lotto3') {
-              if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
-            } else if (game === 'mariage' || game === 'auto_marriage') {
-              if (clean.length === 4) {
-                const first = clean.slice(0,2), second = clean.slice(2,4);
-                const pairs = [lot1, lot2, lot3_num];
-                let win = false;
-                for (let i=0; i<3; i++) {
-                  for (let j=0; j<3; j++) {
-                    if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-                  }
-                  if (win) break;
-                }
-                if (win) gain = amount * multipliers.mariage;
-              }
-            } else if (game === 'lotto4' || game === 'auto_lotto4') {
-              if (clean.length === 4 && bet.option) {
-                let expected = '';
-                if (bet.option == 1) expected = lot1 + lot2;
-                else if (bet.option == 2) expected = lot2 + lot3_num;
-                else if (bet.option == 3) expected = lot1 + lot3_num;
-                if (clean === expected) gain = amount * multipliers.lotto4;
-              }
-            } else if (game === 'lotto5' || game === 'auto_lotto5') {
-              if (clean.length === 5 && bet.option) {
-                let expected = '';
-                if (bet.option == 1) expected = lotto3 + lot2;
-                else if (bet.option == 2) expected = lotto3 + lot3_num;
-                if (clean === expected) gain = amount * multipliers.lotto5;
-              }
-            }
-            totalWin += gain;
-          }
-        }
-        await pool.query('UPDATE tickets SET win_amount = $1, checked = true WHERE id = $2', [totalWin, ticket.id]);
-      }
-      // Journalisation
-      await pool.query(
-        `INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)`,
-        [req.user.id, 'superadmin', 'publish_results', `Owner ${ownerId}, Draw ${drawId}, Numbers ${numbers.join(',')}, Lotto3 ${lotto3}`, req.ip]
-      );
-      results.push({ ownerId, success: true });
-    } catch (err) {
-      console.error(`Erreur pour owner ${ownerId}:`, err);
-      results.push({ ownerId, success: false, error: err.message });
-    }
-  }
-  res.json({ success: true, results });
 });
 
 // ==================== Démarrage du serveur ====================

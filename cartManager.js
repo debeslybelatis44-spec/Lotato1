@@ -579,10 +579,12 @@ function generateTicketHTML(ticket) {
             <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
         </div>
         <div class="footer">
-            <p>${footerCfg.line1}</p>
-            <p>${footerCfg.line2}</p>
-            <p><strong>${footerCfg.line3}</strong></p>
-        </div>
+    <p>${footerCfg.line1}</p>
+    <p>${footerCfg.line2}</p>
+    ${cfg.address ? `<p>${cfg.address}</p>` : ''}
+    ${cfg.phone_numbers ? `<p>${cfg.phone_numbers}</p>` : ''}
+    <p><strong>${footerCfg.line3}</strong></p>
+</div>
     `;
 }
 
