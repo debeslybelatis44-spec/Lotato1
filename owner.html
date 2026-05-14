@@ -281,10 +281,6 @@
             <div class="form-group"><label>Agent</label><select id="ticket-filter-agent"><option value="all">Tous</option></select></div>
             <div class="form-group"><label>Tirage</label><select id="ticket-filter-draw"><option value="all">Tous</option></select></div>
             <div class="form-group"><label>Période</label><select id="ticket-filter-period" onchange="toggleTicketCustomDates()"><option value="today">Aujourd'hui</option><option value="yesterday">Hier</option><option value="week">Cette semaine</option><option value="month">Ce mois</option><option value="custom">Personnalisée</option></select></div>
-            <div class="form-group">
-    <label>Numéro ticket (ID ou ticket_id)</label>
-    <input type="text" id="search-ticket-id" placeholder="Ex: 123 ou TKT-456">
-</div>
             <div id="ticket-custom-dates" style="display:none; grid-column:span 2; grid-template-columns:1fr 1fr; gap:10px;"><div class="form-group"><label>Du</label><input type="date" id="ticket-filter-from"></div><div class="form-group"><label>Au</label><input type="date" id="ticket-filter-to"></div></div>
             <div class="form-group"><label>Statut gain</label><select id="ticket-filter-gain"><option value="all">Tous</option><option value="win">Gagnant (win_amount > 0)</option><option value="nowin">Non gagnant</option></select></div>
             <div class="form-group"><label>Statut paiement</label><select id="ticket-filter-paid"><option value="all">Tous</option><option value="paid">Payé</option><option value="unpaid">Non payé</option></select></div>
@@ -302,14 +298,6 @@
         <div class="form-grid">
             <div class="form-group"><label>Nom de la borlette</label><input type="text" id="config-name" placeholder="LOTATO PRO"></div>
             <div class="form-group"><label>Slogan</label><input type="text" id="config-slogan" placeholder="Votre chance, notre jeu"></div>
-            <div class="form-group" style="grid-column: span 2;">
-    <label>Adresse (affichée en bas du ticket)</label>
-    <textarea id="config-address" rows="2" placeholder="123, Rue Capois, Port-au-Prince" style="width:100%;"></textarea>
-    </div>
-            <div class="form-group" style="grid-column: span 2;">
-    <label>Téléphones (séparés par des virgules)</label>
-    <input type="text" id="config-phones" placeholder="+509 1234 5678, +509 9876 5432">
-    </div>
             <div class="form-group"><label>Logo (URL ou fichier)</label><input type="file" id="config-logo-file" accept="image/*"><div style="margin-top:10px;" id="logo-preview"></div><small>Ou URL: <input type="url" id="config-logo-url" placeholder="https://example.com/logo.png"></small></div>
         </div>
         <div class="section-title"><i class="fas fa-calculator"></i> Multiplicateurs de gains</div>
@@ -504,15 +492,15 @@
                     balanceEl.style.color = '#00f190';
                     messageDiv.style.backgroundColor = 'rgba(0,241,144,0.2)';
                     messageDiv.style.border = '1px solid #00f190';
-                    messageDiv.style.color = '#ff4d4d';
-                    messageDiv.innerHTML = '✅ Nouveau résultat détecté ! perte aujourd\'hui.';
+                    messageDiv.style.color = '#00f190';
+                    messageDiv.innerHTML = '✅ Nouveau résultat détecté ! Bénéfice aujourd\'hui.';
                     messageDiv.style.display = 'block';
                 } else if (netResult < 0) {
-                    balanceEl.style.color = '#00f190';
+                    balanceEl.style.color = '#ff4d4d';
                     messageDiv.style.backgroundColor = 'rgba(255,77,77,0.2)';
                     messageDiv.style.border = '1px solid #ff4d4d';
                     messageDiv.style.color = '#ff4d4d';
-                    messageDiv.innerHTML = '⚠️ Nouveau résultat détecté ! gain aujourd\'hui.';
+                    messageDiv.innerHTML = '⚠️ Nouveau résultat détecté ! Perte aujourd\'hui.';
                     messageDiv.style.display = 'block';
                 } else {
                     balanceEl.style.color = '#ffffff';
@@ -1195,62 +1183,39 @@
     }
 
     // ---------- TICKETS ----------
-  let currentTicketPage = 0;
-async function loadTickets(reset = true) {
-    if (reset) { currentTicketPage = 0; document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>'; }
-    const token = localStorage.getItem('auth_token');
-    
-    // Recherche par numéro de ticket prioritaire
-    const searchTicketId = document.getElementById('search-ticket-id')?.value.trim();
-    if (searchTicketId) {
+    let currentTicketPage = 0;
+    async function loadTickets(reset = true) {
+        if (reset) { currentTicketPage = 0; document.getElementById('tickets-list-container').innerHTML = '<p>Chargement...</p>'; }
+        const token = localStorage.getItem('auth_token');
+        const params = new URLSearchParams();
+        const supervisor = document.getElementById('ticket-filter-supervisor').value;
+        const agent = document.getElementById('ticket-filter-agent').value;
+        const draw = document.getElementById('ticket-filter-draw').value;
+        const period = document.getElementById('ticket-filter-period').value;
+        const from = document.getElementById('ticket-filter-from').value;
+        const to = document.getElementById('ticket-filter-to').value;
+        const gain = document.getElementById('ticket-filter-gain').value;
+        const paid = document.getElementById('ticket-filter-paid').value;
+        if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
+        if (agent && agent !== 'all') params.append('agentId', agent);
+        if (draw && draw !== 'all') params.append('drawId', draw);
+        if (period) params.append('period', period);
+        if (from) params.append('fromDate', from);
+        if (to) params.append('toDate', to);
+        if (gain && gain !== 'all') params.append('gain', gain);
+        if (paid && paid !== 'all') params.append('paid', paid);
+        params.append('page', currentTicketPage);
+        params.append('limit', 20);
         try {
-            const res = await fetch(`${API_URL}/api/owner/tickets/${encodeURIComponent(searchTicketId)}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const ticket = await res.json();
-                displaySingleTicket(ticket);
-            } else if (res.status === 404) {
-                document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Ticket non trouvé</p>';
-            } else {
-                throw new Error('Erreur lors de la recherche');
-            }
-        } catch (e) {
-            handleFetchError(e, 'searchTicket');
-            document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors de la recherche du ticket</p>';
-        }
-        return;
+            const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) throw new Error('Erreur chargement tickets');
+            const data = await res.json();
+            if (reset) displayTickets(data.tickets);
+            else appendTickets(data.tickets);
+            document.getElementById('tickets-load-more').style.display = data.hasMore ? 'block' : 'none';
+        } catch (e) { handleFetchError(e, 'loadTickets'); document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>'; }
     }
-    
-    // Sinon, chargement normal avec pagination et filtres
-    const params = new URLSearchParams();
-    const supervisor = document.getElementById('ticket-filter-supervisor').value;
-    const agent = document.getElementById('ticket-filter-agent').value;
-    const draw = document.getElementById('ticket-filter-draw').value;
-    const period = document.getElementById('ticket-filter-period').value;
-    const from = document.getElementById('ticket-filter-from').value;
-    const to = document.getElementById('ticket-filter-to').value;
-    const gain = document.getElementById('ticket-filter-gain').value;
-    const paid = document.getElementById('ticket-filter-paid').value;
-    if (supervisor && supervisor !== 'all') params.append('supervisorId', supervisor);
-    if (agent && agent !== 'all') params.append('agentId', agent);
-    if (draw && draw !== 'all') params.append('drawId', draw);
-    if (period) params.append('period', period);
-    if (from) params.append('fromDate', from);
-    if (to) params.append('toDate', to);
-    if (gain && gain !== 'all') params.append('gain', gain);
-    if (paid && paid !== 'all') params.append('paid', paid);
-    params.append('page', currentTicketPage);
-    params.append('limit', 20);
-    try {
-        const res = await fetch(`${API_URL}/api/owner/tickets?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!res.ok) throw new Error('Erreur chargement tickets');
-        const data = await res.json();
-        if (reset) displayTickets(data.tickets);
-        else appendTickets(data.tickets);
-        document.getElementById('tickets-load-more').style.display = data.hasMore ? 'block' : 'none';
-    } catch (e) { handleFetchError(e, 'loadTickets'); document.getElementById('tickets-list-container').innerHTML = '<p class="loss">❌ Erreur lors du chargement des tickets</p>'; }
-}
+
     function displayTickets(tickets) {
         const container = document.getElementById('tickets-list-container');
         if (!tickets || tickets.length === 0) { container.innerHTML = '<p>Aucun ticket trouvé</p>'; return; }
@@ -1264,15 +1229,6 @@ async function loadTickets(reset = true) {
         html += '</tbody></table></div>';
         container.innerHTML = html;
     }
-    function displaySingleTicket(ticket) {
-    if (!ticket) {
-        document.getElementById('tickets-list-container').innerHTML = '<p>Aucun ticket trouvé</p>';
-        return;
-    }
-    const tickets = [ticket];
-    displayTickets(tickets);
-    document.getElementById('tickets-load-more').style.display = 'none';
-}
 
     function appendTickets(tickets) {
         const container = document.getElementById('tickets-list-container');
@@ -1348,20 +1304,17 @@ async function loadTickets(reset = true) {
         document.getElementById('ticket-custom-dates').style.display = period === 'custom' ? 'grid' : 'none';
     }
     function resetTicketFilters() {
-    document.getElementById('ticket-filter-supervisor').value = 'all';
-    document.getElementById('ticket-filter-agent').value = 'all';
-    document.getElementById('ticket-filter-draw').value = 'all';
-    document.getElementById('ticket-filter-period').value = 'today';
-    document.getElementById('ticket-filter-from').value = '';
-    document.getElementById('ticket-filter-to').value = '';
-    document.getElementById('ticket-filter-gain').value = 'all';
-    document.getElementById('ticket-filter-paid').value = 'all';
-    // Vider la recherche par numéro
-    const searchInput = document.getElementById('search-ticket-id');
-    if (searchInput) searchInput.value = '';
-    toggleTicketCustomDates();
-    loadTickets();
-}
+        document.getElementById('ticket-filter-supervisor').value = 'all';
+        document.getElementById('ticket-filter-agent').value = 'all';
+        document.getElementById('ticket-filter-draw').value = 'all';
+        document.getElementById('ticket-filter-period').value = 'today';
+        document.getElementById('ticket-filter-from').value = '';
+        document.getElementById('ticket-filter-to').value = '';
+        document.getElementById('ticket-filter-gain').value = 'all';
+        document.getElementById('ticket-filter-paid').value = 'all';
+        toggleTicketCustomDates();
+        loadTickets();
+    }
 
     // ---------- CONFIGURATION ----------
     async function loadSettings() {
@@ -1372,8 +1325,6 @@ async function loadTickets(reset = true) {
                 const data = await res.json();
                 document.getElementById('config-name').value = data.name || '';
                 document.getElementById('config-slogan').value = data.slogan || '';
-                document.getElementById('config-address').value = data.address || '';
-document.getElementById('config-phones').value = data.phone_numbers || '';
                 document.getElementById('config-logo-url').value = data.logoUrl || '';
                 if (data.logoUrl) { document.getElementById('header-logo').src = data.logoUrl; document.getElementById('header-logo').style.display = 'inline'; }
                 else { document.getElementById('header-logo').style.display = 'none'; }
@@ -1398,50 +1349,53 @@ document.getElementById('config-phones').value = data.phone_numbers || '';
     }
 
     async function saveSettings() {
-    const token = localStorage.getItem('auth_token');
-    const name = document.getElementById('config-name').value;
-    const slogan = document.getElementById('config-slogan').value;
-    const logoUrl = document.getElementById('config-logo-url').value;
-    const logoFile = document.getElementById('config-logo-file').files[0];
-    const address = document.getElementById('config-address').value;
-    const phone_numbers = document.getElementById('config-phones').value;
-    const multipliers = {
-        lot1: parseInt(document.getElementById('multiplier-lot1').value) || 60,
-        lot2: parseInt(document.getElementById('multiplier-lot2').value) || 20,
-        lot3: parseInt(document.getElementById('multiplier-lot3').value) || 10,
-        lotto3: parseInt(document.getElementById('multiplier-lotto3').value) || 500,
-        lotto4: parseInt(document.getElementById('multiplier-lotto4').value) || 5000,
-        lotto5: parseInt(document.getElementById('multiplier-lotto5').value) || 25000,
-        mariage: parseInt(document.getElementById('multiplier-mariage').value) || 500
-    };
-    const limits = {
-        lotto3: parseInt(document.getElementById('limit-lotto3').value) || 0,
-        lotto4: parseInt(document.getElementById('limit-lotto4').value) || 0,
-        lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0,
-        mariage: parseInt(document.getElementById('limit-mariage').value) || 0
-    };
-    let body, headers = { 'Authorization': `Bearer ${token}` };
-    let url = `${API_URL}/api/owner/settings`;
-    if (logoFile) {
-        const formData = new FormData();
-        formData.append('name', name);
-        formData.append('slogan', slogan);
-        formData.append('logo', logoFile);
-        formData.append('multipliers', JSON.stringify(multipliers));
-        formData.append('limits', JSON.stringify(limits));
-        formData.append('address', address);
-        formData.append('phone_numbers', phone_numbers);
-        body = formData;
-    } else {
-        headers['Content-Type'] = 'application/json';
-        body = JSON.stringify({ name, slogan, logoUrl, multipliers, limits, address, phone_numbers });
+        const token = localStorage.getItem('auth_token');
+        const name = document.getElementById('config-name').value;
+        const slogan = document.getElementById('config-slogan').value;
+        const logoUrl = document.getElementById('config-logo-url').value;
+        const logoFile = document.getElementById('config-logo-file').files[0];
+        const multipliers = {
+            lot1: parseInt(document.getElementById('multiplier-lot1').value) || 60,
+            lot2: parseInt(document.getElementById('multiplier-lot2').value) || 20,
+            lot3: parseInt(document.getElementById('multiplier-lot3').value) || 10,
+            lotto3: parseInt(document.getElementById('multiplier-lotto3').value) || 500,
+            lotto4: parseInt(document.getElementById('multiplier-lotto4').value) || 5000,
+            lotto5: parseInt(document.getElementById('multiplier-lotto5').value) || 25000,
+            mariage: parseInt(document.getElementById('multiplier-mariage').value) || 500
+        };
+        const limits = {
+            lotto3: parseInt(document.getElementById('limit-lotto3').value) || 0,
+            lotto4: parseInt(document.getElementById('limit-lotto4').value) || 0,
+            lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0,
+            mariage: parseInt(document.getElementById('limit-mariage').value) || 0
+        };
+        let body, headers = { 'Authorization': `Bearer ${token}` };
+        let url = `${API_URL}/api/owner/settings`;
+        if (logoFile) {
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('slogan', slogan);
+            formData.append('logo', logoFile);
+            formData.append('multipliers', JSON.stringify(multipliers));
+            formData.append('limits', JSON.stringify(limits));
+            body = formData;
+        } else {
+            headers['Content-Type'] = 'application/json';
+            body = JSON.stringify({ name, slogan, logoUrl, multipliers, limits });
+        }
+        try {
+            const res = await fetch(url, { method: 'POST', headers, body });
+            if (res.ok) { showMessage('settings-message', '✅ Paramètres enregistrés', true); loadSettings(); }
+            else showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
+        } catch (e) { handleFetchError(e, 'saveSettings'); showMessage('settings-message', '❌ Erreur réseau', false); }
     }
-    try {
-        const res = await fetch(url, { method: 'POST', headers, body });
-        if (res.ok) { showMessage('settings-message', '✅ Paramètres enregistrés', true); loadSettings(); }
-        else showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
-    } catch (e) { handleFetchError(e, 'saveSettings'); showMessage('settings-message', '❌ Erreur réseau', false); }
-}
+
+    document.getElementById('config-logo-file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) { const reader = new FileReader(); reader.onload = function(ev) { document.getElementById('logo-preview').innerHTML = `<img src="${ev.target.result}" style="max-height:60px;">`; }; reader.readAsDataURL(file); }
+        else { document.getElementById('logo-preview').innerHTML = ''; }
+    });
+
     function logout() { localStorage.clear(); window.location.href = 'index.html'; }
 
     // ========== RÉGLAGES AVANCÉS ==========
@@ -1486,19 +1440,19 @@ document.getElementById('config-phones').value = data.phone_numbers || '';
             const data = await res.json();
             if (data.freeMarriage) {
                 currentTiers = data.freeMarriage.tiers || [
-                    { min: 100, max: 500, count: 4 },
-                    { min: 501, max: 1050, count: 4 },
-                    { min: 1501, max: null, count: 4 }
+                    { min: 0, max: 50, count: 1 },
+                    { min: 51, max: 150, count: 2 },
+                    { min: 151, max: null, count: 3 }
                 ];
                 renderTiers();
-                document.getElementById('free-marriage-win').value = data.freeMarriage.winAmount || 2500;
+                document.getElementById('free-marriage-win').value = data.freeMarriage.winAmount || 1000;
             }
             if (data.print) {
-                document.getElementById('print-font-size').value = data.print.fontSize || 28;
+                document.getElementById('print-font-size').value = data.print.fontSize || 32;
             }
             if (data.footer) {
                 document.getElementById('footer-line1').value = data.footer.line1 || "tickets valable jusqu'à 90 jours";
-                
+                document.getElementById('footer-line2').value = data.footer.line2 || "Ref : +509 ";
                 document.getElementById('footer-line3').value = data.footer.line3 || "LOTATO S.A.";
             }
             showMessage('advanced-settings-message', 'Réglages chargés', true);
