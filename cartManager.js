@@ -481,19 +481,11 @@ function generateTicketHTML(ticket) {
         </div>
         <div class="footer">
     <p>${footerCfg.line1}</p>
-    <p>${footerCfg.line2}</p>
     ${cfg.address ? `<p>${cfg.address}</p>` : ''}
     ${cfg.phone_numbers ? `<p>${cfg.phone_numbers}</p>` : ''}
     <p><strong>${footerCfg.line3}</strong></p>
 </div>
     `;
-}
-
-// ---------- Chargement initial des paramètres avancés ----------
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => loadAdvancedSettings());
-} else {
-    loadAdvancedSettings();
 }
 
 // ---------- Global ----------
