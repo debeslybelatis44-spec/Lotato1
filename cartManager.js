@@ -33,7 +33,6 @@ async function loadAdvancedSettings() {
                     print: { fontSize: 24 },
                     footer: {
                         line1: "tickets valable jusqu'à 90 jours",
-                        line2: " :  ",
                         line3: "LOTATO S.A."
                     }
                 };
@@ -53,7 +52,6 @@ async function loadAdvancedSettings() {
                 print: { fontSize: 25 },
                 footer: {
                     line1: "tickets valable jusqu'à 90 jours",
-                    line2: " :  ",
                     line3: "LOTATO S.A."
                 }
             };
@@ -524,7 +522,6 @@ function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
     const footerCfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.footer) || {
         line1: "tickets valable jusqu'à 90 jours",
-        line2: " ",
         line3: "LOTATO S.A."
     };
 
