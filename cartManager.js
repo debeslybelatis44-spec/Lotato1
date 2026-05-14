@@ -376,6 +376,7 @@ function isAndroidWebView() {
 }
 
 // ---------- Save & Print Ticket ----------
+// Save & Print Ticket (version corrigée avec affichage des erreurs serveur)
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
         alert("Panye vid");
@@ -388,7 +389,7 @@ async function processFinalTicket() {
         betsByDraw[b.drawId].push(b);
     });
 
-    // Ouvrir la fenêtre popup seulement si on est PAS sur Android
+    // Ouvrir la fenêtre popup seulement si on n'est PAS sur Android
     let printWindow = null;
     if (!isAndroidWebView()) {
         printWindow = window.open('', '_blank', 'width=500,height=700');
@@ -423,18 +424,30 @@ async function processFinalTicket() {
                 body: JSON.stringify(payload)
             });
 
-            if (!res.ok) throw new Error("Erreur serveur");
+            // === VÉRIFICATION AMÉLIORÉE DES ERREURS ===
+            if (!res.ok) {
+                let errorMsg = "Erreur inconnue du serveur";
+                try {
+                    const errorData = await res.json();
+                    // Le backend renvoie généralement { error: "..." }
+                    errorMsg = errorData.error || errorData.message || JSON.stringify(errorData);
+                } catch (e) {
+                    // Si la réponse n'est pas du JSON
+                    errorMsg = await res.text() || `HTTP ${res.status}`;
+                }
+                throw new Error(errorMsg);
+            }
 
             const data = await res.json();
             data.ticket.date = new Date().toISOString();
 
             if (isAndroidWebView()) {
-                // ✅ Android : envoyer le HTML complet directement
+                // Android : envoyer le HTML complet directement
                 const ticketHTML = generateTicketHTML(data.ticket);
                 const fullHTML = buildFullPrintHTML(ticketHTML);
                 window.AndroidPrint.printHTML(fullHTML);
             } else {
-                // ✅ Navigateur normal : window.open comme avant
+                // Navigateur normal : impression
                 printThermalTicket(data.ticket, printWindow);
             }
 
@@ -447,8 +460,11 @@ async function processFinalTicket() {
 
     } catch (err) {
         console.error(err);
-        alert("❌ Erè pandan enpresyon");
-        if (printWindow) printWindow.close();
+        // Afficher le vrai message d'erreur (limite dépassée, etc.)
+        alert(`❌ ${err.message}`);
+        if (printWindow && !printWindow.closed) {
+            printWindow.close();
+        }
     }
 }
 
