@@ -26,7 +26,8 @@
         .btn-primary { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; border-radius:30px; padding:12px 30px; color:white; font-weight:600; cursor:pointer; }
         .btn-secondary { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:30px; padding:12px 30px; color:white; cursor:pointer; }
         .btn-danger { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; border-radius:30px; padding:10px 20px; cursor:pointer; }
-        .list-container { background:rgba(255,255,255,0.02); border-radius:20px; padding:20px; max-height:500px; overflow-y:auto; }
+        .list-container { background:rgba(255,255,255,0.02); border-radius:20px; padding:20px; max-height:400px; overflow-y:auto; }
+        .item-row { display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:10px; }
         .badge-success { background:#00f190; color:black; padding:4px 12px; border-radius:20px; }
         .badge-danger { background:#ff4d4d; color:white; padding:4px 12px; border-radius:20px; }
         .badge-warning { background:#ffaa00; color:black; padding:4px 12px; border-radius:20px; }
@@ -78,7 +79,6 @@
             <div class="tab" onclick="switchTab('agents')">👤 Agents & Superviseurs</div>
             <div class="tab" onclick="switchTab('messages')">📢 Messages</div>
             <div class="tab" onclick="switchTab('reports')">📊 Rapports consolidés</div>
-            <div class="tab" onclick="switchTab('publish')">📢 Publier résultats (multi)</div>
         </div>
 
         <!-- Onglet Propriétaires -->
@@ -94,7 +94,7 @@
                 <div><button class="btn-primary" onclick="createOwner()">Créer</button></div>
             </div>
 
-            <div class="section-title"><i class="fas fa-list"></i> Liste des propriétaires (abonnement mensuel)</div>
+            <div class="section-title"><i class="fas fa-list"></i> Liste des propriétaires</div>
             <div id="owners-list" class="list-container"></div>
         </div>
 
@@ -103,15 +103,38 @@
             <div class="section-title"><i class="fas fa-users"></i> Liste des agents</div>
             <div id="agents-list-container" class="list-container">
                 <table style="width:100%">
-                    <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
-                    <tbody id="agents-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nom</th>
+                            <th>Email</th>
+                            <th>Téléphone</th>
+                            <th>Propriétaire</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="agents-table-body">
+                        <tr><td colspan="6">Chargement...</td></tr>
+                    </tbody>
                 </table>
             </div>
+
             <div class="section-title" style="margin-top:30px;"><i class="fas fa-user-tie"></i> Liste des superviseurs</div>
             <div id="supervisors-list-container" class="list-container">
                 <table style="width:100%">
-                    <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
-                    <tbody id="supervisors-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nom</th>
+                            <th>Email</th>
+                            <th>Téléphone</th>
+                            <th>Propriétaire</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="supervisors-table-body">
+                        <tr><td colspan="6">Chargement...</td></tr>
+                    </tbody>
                 </table>
             </div>
             <div id="delete-message" class="alert"></div>
@@ -127,7 +150,9 @@
                         <button class="btn-secondary" onclick="selectAllOwners()">Sélectionner tous</button>
                         <button class="btn-secondary" onclick="deselectAllOwners()">Désélectionner tous</button>
                     </div>
-                    <div id="owners-checkbox-list" class="checkbox-group">Chargement...</div>
+                    <div id="owners-checkbox-list" class="checkbox-group">
+                        Chargement...
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Message (visible 10 min après connexion)</label>
@@ -143,59 +168,58 @@
             <div class="section-title"><i class="fas fa-chart-pie"></i> Rapports du jour par propriétaire</div>
             <div id="owners-reports" class="list-container"></div>
         </div>
-
-        <!-- Onglet Publier résultats (multi propriétaires) -->
-        <div id="tab-publish" class="tab-content">
-            <div class="section-title"><i class="fas fa-chart-line"></i> Publier les résultats pour plusieurs propriétaires</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Sélectionner les propriétaires</label>
-                    <div style="display:flex; gap:10px; margin-bottom:10px;">
-                        <button class="btn-secondary" onclick="selectAllPublishOwners()">Tous</button>
-                        <button class="btn-secondary" onclick="deselectAllPublishOwners()">Aucun</button>
-                    </div>
-                    <div id="publish-owners-checkbox" class="checkbox-group">Chargement...</div>
-                </div>
-                <div class="form-group">
-                    <label>Tirage</label>
-                    <select id="publish-draw-id" class="form-control"></select>
-                </div>
-                <div class="form-group">
-                    <label>1er numéro (lot1, 2 chiffres)</label>
-                    <input type="text" id="publish-lot1" maxlength="2" placeholder="Ex: 12">
-                </div>
-                <div class="form-group">
-                    <label>2ème numéro (lot2, 2 chiffres)</label>
-                    <input type="text" id="publish-lot2" maxlength="2" placeholder="Ex: 34">
-                </div>
-                <div class="form-group">
-                    <label>3ème numéro (lot3, 2 chiffres)</label>
-                    <input type="text" id="publish-lot3" maxlength="2" placeholder="Ex: 56">
-                </div>
-                <div class="form-group">
-                    <label>Numéro Lotto3 (3 chiffres)</label>
-                    <input type="text" id="publish-lotto3" maxlength="3" placeholder="Ex: 789">
-                </div>
-                <div>
-                    <button class="btn-primary" onclick="publishResultsMulti()">Publier pour les sélectionnés</button>
-                </div>
-            </div>
-            <div id="publish-result-message" class="alert"></div>
-        </div>
     </div>
 
     <!-- Modals -->
     <div id="edit-owner-modal" class="modal" onclick="if(event.target===this) closeEditOwnerModal()">
-        <div class="modal-content"><h3>Modifier le propriétaire</h3><input type="hidden" id="edit-owner-id"><div class="form-group"><label>Nom</label><input type="text" id="edit-owner-name"></div><div class="form-group"><label>Email</label><input type="email" id="edit-owner-email"></div><div class="form-group"><label>Téléphone</label><input type="text" id="edit-owner-phone"></div><div class="form-group"><label>Mot de passe (laisser vide)</label><input type="password" id="edit-owner-password"></div><div style="display:flex; gap:10px; justify-content:flex-end;"><button class="btn-primary" onclick="saveOwnerEdit()">Enregistrer</button><button class="btn-danger" onclick="closeEditOwnerModal()">Annuler</button></div></div>
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">Modifier le propriétaire</h3>
+            <input type="hidden" id="edit-owner-id">
+            <div class="form-group"><label>Nom</label><input type="text" id="edit-owner-name"></div>
+            <div class="form-group"><label>Email</label><input type="email" id="edit-owner-email"></div>
+            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-owner-phone"></div>
+            <div class="form-group"><label>Mot de passe (laisser vide)</label><input type="password" id="edit-owner-password"></div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn-primary" onclick="saveOwnerEdit()">Enregistrer</button>
+                <button class="btn-danger" onclick="closeEditOwnerModal()">Annuler</button>
+            </div>
+        </div>
     </div>
+
     <div id="edit-agent-modal" class="modal" onclick="if(event.target===this) closeEditAgentModal()">
-        <div class="modal-content"><h3>Modifier l'agent</h3><input type="hidden" id="edit-agent-id"><div class="form-group"><label>Nom</label><input type="text" id="edit-agent-name"></div><div class="form-group"><label>Email</label><input type="email" id="edit-agent-email"></div><div class="form-group"><label>Téléphone</label><input type="text" id="edit-agent-phone"></div><div class="form-group"><label>Propriétaire</label><select id="edit-agent-owner"></select></div><div class="form-group"><label>Mot de passe</label><input type="password" id="edit-agent-password"></div><div style="display:flex; gap:10px; justify-content:flex-end;"><button class="btn-primary" onclick="saveAgentEdit()">Enregistrer</button><button class="btn-danger" onclick="closeEditAgentModal()">Annuler</button></div></div>
+        <div class="modal-content">
+            <h3>Modifier l'agent</h3>
+            <input type="hidden" id="edit-agent-id">
+            <div class="form-group"><label>Nom</label><input type="text" id="edit-agent-name"></div>
+            <div class="form-group"><label>Email</label><input type="email" id="edit-agent-email"></div>
+            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-agent-phone"></div>
+            <div class="form-group"><label>Propriétaire</label><select id="edit-agent-owner"></select></div>
+            <div class="form-group"><label>Mot de passe</label><input type="password" id="edit-agent-password"></div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn-primary" onclick="saveAgentEdit()">Enregistrer</button>
+                <button class="btn-danger" onclick="closeEditAgentModal()">Annuler</button>
+            </div>
+        </div>
     </div>
+
     <div id="edit-supervisor-modal" class="modal" onclick="if(event.target===this) closeEditSupervisorModal()">
-        <div class="modal-content"><h3>Modifier le superviseur</h3><input type="hidden" id="edit-supervisor-id"><div class="form-group"><label>Nom</label><input type="text" id="edit-supervisor-name"></div><div class="form-group"><label>Email</label><input type="email" id="edit-supervisor-email"></div><div class="form-group"><label>Téléphone</label><input type="text" id="edit-supervisor-phone"></div><div class="form-group"><label>Propriétaire</label><select id="edit-supervisor-owner"></select></div><div class="form-group"><label>Mot de passe</label><input type="password" id="edit-supervisor-password"></div><div style="display:flex; gap:10px; justify-content:flex-end;"><button class="btn-primary" onclick="saveSupervisorEdit()">Enregistrer</button><button class="btn-danger" onclick="closeEditSupervisorModal()">Annuler</button></div></div>
+        <div class="modal-content">
+            <h3>Modifier le superviseur</h3>
+            <input type="hidden" id="edit-supervisor-id">
+            <div class="form-group"><label>Nom</label><input type="text" id="edit-supervisor-name"></div>
+            <div class="form-group"><label>Email</label><input type="email" id="edit-supervisor-email"></div>
+            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-supervisor-phone"></div>
+            <div class="form-group"><label>Propriétaire</label><select id="edit-supervisor-owner"></select></div>
+            <div class="form-group"><label>Mot de passe</label><input type="password" id="edit-supervisor-password"></div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn-primary" onclick="saveSupervisorEdit()">Enregistrer</button>
+                <button class="btn-danger" onclick="closeEditSupervisorModal()">Annuler</button>
+            </div>
+        </div>
     </div>
 
     <script>
+        // Utiliser la config de config.js
         const API_BASE = window.API_URL || 'https://lotato1.onrender.com/api';
         let token = localStorage.getItem('superadmin_token');
         let adminName = localStorage.getItem('superadmin_name') || '';
@@ -209,20 +233,19 @@
             loadAgents();
             loadSupervisors();
             loadReports();
-            loadPublishOwnersCheckbox();
-            loadDrawsForPublish();
         }
 
-        // ========== AUTHENTIFICATION ==========
         async function superAdminLogin() {
             const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
             const errorDiv = document.getElementById('login-error');
+            
             if (!username || !password) {
                 errorDiv.style.display = 'block';
                 errorDiv.innerText = 'Veuillez saisir identifiant et mot de passe';
                 return;
             }
+            
             try {
                 const res = await fetch(`${API_BASE}/auth/superadmin-login`, {
                     method: 'POST',
@@ -243,8 +266,6 @@
                     loadAgents();
                     loadSupervisors();
                     loadReports();
-                    loadPublishOwnersCheckbox();
-                    loadDrawsForPublish();
                 } else {
                     errorDiv.style.display = 'block';
                     errorDiv.innerText = data.error || 'Identifiants incorrects';
@@ -270,7 +291,6 @@
             if (tabId === 'agents') { loadAgents(); loadSupervisors(); }
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
-            if (tabId === 'publish') { loadPublishOwnersCheckbox(); loadDrawsForPublish(); }
         }
 
         async function fetchWithToken(url, options = {}) {
@@ -293,52 +313,33 @@
             setTimeout(() => el.style.display = 'none', 4000);
         }
 
-        // ========== GESTION PROPRIÉTAIRES (avec abonnements) ==========
+        // ========== GESTION PROPRIÉTAIRES ==========
         async function loadOwners() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
-            let html = '<table style="width:100%"><thead><tr><th>Nom</th><th>Email</th><th>Inscrit le</th><th>Dernier paiement</th><th>Statut abonnement</th><th>Quota</th><th>Actions</th></tr></thead><tbody>';
+            let html = '';
             owners.forEach(o => {
-                const created = new Date(o.created_at).toLocaleDateString('fr-FR');
-                const lastPay = o.last_payment_date ? new Date(o.last_payment_date).toLocaleDateString('fr-FR') : 'Jamais';
-                let statusBadge = o.subscription_status === 'paid' ? '<span class="badge-success">✅ Payé</span>' : '<span class="badge-danger">⏳ En attente</span>';
                 const used = o.current_count || 0;
                 const quota = o.quota || 0;
                 const remaining = quota - used;
                 let quotaClass = 'badge-success';
                 if (remaining <= 0) quotaClass = 'badge-danger';
                 else if (remaining <= Math.ceil(quota * 0.2)) quotaClass = 'badge-warning';
-                html += `<tr>
-                    <td>${escapeHtml(o.name)}</td>
-                    <td>${o.email}</td>
-                    <td>${created}</td>
-                    <td>${lastPay}</td>
-                    <td>${statusBadge}</td>
-                    <td><span class="${quotaClass}">${used}/${quota}</span></td>
-                    <td>
-                        <input type="number" id="quota-input-${o.id}" value="${quota}" min="${used}" style="width:70px; padding:4px; border-radius:6px; background:#222; color:white;">
-                        <button class="btn-primary" style="padding:4px 8px;" onclick="updateQuota(${o.id})">Quota</button>
-                        <button class="btn-primary" style="padding:4px 8px;" onclick="openEditOwnerModal(${o.id}, '${escapeHtml(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
-                        <button class="btn-primary" style="padding:4px 8px;" onclick="markAsPaid(${o.id})">💰 Marquer payé</button>
-                        <button class="btn-danger" style="padding:4px 8px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Bloquer' : 'Débloquer'}</button>
-                        <button class="btn-danger" style="padding:4px 8px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
-                      </td>
-                </tr>`;
+                html += `<div class="item-row">
+                    <span><strong>${escapeHtml(o.name)}</strong> (${o.email})</span>
+                    <span class="${o.active ? 'badge-success' : 'badge-danger'}">${o.active ? 'Actif' : 'Bloqué'}</span>
+                    <span class="${quotaClass}">${used}/${quota} utilisé</span>
+                    <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                        <input type="number" id="quota-input-${o.id}" value="${quota}" min="${used}" style="width:80px; padding:4px; border-radius:6px; background:#222; color:white;">
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="updateQuota(${o.id})">Modifier quota</button>
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="openEditOwnerModal(${o.id}, '${escapeHtml(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
+                        <button class="btn-primary" style="padding:4px 10px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Bloquer' : 'Débloquer'}</button>
+                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>`;
             });
-            html += '</tbody></table>';
             document.getElementById('owners-list').innerHTML = html || '<p>Aucun propriétaire</p>';
-        }
-
-        async function markAsPaid(ownerId) {
-            if (!confirm('Confirmer le paiement de l’abonnement pour ce propriétaire ?')) return;
-            const res = await fetchWithToken(`/superadmin/owners/${ownerId}/pay`, { method: 'POST' });
-            if (res && res.ok) {
-                alert('✅ Paiement enregistré');
-                loadOwners();
-            } else {
-                alert('❌ Erreur lors de l’enregistrement');
-            }
         }
 
         async function createOwner() {
@@ -347,10 +348,12 @@
             const phone = document.getElementById('owner-phone').value;
             const password = document.getElementById('owner-password').value;
             const quota = parseInt(document.getElementById('owner-quota').value) || 10;
+            
             if (!name || !email || !password) {
                 showMessage('owner-create-message', 'Veuillez remplir tous les champs', false);
                 return;
             }
+            
             const res = await fetchWithToken('/superadmin/owners', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -362,7 +365,6 @@
                 showMessage('owner-create-message', '✅ Propriétaire créé', true);
                 loadOwners();
                 loadOwnerSelect();
-                loadPublishOwnersCheckbox();
                 document.getElementById('owner-name').value = '';
                 document.getElementById('owner-email').value = '';
                 document.getElementById('owner-phone').value = '';
@@ -385,7 +387,7 @@
         async function deleteOwner(id) {
             if (!confirm('Supprimer définitivement ce propriétaire ?')) return;
             const res = await fetchWithToken(`/superadmin/owners/${id}`, { method: 'DELETE' });
-            if (res && res.ok) { loadOwners(); loadOwnerSelect(); loadPublishOwnersCheckbox(); }
+            if (res && res.ok) { loadOwners(); loadOwnerSelect(); }
         }
 
         async function updateQuota(ownerId) {
@@ -430,7 +432,6 @@
                 closeEditOwnerModal();
                 loadOwners();
                 loadOwnerSelect();
-                loadPublishOwnersCheckbox();
             } else alert('Erreur modification');
         }
 
@@ -629,88 +630,6 @@
             document.getElementById('owners-reports').innerHTML = html || '<p>Aucune donnée</p>';
         }
 
-        // ========== PUBLICATION MULTI-PROPRIÉTAIRES ==========
-        async function loadPublishOwnersCheckbox() {
-            const res = await fetchWithToken('/superadmin/owners');
-            if (!res) return;
-            const owners = await res.json();
-            let html = '';
-            owners.forEach(o => {
-                html += `<div class="checkbox-item">
-                    <input type="checkbox" id="publish-owner-${o.id}" value="${o.id}">
-                    <label for="publish-owner-${o.id}">${escapeHtml(o.name)}</label>
-                </div>`;
-            });
-            document.getElementById('publish-owners-checkbox').innerHTML = html || '<p>Aucun propriétaire</p>';
-        }
-
-        function selectAllPublishOwners() {
-            document.querySelectorAll('#publish-owners-checkbox input[type="checkbox"]').forEach(cb => cb.checked = true);
-        }
-
-        function deselectAllPublishOwners() {
-            document.querySelectorAll('#publish-owners-checkbox input[type="checkbox"]').forEach(cb => cb.checked = false);
-        }
-
-        async function loadDrawsForPublish() {
-            const res = await fetchWithToken('/draws');
-            if (!res) return;
-            const data = await res.json();
-            const draws = data.draws || [];
-            let html = '<option value="">-- Choisir un tirage --</option>';
-            draws.forEach(d => { html += `<option value="${d.id}">${escapeHtml(d.name)} (${d.time})</option>`; });
-            document.getElementById('publish-draw-id').innerHTML = html;
-        }
-
-        async function publishResultsMulti() {
-            const selectedOwners = [];
-            document.querySelectorAll('#publish-owners-checkbox input[type="checkbox"]:checked').forEach(cb => selectedOwners.push(cb.value));
-            const drawId = document.getElementById('publish-draw-id').value;
-            const lot1 = document.getElementById('publish-lot1').value.trim();
-            const lot2 = document.getElementById('publish-lot2').value.trim();
-            const lot3 = document.getElementById('publish-lot3').value.trim();
-            const lotto3 = document.getElementById('publish-lotto3').value.trim();
-
-            if (selectedOwners.length === 0) {
-                showMessage('publish-result-message', 'Sélectionnez au moins un propriétaire', false);
-                return;
-            }
-            if (!drawId || !lot1 || !lot2 || !lot3 || !lotto3) {
-                showMessage('publish-result-message', 'Veuillez remplir tous les champs (tirage et 4 numéros)', false);
-                return;
-            }
-            if (!/^\d{2}$/.test(lot1) || !/^\d{2}$/.test(lot2) || !/^\d{2}$/.test(lot3)) {
-                showMessage('publish-result-message', 'Les trois numéros doivent être sur 2 chiffres (ex: 05, 12)', false);
-                return;
-            }
-            if (!/^\d{3}$/.test(lotto3)) {
-                showMessage('publish-result-message', 'Le numéro Lotto3 doit être sur 3 chiffres', false);
-                return;
-            }
-
-            const numbers = [lot1, lot2, lot3];
-            const res = await fetchWithToken('/superadmin/publish-results-bulk', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ownerIds: selectedOwners, drawId, numbers, lotto3 })
-            });
-            if (!res) return;
-            const data = await res.json();
-            if (data.success) {
-                const successCount = data.results.filter(r => r.success).length;
-                const failCount = data.results.length - successCount;
-                showMessage('publish-result-message', `✅ Publication terminée : ${successCount} succès, ${failCount} échecs`, true);
-                document.getElementById('publish-lot1').value = '';
-                document.getElementById('publish-lot2').value = '';
-                document.getElementById('publish-lot3').value = '';
-                document.getElementById('publish-lotto3').value = '';
-                deselectAllPublishOwners();
-                if (document.getElementById('tab-reports').classList.contains('active')) loadReports();
-            } else {
-                showMessage('publish-result-message', '❌ Erreur lors de la publication', false);
-            }
-        }
-
         function escapeHtml(text) {
             if (!text) return '';
             return text.replace(/[&<>]/g, function(m) {
@@ -743,10 +662,6 @@
         window.selectAllOwners = selectAllOwners;
         window.deselectAllOwners = deselectAllOwners;
         window.sendMessageToSelected = sendMessageToSelected;
-        window.selectAllPublishOwners = selectAllPublishOwners;
-        window.deselectAllPublishOwners = deselectAllPublishOwners;
-        window.publishResultsMulti = publishResultsMulti;
-        window.markAsPaid = markAsPaid;
     </script>
 </body>
 </html>
