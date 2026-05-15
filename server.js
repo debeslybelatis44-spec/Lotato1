@@ -4371,15 +4371,6 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
   }
 });
 
-// ==================== Démarrage du serveur ====================
-checkDatabaseConnection().then(() => {
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${port}`);
-  });
-}).catch(err => {
-  console.error('❌ Impossible de démarrer le serveur:', err);
-  process.exit(1);
-});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
