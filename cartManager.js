@@ -1,15 +1,12 @@
 // ============================================================================
-// cartManager.js - Version finale avec impression professionnelle
+// cartManager.js - Version avec tailles fixes et # sans "Ticket"
 // ============================================================================
 
-// ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
-    let normalized = dateStr.replace(' ', 'T');
-    return normalized;
+    return dateStr.replace(' ', 'T');
 }
 
-// ---------- Récupération des paramètres avancés (mariages gratuits, impression, footer) ----------
 async function loadAdvancedSettings() {
     if (!APP_STATE.advancedSettings) {
         try {
@@ -60,7 +57,6 @@ async function loadAdvancedSettings() {
     return APP_STATE.advancedSettings;
 }
 
-// ---------- Utils ----------
 function isNumberBlocked(number, drawId) {
     if (APP_STATE.globalBlockedNumbers.includes(number)) return true;
     const drawBlocked = APP_STATE.drawBlockedNumbers[drawId] || [];
@@ -86,7 +82,6 @@ function checkNumberLimit(number, drawId, amountToAdd) {
     return { success: true };
 }
 
-// ---------- Génération aléatoire d'un mariage ----------
 function generateRandomMarriageBet(amount) {
     const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
     const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
@@ -98,7 +93,6 @@ function generateRandomMarriageBet(amount) {
     };
 }
 
-// ---------- Cart Manager ----------
 var CartManager = {
 
     updateFreeMarriages() {
@@ -353,7 +347,6 @@ var CartManager = {
     }
 };
 
-// ---------- Fonction d'abréviation des jeux ----------
 function getGameAbbreviation(gameName, bet) {
     if (bet && bet.free && bet.freeType === 'special_marriage') return 'marg';
     const map = {
@@ -369,12 +362,10 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// ---------- Détection Android WebView ----------
 function isAndroidWebView() {
     return /Android/i.test(navigator.userAgent) && typeof window.AndroidPrint !== 'undefined';
 }
 
-// ---------- Save & Print Ticket (avec corrections affichage) ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
         alert("Panye vid");
@@ -459,10 +450,8 @@ async function processFinalTicket() {
     }
 }
 
-// ---------- Construction du HTML complet pour impression ----------
 function buildFullPrintHTML(bodyHTML) {
-    const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 22 };
-    const fontSize = advanced.fontSize || 28;
+    // Tailles fixes demandées
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -471,7 +460,6 @@ function buildFullPrintHTML(bodyHTML) {
     @page { size: 80mm auto; margin: 2mm; }
     body {
         font-family: 'Courier New', monospace;
-        font-size: ${fontSize}px;
         font-weight: bold;
         width: 76mm;
         margin: 0 auto;
@@ -492,13 +480,13 @@ function buildFullPrintHTML(bodyHTML) {
         max-width: 80%;
     }
     .header .lottery-name {
-        font-size: ${fontSize + 8}px;
+        font-size: 30px;
         font-weight: bold;
         letter-spacing: 1px;
         margin: 4px 0;
     }
     .header .slogan, .header .address, .header .phone {
-        font-size: ${fontSize - 4}px;
+        font-size: 17px;
         margin: 2px 0;
         white-space: nowrap;
         overflow: hidden;
@@ -506,7 +494,7 @@ function buildFullPrintHTML(bodyHTML) {
     }
     .info {
         margin: 8px 0;
-        font-size: ${fontSize - 4}px;
+        font-size: 17px;
     }
     .info p {
         margin: 3px 0;
@@ -524,7 +512,7 @@ function buildFullPrintHTML(bodyHTML) {
         justify-content: space-between;
         margin: 6px 0;
         font-weight: bold;
-        font-size: ${fontSize}px;
+        font-size: 20px;
     }
     .total-row {
         display: flex;
@@ -533,12 +521,12 @@ function buildFullPrintHTML(bodyHTML) {
         margin-top: 12px;
         padding-top: 6px;
         border-top: 2px solid #000;
-        font-size: ${fontSize + 4}px;
+        font-size: 22px;
     }
     .footer {
         text-align: center;
         margin-top: 18px;
-        font-size: ${fontSize - 2}px;
+        font-size: 17px;
         font-weight: bold;
     }
     .footer p {
@@ -550,7 +538,6 @@ function buildFullPrintHTML(bodyHTML) {
 </html>`;
 }
 
-// ---------- Impression (navigateur normal) ----------
 function printThermalTicket(ticket, printWindow) {
     const html = generateTicketHTML(ticket);
     const fullHTML = buildFullPrintHTML(html);
@@ -562,17 +549,14 @@ function printThermalTicket(ticket, printWindow) {
     };
 }
 
-// ---------- Génération du HTML du ticket (version professionnelle) ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
-    // Récupération de toutes les infos disponibles
     const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
     const slogan = cfg.slogan || '';
     const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
     const address = cfg.address || '';
     const phoneNumbers = cfg.phone_numbers || '';
 
-    // Formatage date sur une seule ligne
     let formattedDate = 'Date invalide';
     if (ticket.date) {
         const normalized = normalizeDateString(ticket.date);
@@ -600,7 +584,6 @@ function generateTicketHTML(ticket) {
         return `<div class="bet-row"><span>${gameAbbr} ${displayNumber}</span><span>${b.amount || 0} G</span></div>`;
     }).join('');
 
-    // Construction de l'en-tête avec toutes les infos (sans ref 509)
     let headerHTML = `<div class="header">`;
     if (logoUrl) headerHTML += `<img src="${logoUrl}" alt="Logo">`;
     headerHTML += `<div class="lottery-name">${lotteryName}</div>`;
@@ -609,21 +592,20 @@ function generateTicketHTML(ticket) {
     if (phoneNumbers) headerHTML += `<div class="phone">${phoneNumbers}</div>`;
     headerHTML += `</div>`;
 
-    // Informations sur une seule ligne chacune
+    // Suppression du mot "Ticket", on garde juste "#" + numéro
     const infoHTML = `
         <div class="info">
-            <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
+            <p># : ${ticket.ticket_id || ticket.id}</p>
             <p>Tiraj: ${drawName}</p>
             <p>Date: ${formattedDate}</p>
             <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
         </div>
     `;
 
-    // Pied de ticket : exactement deux lignes (sans ref 509)
     const footerHTML = `
         <div class="footer">
-            <p><strong>LOTATO S.A.</strong></p>
             <p>tickets valable pour 90 jours</p>
+            <p><strong>LOTATO S.A.</strong></p>
         </div>
     `;
 
@@ -641,14 +623,12 @@ function generateTicketHTML(ticket) {
     `;
 }
 
-// ---------- Chargement initial des paramètres avancés ----------
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => loadAdvancedSettings());
 } else {
     loadAdvancedSettings();
 }
 
-// ---------- Exports globaux ----------
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
 window.printThermalTicket = printThermalTicket;
