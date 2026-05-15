@@ -26,8 +26,7 @@
         .btn-primary { background:linear-gradient(135deg,#ad00f1,#00d4ff); border:none; border-radius:30px; padding:12px 30px; color:white; font-weight:600; cursor:pointer; }
         .btn-secondary { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:30px; padding:12px 30px; color:white; cursor:pointer; }
         .btn-danger { background:rgba(255,77,77,0.2); border:1px solid #ff4d4d; color:#ff4d4d; border-radius:30px; padding:10px 20px; cursor:pointer; }
-        .list-container { background:rgba(255,255,255,0.02); border-radius:20px; padding:20px; max-height:400px; overflow-y:auto; }
-        .item-row { display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:10px; }
+        .list-container { background:rgba(255,255,255,0.02); border-radius:20px; padding:20px; max-height:500px; overflow-y:auto; }
         .badge-success { background:#00f190; color:black; padding:4px 12px; border-radius:20px; }
         .badge-danger { background:#ff4d4d; color:white; padding:4px 12px; border-radius:20px; }
         .badge-warning { background:#ffaa00; color:black; padding:4px 12px; border-radius:20px; }
@@ -79,7 +78,7 @@
             <div class="tab" onclick="switchTab('agents')">👤 Agents & Superviseurs</div>
             <div class="tab" onclick="switchTab('messages')">📢 Messages</div>
             <div class="tab" onclick="switchTab('reports')">📊 Rapports consolidés</div>
-            <div class="tab" onclick="switchTab('publish')">📢 Publier résultats</div>
+            <div class="tab" onclick="switchTab('publish')">📢 Publier résultats (multi)</div>
         </div>
 
         <!-- Onglet Propriétaires -->
@@ -95,7 +94,7 @@
                 <div><button class="btn-primary" onclick="createOwner()">Créer</button></div>
             </div>
 
-            <div class="section-title"><i class="fas fa-list"></i> Liste des propriétaires</div>
+            <div class="section-title"><i class="fas fa-list"></i> Liste des propriétaires (abonnement mensuel)</div>
             <div id="owners-list" class="list-container"></div>
         </div>
 
@@ -145,13 +144,17 @@
             <div id="owners-reports" class="list-container"></div>
         </div>
 
-        <!-- Onglet Publier résultats (Super Admin) -->
+        <!-- Onglet Publier résultats (multi propriétaires) -->
         <div id="tab-publish" class="tab-content">
-            <div class="section-title"><i class="fas fa-chart-line"></i> Publier les résultats d'un tirage</div>
+            <div class="section-title"><i class="fas fa-chart-line"></i> Publier les résultats pour plusieurs propriétaires</div>
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Propriétaire</label>
-                    <select id="publish-owner-id" class="form-control"></select>
+                    <label>Sélectionner les propriétaires</label>
+                    <div style="display:flex; gap:10px; margin-bottom:10px;">
+                        <button class="btn-secondary" onclick="selectAllPublishOwners()">Tous</button>
+                        <button class="btn-secondary" onclick="deselectAllPublishOwners()">Aucun</button>
+                    </div>
+                    <div id="publish-owners-checkbox" class="checkbox-group">Chargement...</div>
                 </div>
                 <div class="form-group">
                     <label>Tirage</label>
@@ -174,7 +177,7 @@
                     <input type="text" id="publish-lotto3" maxlength="3" placeholder="Ex: 789">
                 </div>
                 <div>
-                    <button class="btn-primary" onclick="publishResultsSuperAdmin()">Publier les résultats</button>
+                    <button class="btn-primary" onclick="publishResultsMulti()">Publier pour les sélectionnés</button>
                 </div>
             </div>
             <div id="publish-result-message" class="alert"></div>
@@ -206,6 +209,8 @@
             loadAgents();
             loadSupervisors();
             loadReports();
+            loadPublishOwnersCheckbox();
+            loadDrawsForPublish();
         }
 
         // ========== AUTHENTIFICATION ==========
@@ -238,6 +243,8 @@
                     loadAgents();
                     loadSupervisors();
                     loadReports();
+                    loadPublishOwnersCheckbox();
+                    loadDrawsForPublish();
                 } else {
                     errorDiv.style.display = 'block';
                     errorDiv.innerText = data.error || 'Identifiants incorrects';
@@ -263,7 +270,7 @@
             if (tabId === 'agents') { loadAgents(); loadSupervisors(); }
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
-            if (tabId === 'publish') { loadPublishOwners(); loadDrawsForPublish(); }
+            if (tabId === 'publish') { loadPublishOwnersCheckbox(); loadDrawsForPublish(); }
         }
 
         async function fetchWithToken(url, options = {}) {
@@ -286,33 +293,52 @@
             setTimeout(() => el.style.display = 'none', 4000);
         }
 
-        // ========== GESTION PROPRIÉTAIRES ==========
+        // ========== GESTION PROPRIÉTAIRES (avec abonnements) ==========
         async function loadOwners() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
-            let html = '';
+            let html = '<table style="width:100%"><thead><tr><th>Nom</th><th>Email</th><th>Inscrit le</th><th>Dernier paiement</th><th>Statut abonnement</th><th>Quota</th><th>Actions</th></tr></thead><tbody>';
             owners.forEach(o => {
+                const created = new Date(o.created_at).toLocaleDateString('fr-FR');
+                const lastPay = o.last_payment_date ? new Date(o.last_payment_date).toLocaleDateString('fr-FR') : 'Jamais';
+                let statusBadge = o.subscription_status === 'paid' ? '<span class="badge-success">✅ Payé</span>' : '<span class="badge-danger">⏳ En attente</span>';
                 const used = o.current_count || 0;
                 const quota = o.quota || 0;
                 const remaining = quota - used;
                 let quotaClass = 'badge-success';
                 if (remaining <= 0) quotaClass = 'badge-danger';
                 else if (remaining <= Math.ceil(quota * 0.2)) quotaClass = 'badge-warning';
-                html += `<div class="item-row">
-                    <span><strong>${escapeHtml(o.name)}</strong> (${o.email})</span>
-                    <span class="${o.active ? 'badge-success' : 'badge-danger'}">${o.active ? 'Actif' : 'Bloqué'}</span>
-                    <span class="${quotaClass}">${used}/${quota} utilisé</span>
-                    <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                        <input type="number" id="quota-input-${o.id}" value="${quota}" min="${used}" style="width:80px; padding:4px; border-radius:6px; background:#222; color:white;">
-                        <button class="btn-primary" style="padding:4px 10px;" onclick="updateQuota(${o.id})">Modifier quota</button>
-                        <button class="btn-primary" style="padding:4px 10px;" onclick="openEditOwnerModal(${o.id}, '${escapeHtml(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
-                        <button class="btn-primary" style="padding:4px 10px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Bloquer' : 'Débloquer'}</button>
-                        <button class="btn-danger" style="padding:4px 10px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
-                    </div>
-                </div>`;
+                html += `<tr>
+                    <td>${escapeHtml(o.name)}</td>
+                    <td>${o.email}</td>
+                    <td>${created}</td>
+                    <td>${lastPay}</td>
+                    <td>${statusBadge}</td>
+                    <td><span class="${quotaClass}">${used}/${quota}</span></td>
+                    <td>
+                        <input type="number" id="quota-input-${o.id}" value="${quota}" min="${used}" style="width:70px; padding:4px; border-radius:6px; background:#222; color:white;">
+                        <button class="btn-primary" style="padding:4px 8px;" onclick="updateQuota(${o.id})">Quota</button>
+                        <button class="btn-primary" style="padding:4px 8px;" onclick="openEditOwnerModal(${o.id}, '${escapeHtml(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
+                        <button class="btn-primary" style="padding:4px 8px;" onclick="markAsPaid(${o.id})">💰 Marquer payé</button>
+                        <button class="btn-danger" style="padding:4px 8px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Bloquer' : 'Débloquer'}</button>
+                        <button class="btn-danger" style="padding:4px 8px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
+                      </td>
+                </tr>`;
             });
+            html += '</tbody></table>';
             document.getElementById('owners-list').innerHTML = html || '<p>Aucun propriétaire</p>';
+        }
+
+        async function markAsPaid(ownerId) {
+            if (!confirm('Confirmer le paiement de l’abonnement pour ce propriétaire ?')) return;
+            const res = await fetchWithToken(`/superadmin/owners/${ownerId}/pay`, { method: 'POST' });
+            if (res && res.ok) {
+                alert('✅ Paiement enregistré');
+                loadOwners();
+            } else {
+                alert('❌ Erreur lors de l’enregistrement');
+            }
         }
 
         async function createOwner() {
@@ -336,6 +362,7 @@
                 showMessage('owner-create-message', '✅ Propriétaire créé', true);
                 loadOwners();
                 loadOwnerSelect();
+                loadPublishOwnersCheckbox();
                 document.getElementById('owner-name').value = '';
                 document.getElementById('owner-email').value = '';
                 document.getElementById('owner-phone').value = '';
@@ -358,7 +385,7 @@
         async function deleteOwner(id) {
             if (!confirm('Supprimer définitivement ce propriétaire ?')) return;
             const res = await fetchWithToken(`/superadmin/owners/${id}`, { method: 'DELETE' });
-            if (res && res.ok) { loadOwners(); loadOwnerSelect(); }
+            if (res && res.ok) { loadOwners(); loadOwnerSelect(); loadPublishOwnersCheckbox(); }
         }
 
         async function updateQuota(ownerId) {
@@ -403,6 +430,7 @@
                 closeEditOwnerModal();
                 loadOwners();
                 loadOwnerSelect();
+                loadPublishOwnersCheckbox();
             } else alert('Erreur modification');
         }
 
@@ -601,14 +629,27 @@
             document.getElementById('owners-reports').innerHTML = html || '<p>Aucune donnée</p>';
         }
 
-        // ========== PUBLICATION PAR SUPER ADMIN ==========
-        async function loadPublishOwners() {
+        // ========== PUBLICATION MULTI-PROPRIÉTAIRES ==========
+        async function loadPublishOwnersCheckbox() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
-            let html = '<option value="">-- Choisir un propriétaire --</option>';
-            owners.forEach(o => { html += `<option value="${o.id}">${escapeHtml(o.name)} (${o.email})</option>`; });
-            document.getElementById('publish-owner-id').innerHTML = html;
+            let html = '';
+            owners.forEach(o => {
+                html += `<div class="checkbox-item">
+                    <input type="checkbox" id="publish-owner-${o.id}" value="${o.id}">
+                    <label for="publish-owner-${o.id}">${escapeHtml(o.name)}</label>
+                </div>`;
+            });
+            document.getElementById('publish-owners-checkbox').innerHTML = html || '<p>Aucun propriétaire</p>';
+        }
+
+        function selectAllPublishOwners() {
+            document.querySelectorAll('#publish-owners-checkbox input[type="checkbox"]').forEach(cb => cb.checked = true);
+        }
+
+        function deselectAllPublishOwners() {
+            document.querySelectorAll('#publish-owners-checkbox input[type="checkbox"]').forEach(cb => cb.checked = false);
         }
 
         async function loadDrawsForPublish() {
@@ -621,16 +662,21 @@
             document.getElementById('publish-draw-id').innerHTML = html;
         }
 
-        async function publishResultsSuperAdmin() {
-            const ownerId = document.getElementById('publish-owner-id').value;
+        async function publishResultsMulti() {
+            const selectedOwners = [];
+            document.querySelectorAll('#publish-owners-checkbox input[type="checkbox"]:checked').forEach(cb => selectedOwners.push(cb.value));
             const drawId = document.getElementById('publish-draw-id').value;
             const lot1 = document.getElementById('publish-lot1').value.trim();
             const lot2 = document.getElementById('publish-lot2').value.trim();
             const lot3 = document.getElementById('publish-lot3').value.trim();
             const lotto3 = document.getElementById('publish-lotto3').value.trim();
 
-            if (!ownerId || !drawId || !lot1 || !lot2 || !lot3 || !lotto3) {
-                showMessage('publish-result-message', 'Veuillez remplir tous les champs', false);
+            if (selectedOwners.length === 0) {
+                showMessage('publish-result-message', 'Sélectionnez au moins un propriétaire', false);
+                return;
+            }
+            if (!drawId || !lot1 || !lot2 || !lot3 || !lotto3) {
+                showMessage('publish-result-message', 'Veuillez remplir tous les champs (tirage et 4 numéros)', false);
                 return;
             }
             if (!/^\d{2}$/.test(lot1) || !/^\d{2}$/.test(lot2) || !/^\d{2}$/.test(lot3)) {
@@ -643,22 +689,25 @@
             }
 
             const numbers = [lot1, lot2, lot3];
-            const res = await fetchWithToken('/superadmin/publish-results', {
+            const res = await fetchWithToken('/superadmin/publish-results-bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ownerId, drawId, numbers, lotto3 })
+                body: JSON.stringify({ ownerIds: selectedOwners, drawId, numbers, lotto3 })
             });
             if (!res) return;
             const data = await res.json();
             if (data.success) {
-                showMessage('publish-result-message', '✅ Résultats publiés avec succès', true);
+                const successCount = data.results.filter(r => r.success).length;
+                const failCount = data.results.length - successCount;
+                showMessage('publish-result-message', `✅ Publication terminée : ${successCount} succès, ${failCount} échecs`, true);
                 document.getElementById('publish-lot1').value = '';
                 document.getElementById('publish-lot2').value = '';
                 document.getElementById('publish-lot3').value = '';
                 document.getElementById('publish-lotto3').value = '';
+                deselectAllPublishOwners();
                 if (document.getElementById('tab-reports').classList.contains('active')) loadReports();
             } else {
-                showMessage('publish-result-message', '❌ ' + (data.error || 'Erreur'), false);
+                showMessage('publish-result-message', '❌ Erreur lors de la publication', false);
             }
         }
 
@@ -694,7 +743,10 @@
         window.selectAllOwners = selectAllOwners;
         window.deselectAllOwners = deselectAllOwners;
         window.sendMessageToSelected = sendMessageToSelected;
-        window.publishResultsSuperAdmin = publishResultsSuperAdmin;
+        window.selectAllPublishOwners = selectAllPublishOwners;
+        window.deselectAllPublishOwners = deselectAllPublishOwners;
+        window.publishResultsMulti = publishResultsMulti;
+        window.markAsPaid = markAsPaid;
     </script>
 </body>
 </html>
