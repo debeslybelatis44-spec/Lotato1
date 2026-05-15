@@ -1,15 +1,15 @@
 // ============================================================================
-// cartManager.js
-// Version professionnelle avec impression ticket conforme aux exigences
+// cartManager.js - Version finale avec impression professionnelle
 // ============================================================================
 
-// -------------------- Utilitaire de normalisation de date --------------------
+// ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
-    return dateStr.replace(' ', 'T');
+    let normalized = dateStr.replace(' ', 'T');
+    return normalized;
 }
 
-// -------------------- Récupération des paramètres avancés --------------------
+// ---------- Récupération des paramètres avancés (mariages gratuits, impression, footer) ----------
 async function loadAdvancedSettings() {
     if (!APP_STATE.advancedSettings) {
         try {
@@ -60,7 +60,7 @@ async function loadAdvancedSettings() {
     return APP_STATE.advancedSettings;
 }
 
-// -------------------- Vérification des numéros bloqués --------------------
+// ---------- Utils ----------
 function isNumberBlocked(number, drawId) {
     if (APP_STATE.globalBlockedNumbers.includes(number)) return true;
     const drawBlocked = APP_STATE.drawBlockedNumbers[drawId] || [];
@@ -86,7 +86,7 @@ function checkNumberLimit(number, drawId, amountToAdd) {
     return { success: true };
 }
 
-// -------------------- Génération aléatoire d'un mariage --------------------
+// ---------- Génération aléatoire d'un mariage ----------
 function generateRandomMarriageBet(amount) {
     const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
     const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
@@ -98,7 +98,7 @@ function generateRandomMarriageBet(amount) {
     };
 }
 
-// -------------------- CartManager (gestion du panier) --------------------
+// ---------- Cart Manager ----------
 var CartManager = {
 
     updateFreeMarriages() {
@@ -353,7 +353,7 @@ var CartManager = {
     }
 };
 
-// -------------------- Abréviation des jeux --------------------
+// ---------- Fonction d'abréviation des jeux ----------
 function getGameAbbreviation(gameName, bet) {
     if (bet && bet.free && bet.freeType === 'special_marriage') return 'marg';
     const map = {
@@ -369,12 +369,12 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
-// -------------------- Détection Android WebView --------------------
+// ---------- Détection Android WebView ----------
 function isAndroidWebView() {
     return /Android/i.test(navigator.userAgent) && typeof window.AndroidPrint !== 'undefined';
 }
 
-// -------------------- Sauvegarde et impression du ticket --------------------
+// ---------- Save & Print Ticket (avec corrections affichage) ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
         alert("Panye vid");
@@ -459,7 +459,7 @@ async function processFinalTicket() {
     }
 }
 
-// -------------------- Construction du HTML complet pour impression --------------------
+// ---------- Construction du HTML complet pour impression ----------
 function buildFullPrintHTML(bodyHTML) {
     const advanced = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.print) || { fontSize: 22 };
     const fontSize = advanced.fontSize || 28;
@@ -482,7 +482,7 @@ function buildFullPrintHTML(bodyHTML) {
     .header {
         text-align: center;
         border-bottom: 2px solid #000;
-        padding-bottom: 6px;
+        padding-bottom: 8px;
         margin-bottom: 12px;
     }
     .header img {
@@ -491,26 +491,28 @@ function buildFullPrintHTML(bodyHTML) {
         max-height: 100px;
         max-width: 80%;
     }
-    .header strong {
-        display: block;
-        font-size: ${fontSize + 10}px;
+    .header .lottery-name {
+        font-size: ${fontSize + 8}px;
         font-weight: bold;
-        letter-spacing: 2px;
-        margin-top: 6px;
+        letter-spacing: 1px;
+        margin: 4px 0;
     }
-    .header small {
-        display: block;
+    .header .slogan, .header .address, .header .phone {
         font-size: ${fontSize - 4}px;
-        color: #2c3e50;
-        margin-top: 2px;
+        margin: 2px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .info {
         margin: 8px 0;
         font-size: ${fontSize - 4}px;
-        line-height: 1.3;
     }
     .info p {
         margin: 3px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     hr {
         border: none;
@@ -548,27 +550,29 @@ function buildFullPrintHTML(bodyHTML) {
 </html>`;
 }
 
-// -------------------- Impression (navigateur normal) --------------------
+// ---------- Impression (navigateur normal) ----------
 function printThermalTicket(ticket, printWindow) {
     const html = generateTicketHTML(ticket);
     const fullHTML = buildFullPrintHTML(html);
-
     printWindow.document.write(fullHTML);
     printWindow.document.close();
-
     printWindow.onload = function() {
         printWindow.focus();
         printWindow.print();
     };
 }
 
-// -------------------- Génération du HTML du ticket --------------------
+// ---------- Génération du HTML du ticket (version professionnelle) ----------
 function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
+    // Récupération de toutes les infos disponibles
     const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
     const slogan = cfg.slogan || '';
     const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
+    const address = cfg.address || '';
+    const phoneNumbers = cfg.phone_numbers || '';
 
+    // Formatage date sur une seule ligne
     let formattedDate = 'Date invalide';
     if (ticket.date) {
         const normalized = normalizeDateString(ticket.date);
@@ -596,18 +600,36 @@ function generateTicketHTML(ticket) {
         return `<div class="bet-row"><span>${gameAbbr} ${displayNumber}</span><span>${b.amount || 0} G</span></div>`;
     }).join('');
 
-    return `
-        <div class="header">
-            ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
-            <strong>${lotteryName}</strong>
-            ${slogan ? `<small>${slogan}</small>` : ''}
-        </div>
+    // Construction de l'en-tête avec toutes les infos (sans ref 509)
+    let headerHTML = `<div class="header">`;
+    if (logoUrl) headerHTML += `<img src="${logoUrl}" alt="Logo">`;
+    headerHTML += `<div class="lottery-name">${lotteryName}</div>`;
+    if (slogan) headerHTML += `<div class="slogan">${slogan}</div>`;
+    if (address) headerHTML += `<div class="address">${address}</div>`;
+    if (phoneNumbers) headerHTML += `<div class="phone">${phoneNumbers}</div>`;
+    headerHTML += `</div>`;
+
+    // Informations sur une seule ligne chacune
+    const infoHTML = `
         <div class="info">
             <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
             <p>Tiraj: ${drawName}</p>
             <p>Date: ${formattedDate}</p>
             <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
         </div>
+    `;
+
+    // Pied de ticket : exactement deux lignes (sans ref 509)
+    const footerHTML = `
+        <div class="footer">
+            <p><strong>LOTATO S.A.</strong></p>
+            <p>tickets valable pour 90 jours</p>
+        </div>
+    `;
+
+    return `
+        ${headerHTML}
+        ${infoHTML}
         <hr>
         ${betsHTML}
         <hr>
@@ -615,21 +637,18 @@ function generateTicketHTML(ticket) {
             <span>TOTAL:</span>
             <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
         </div>
-        <div class="footer">
-            <p><strong>LOTATO S.A.</strong></p>
-            <p>tickets valable pour 90 jours</p>
-        </div>
+        ${footerHTML}
     `;
 }
 
-// -------------------- Chargement initial des paramètres avancés --------------------
+// ---------- Chargement initial des paramètres avancés ----------
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => loadAdvancedSettings());
 } else {
     loadAdvancedSettings();
 }
 
-// -------------------- Exports globaux --------------------
+// ---------- Exports globaux ----------
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
 window.printThermalTicket = printThermalTicket;
