@@ -79,6 +79,7 @@
             <div class="tab" onclick="switchTab('agents')">👤 Agents & Superviseurs</div>
             <div class="tab" onclick="switchTab('messages')">📢 Messages</div>
             <div class="tab" onclick="switchTab('reports')">📊 Rapports consolidés</div>
+            <div class="tab" onclick="switchTab('publish')">📢 Publier résultats</div>
         </div>
 
         <!-- Onglet Propriétaires -->
@@ -103,38 +104,15 @@
             <div class="section-title"><i class="fas fa-users"></i> Liste des agents</div>
             <div id="agents-list-container" class="list-container">
                 <table style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nom</th>
-                            <th>Email</th>
-                            <th>Téléphone</th>
-                            <th>Propriétaire</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="agents-table-body">
-                        <tr><td colspan="6">Chargement...</td></tr>
-                    </tbody>
+                    <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
+                    <tbody id="agents-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
                 </table>
             </div>
-
             <div class="section-title" style="margin-top:30px;"><i class="fas fa-user-tie"></i> Liste des superviseurs</div>
             <div id="supervisors-list-container" class="list-container">
                 <table style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nom</th>
-                            <th>Email</th>
-                            <th>Téléphone</th>
-                            <th>Propriétaire</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="supervisors-table-body">
-                        <tr><td colspan="6">Chargement...</td></tr>
-                    </tbody>
+                    <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
+                    <tbody id="supervisors-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
                 </table>
             </div>
             <div id="delete-message" class="alert"></div>
@@ -150,9 +128,7 @@
                         <button class="btn-secondary" onclick="selectAllOwners()">Sélectionner tous</button>
                         <button class="btn-secondary" onclick="deselectAllOwners()">Désélectionner tous</button>
                     </div>
-                    <div id="owners-checkbox-list" class="checkbox-group">
-                        Chargement...
-                    </div>
+                    <div id="owners-checkbox-list" class="checkbox-group">Chargement...</div>
                 </div>
                 <div class="form-group">
                     <label>Message (visible 10 min après connexion)</label>
@@ -168,58 +144,55 @@
             <div class="section-title"><i class="fas fa-chart-pie"></i> Rapports du jour par propriétaire</div>
             <div id="owners-reports" class="list-container"></div>
         </div>
+
+        <!-- Onglet Publier résultats (Super Admin) -->
+        <div id="tab-publish" class="tab-content">
+            <div class="section-title"><i class="fas fa-chart-line"></i> Publier les résultats d'un tirage</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Propriétaire</label>
+                    <select id="publish-owner-id" class="form-control"></select>
+                </div>
+                <div class="form-group">
+                    <label>Tirage</label>
+                    <select id="publish-draw-id" class="form-control"></select>
+                </div>
+                <div class="form-group">
+                    <label>1er numéro (lot1, 2 chiffres)</label>
+                    <input type="text" id="publish-lot1" maxlength="2" placeholder="Ex: 12">
+                </div>
+                <div class="form-group">
+                    <label>2ème numéro (lot2, 2 chiffres)</label>
+                    <input type="text" id="publish-lot2" maxlength="2" placeholder="Ex: 34">
+                </div>
+                <div class="form-group">
+                    <label>3ème numéro (lot3, 2 chiffres)</label>
+                    <input type="text" id="publish-lot3" maxlength="2" placeholder="Ex: 56">
+                </div>
+                <div class="form-group">
+                    <label>Numéro Lotto3 (3 chiffres)</label>
+                    <input type="text" id="publish-lotto3" maxlength="3" placeholder="Ex: 789">
+                </div>
+                <div>
+                    <button class="btn-primary" onclick="publishResultsSuperAdmin()">Publier les résultats</button>
+                </div>
+            </div>
+            <div id="publish-result-message" class="alert"></div>
+        </div>
     </div>
 
     <!-- Modals -->
     <div id="edit-owner-modal" class="modal" onclick="if(event.target===this) closeEditOwnerModal()">
-        <div class="modal-content">
-            <h3 style="margin-bottom:20px;">Modifier le propriétaire</h3>
-            <input type="hidden" id="edit-owner-id">
-            <div class="form-group"><label>Nom</label><input type="text" id="edit-owner-name"></div>
-            <div class="form-group"><label>Email</label><input type="email" id="edit-owner-email"></div>
-            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-owner-phone"></div>
-            <div class="form-group"><label>Mot de passe (laisser vide)</label><input type="password" id="edit-owner-password"></div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
-                <button class="btn-primary" onclick="saveOwnerEdit()">Enregistrer</button>
-                <button class="btn-danger" onclick="closeEditOwnerModal()">Annuler</button>
-            </div>
-        </div>
+        <div class="modal-content"><h3>Modifier le propriétaire</h3><input type="hidden" id="edit-owner-id"><div class="form-group"><label>Nom</label><input type="text" id="edit-owner-name"></div><div class="form-group"><label>Email</label><input type="email" id="edit-owner-email"></div><div class="form-group"><label>Téléphone</label><input type="text" id="edit-owner-phone"></div><div class="form-group"><label>Mot de passe (laisser vide)</label><input type="password" id="edit-owner-password"></div><div style="display:flex; gap:10px; justify-content:flex-end;"><button class="btn-primary" onclick="saveOwnerEdit()">Enregistrer</button><button class="btn-danger" onclick="closeEditOwnerModal()">Annuler</button></div></div>
     </div>
-
     <div id="edit-agent-modal" class="modal" onclick="if(event.target===this) closeEditAgentModal()">
-        <div class="modal-content">
-            <h3>Modifier l'agent</h3>
-            <input type="hidden" id="edit-agent-id">
-            <div class="form-group"><label>Nom</label><input type="text" id="edit-agent-name"></div>
-            <div class="form-group"><label>Email</label><input type="email" id="edit-agent-email"></div>
-            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-agent-phone"></div>
-            <div class="form-group"><label>Propriétaire</label><select id="edit-agent-owner"></select></div>
-            <div class="form-group"><label>Mot de passe</label><input type="password" id="edit-agent-password"></div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
-                <button class="btn-primary" onclick="saveAgentEdit()">Enregistrer</button>
-                <button class="btn-danger" onclick="closeEditAgentModal()">Annuler</button>
-            </div>
-        </div>
+        <div class="modal-content"><h3>Modifier l'agent</h3><input type="hidden" id="edit-agent-id"><div class="form-group"><label>Nom</label><input type="text" id="edit-agent-name"></div><div class="form-group"><label>Email</label><input type="email" id="edit-agent-email"></div><div class="form-group"><label>Téléphone</label><input type="text" id="edit-agent-phone"></div><div class="form-group"><label>Propriétaire</label><select id="edit-agent-owner"></select></div><div class="form-group"><label>Mot de passe</label><input type="password" id="edit-agent-password"></div><div style="display:flex; gap:10px; justify-content:flex-end;"><button class="btn-primary" onclick="saveAgentEdit()">Enregistrer</button><button class="btn-danger" onclick="closeEditAgentModal()">Annuler</button></div></div>
     </div>
-
     <div id="edit-supervisor-modal" class="modal" onclick="if(event.target===this) closeEditSupervisorModal()">
-        <div class="modal-content">
-            <h3>Modifier le superviseur</h3>
-            <input type="hidden" id="edit-supervisor-id">
-            <div class="form-group"><label>Nom</label><input type="text" id="edit-supervisor-name"></div>
-            <div class="form-group"><label>Email</label><input type="email" id="edit-supervisor-email"></div>
-            <div class="form-group"><label>Téléphone</label><input type="text" id="edit-supervisor-phone"></div>
-            <div class="form-group"><label>Propriétaire</label><select id="edit-supervisor-owner"></select></div>
-            <div class="form-group"><label>Mot de passe</label><input type="password" id="edit-supervisor-password"></div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
-                <button class="btn-primary" onclick="saveSupervisorEdit()">Enregistrer</button>
-                <button class="btn-danger" onclick="closeEditSupervisorModal()">Annuler</button>
-            </div>
-        </div>
+        <div class="modal-content"><h3>Modifier le superviseur</h3><input type="hidden" id="edit-supervisor-id"><div class="form-group"><label>Nom</label><input type="text" id="edit-supervisor-name"></div><div class="form-group"><label>Email</label><input type="email" id="edit-supervisor-email"></div><div class="form-group"><label>Téléphone</label><input type="text" id="edit-supervisor-phone"></div><div class="form-group"><label>Propriétaire</label><select id="edit-supervisor-owner"></select></div><div class="form-group"><label>Mot de passe</label><input type="password" id="edit-supervisor-password"></div><div style="display:flex; gap:10px; justify-content:flex-end;"><button class="btn-primary" onclick="saveSupervisorEdit()">Enregistrer</button><button class="btn-danger" onclick="closeEditSupervisorModal()">Annuler</button></div></div>
     </div>
 
     <script>
-        // Utiliser la config de config.js
         const API_BASE = window.API_URL || 'https://lotato1.onrender.com/api';
         let token = localStorage.getItem('superadmin_token');
         let adminName = localStorage.getItem('superadmin_name') || '';
@@ -235,17 +208,16 @@
             loadReports();
         }
 
+        // ========== AUTHENTIFICATION ==========
         async function superAdminLogin() {
             const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
             const errorDiv = document.getElementById('login-error');
-            
             if (!username || !password) {
                 errorDiv.style.display = 'block';
                 errorDiv.innerText = 'Veuillez saisir identifiant et mot de passe';
                 return;
             }
-            
             try {
                 const res = await fetch(`${API_BASE}/auth/superadmin-login`, {
                     method: 'POST',
@@ -291,6 +263,7 @@
             if (tabId === 'agents') { loadAgents(); loadSupervisors(); }
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
+            if (tabId === 'publish') { loadPublishOwners(); loadDrawsForPublish(); }
         }
 
         async function fetchWithToken(url, options = {}) {
@@ -348,12 +321,10 @@
             const phone = document.getElementById('owner-phone').value;
             const password = document.getElementById('owner-password').value;
             const quota = parseInt(document.getElementById('owner-quota').value) || 10;
-            
             if (!name || !email || !password) {
                 showMessage('owner-create-message', 'Veuillez remplir tous les champs', false);
                 return;
             }
-            
             const res = await fetchWithToken('/superadmin/owners', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -630,6 +601,67 @@
             document.getElementById('owners-reports').innerHTML = html || '<p>Aucune donnée</p>';
         }
 
+        // ========== PUBLICATION PAR SUPER ADMIN ==========
+        async function loadPublishOwners() {
+            const res = await fetchWithToken('/superadmin/owners');
+            if (!res) return;
+            const owners = await res.json();
+            let html = '<option value="">-- Choisir un propriétaire --</option>';
+            owners.forEach(o => { html += `<option value="${o.id}">${escapeHtml(o.name)} (${o.email})</option>`; });
+            document.getElementById('publish-owner-id').innerHTML = html;
+        }
+
+        async function loadDrawsForPublish() {
+            const res = await fetchWithToken('/draws');
+            if (!res) return;
+            const data = await res.json();
+            const draws = data.draws || [];
+            let html = '<option value="">-- Choisir un tirage --</option>';
+            draws.forEach(d => { html += `<option value="${d.id}">${escapeHtml(d.name)} (${d.time})</option>`; });
+            document.getElementById('publish-draw-id').innerHTML = html;
+        }
+
+        async function publishResultsSuperAdmin() {
+            const ownerId = document.getElementById('publish-owner-id').value;
+            const drawId = document.getElementById('publish-draw-id').value;
+            const lot1 = document.getElementById('publish-lot1').value.trim();
+            const lot2 = document.getElementById('publish-lot2').value.trim();
+            const lot3 = document.getElementById('publish-lot3').value.trim();
+            const lotto3 = document.getElementById('publish-lotto3').value.trim();
+
+            if (!ownerId || !drawId || !lot1 || !lot2 || !lot3 || !lotto3) {
+                showMessage('publish-result-message', 'Veuillez remplir tous les champs', false);
+                return;
+            }
+            if (!/^\d{2}$/.test(lot1) || !/^\d{2}$/.test(lot2) || !/^\d{2}$/.test(lot3)) {
+                showMessage('publish-result-message', 'Les trois numéros doivent être sur 2 chiffres (ex: 05, 12)', false);
+                return;
+            }
+            if (!/^\d{3}$/.test(lotto3)) {
+                showMessage('publish-result-message', 'Le numéro Lotto3 doit être sur 3 chiffres', false);
+                return;
+            }
+
+            const numbers = [lot1, lot2, lot3];
+            const res = await fetchWithToken('/superadmin/publish-results', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ownerId, drawId, numbers, lotto3 })
+            });
+            if (!res) return;
+            const data = await res.json();
+            if (data.success) {
+                showMessage('publish-result-message', '✅ Résultats publiés avec succès', true);
+                document.getElementById('publish-lot1').value = '';
+                document.getElementById('publish-lot2').value = '';
+                document.getElementById('publish-lot3').value = '';
+                document.getElementById('publish-lotto3').value = '';
+                if (document.getElementById('tab-reports').classList.contains('active')) loadReports();
+            } else {
+                showMessage('publish-result-message', '❌ ' + (data.error || 'Erreur'), false);
+            }
+        }
+
         function escapeHtml(text) {
             if (!text) return '';
             return text.replace(/[&<>]/g, function(m) {
@@ -662,6 +694,7 @@
         window.selectAllOwners = selectAllOwners;
         window.deselectAllOwners = deselectAllOwners;
         window.sendMessageToSelected = sendMessageToSelected;
+        window.publishResultsSuperAdmin = publishResultsSuperAdmin;
     </script>
 </body>
 </html>
