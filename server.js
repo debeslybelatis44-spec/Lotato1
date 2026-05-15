@@ -1931,6 +1931,32 @@ app.get('/api/superadmin/reports/owners', authenticate, requireSuperAdmin, async
     res.status(500).json({ error: 'Erreur serveur' }); 
   }
 });
+app.post('/api/superadmin/owners/:id/pay', authenticate, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const now = new Date();
+    // Exemple : abonnement valable 30 jours
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + 30);
+
+    const result = await pool.query(
+      `UPDATE users 
+       SET subscription_status = 'active',
+           last_payment_date = $1,
+           subscription_expiry_date = $2
+       WHERE id = $3 AND role = 'owner'
+       RETURNING id`,
+      [now, expiry, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Propriétaire non trouvé' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erreur paiement propriétaire:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ==================== Routes joueurs protégées ====================
 app.get('/api/player/balance', authenticate, requirePlayer, async (req, res) => {
