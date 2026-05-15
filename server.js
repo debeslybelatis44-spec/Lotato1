@@ -568,14 +568,21 @@ if (!draw.active) {
   return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
 }
 
-// Vérification horaire (3 minutes avant l'heure du tirage)
-const now = moment().tz('America/Port-au-Prince');
+// Vérification horaire (empêcher les mises 3 minutes avant ET après l'heure)
 const [hours, minutes] = draw.time.split(':');
+const now = moment().tz('America/Port-au-Prince');
 const drawTime = moment().tz('America/Port-au-Prince').set({
   hour: parseInt(hours),
   minute: parseInt(minutes),
   second: 0
 });
+
+// 1. Si l'heure du tirage est déjà passée
+if (now.isAfter(drawTime)) {
+  return res.status(403).json({ error: `Tirage déjà terminé. Aucune mise possible.` });
+}
+
+// 2. Si on est dans les 3 minutes avant le tirage
 const blockFrom = drawTime.clone().subtract(3, 'minutes');
 if (now.isSameOrAfter(blockFrom)) {
   return res.status(403).json({
