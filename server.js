@@ -223,26 +223,15 @@ const cron = require('node-cron');
 // Tâche exécutée toutes les minutes pour fermer les tirages 3 minutes avant l'heure
 cron.schedule('* * * * *', async () => {
     try {
-        // Heure actuelle du serveur fuseau Haïti
-        const now = moment().tz('America/Port-au-Prince');
-        const currentTime = now.format('HH:mm:ss');
-
-        // Fermeture : time <= (current_time + 3 minutes) ? 
-        // On veut fermer si l'heure du tirage - 3 min <= heure actuelle
-        // Calculer l'heure limite = time - 3 minutes
-        // Comparaison en SQL : TIME(now) >= (draw_time - interval '3 minutes')
         const result = await pool.query(
             `UPDATE draws
              SET active = false
              WHERE active = true
-               AND (time - INTERVAL '3 minutes') <= (NOW() AT TIME ZONE 'America/Port-au-Prince')::time
-               -- On ne ferme pas les tirages déjà passés (éviter de fermer plusieurs fois)
-               AND time > (NOW() AT TIME ZONE 'America/Port-au-Prince')::time - INTERVAL '1 day'  -- garde les tirages du jour
-            `
+               AND (CURRENT_DATE + time - INTERVAL '3 minutes') <= NOW() AT TIME ZONE 'America/Port-au-Prince'
+               AND (CURRENT_DATE + time) > NOW() AT TIME ZONE 'America/Port-au-Prince' - INTERVAL '1 day'`
         );
-
         if (result.rowCount > 0) {
-            console.log(`🔒 ${result.rowCount} tirage(s) fermé(s) automatiquement à ${currentTime}`);
+            console.log(`🔒 ${result.rowCount} tirage(s) fermé(s) automatiquement`);
         }
     } catch (err) {
         console.error('❌ Erreur lors de la fermeture automatique :', err);
@@ -560,28 +549,181 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
 
   try {
     const drawCheck = await pool.query('SELECT active, time FROM draws WHERE id = $1', [drawId]);
-if (drawCheck.rows.length === 0) {
-  return res.status(404).json({ error: 'Tirage introuvable' });
-}
-const draw = drawCheck.rows[0];
-if (!draw.active) {
-  return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
-}
+    if (drawCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Tirage introuvable' });
+    }
+    const draw = drawCheck.rows[0];
+    if (!draw.active) {
+      return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
+    }
 
-// Vérification horaire (3 minutes avant l'heure du tirage)
-const now = moment().tz('America/Port-au-Prince');
-const [hours, minutes] = draw.time.split(':');
-const drawTime = moment().tz('America/Port-au-Prince').set({
-  hour: parseInt(hours),
-  minute: parseInt(minutes),
-  second: 0
+    // Récupération unique des heures/minutes
+    const [hours, minutes] = draw.time.split(':');
+    const now = moment().tz('America/Port-au-Prince');
+
+    // Vérifier si l'heure du tirage est déjà passée
+    const drawTimeFull = moment().tz('America/Port-au-Prince').set({
+        hour: parseInt(hours),
+        minute: parseInt(minutes),
+        second: 0
+    });
+    if (now.isAfter(drawTimeFull)) {
+        return res.status(403).json({ error: `Tirage déjà terminé. Impossible d'enregistrer des mises.` });
+    }
+
+    // Vérification 3 minutes avant
+    const blockFrom = drawTimeFull.clone().subtract(3, 'minutes');
+    if (now.isSameOrAfter(blockFrom)) {
+      return res.status(403).json({
+        error: `Tirage fermé. Aucune mise possible depuis ${blockFrom.format('HH:mm')} (3 minutes avant l'heure du tirage).`
+      });
+    }
+
+    const globalBlocked = await pool.query('SELECT number FROM global_blocked_numbers WHERE owner_id = $1', [ownerId]);
+    const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
+    const drawBlocked = await pool.query('SELECT number FROM draw_blocked_numbers WHERE owner_id = $1 AND draw_id = $2', [ownerId, drawId]);
+    const drawBlockedSet = new Set(drawBlocked.rows.map(r => r.number));
+    const blockedLotto3 = await pool.query('SELECT number FROM blocked_lotto3_numbers WHERE owner_id = $1', [ownerId]);
+    const blockedLotto3Set = new Set(blockedLotto3.rows.map(r => r.number));
+
+    const globalLimitsRes = await pool.query('SELECT number, limit_amount FROM global_number_limits WHERE owner_id = $1', [ownerId]);
+    const globalLimitsMap = new Map(globalLimitsRes.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
+    const drawLimitsRes = await pool.query('SELECT number, limit_amount FROM draw_number_limits WHERE owner_id = $1 AND draw_id = $2', [ownerId, drawId]);
+    const drawLimitsMap = new Map(drawLimitsRes.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
+
+    const settingsRes = await pool.query('SELECT limits FROM lottery_settings WHERE owner_id = $1', [ownerId]);
+    let gameLimits = { lotto3: 0, lotto4: 0, lotto5: 0, mariage: 0 };
+    if (settingsRes.rows.length > 0 && settingsRes.rows[0].limits) {
+      const raw = settingsRes.rows[0].limits;
+      gameLimits = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    }
+
+    const numbersWithGlobalLimit = new Set();
+    const numbersWithDrawLimit = new Set();
+    for (const bet of bets) {
+      const game = bet.game || bet.specialType;
+      if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+        const rawNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+        const normalized = rawNumber.padStart(2, '0');
+        if (globalLimitsMap.has(normalized)) numbersWithGlobalLimit.add(normalized);
+        if (drawLimitsMap.has(normalized)) numbersWithDrawLimit.add(normalized);
+      }
+    }
+
+    const globalTotalsMap = new Map();
+    if (numbersWithGlobalLimit.size > 0) {
+      const resTot = await pool.query(`
+        SELECT bet->>'cleanNumber' as number, SUM((bet->>'amount')::numeric) as total
+        FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+        WHERE owner_id = $1 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = ANY($2)
+        GROUP BY bet->>'cleanNumber'
+      `, [ownerId, Array.from(numbersWithGlobalLimit)]);
+      for (const row of resTot.rows) globalTotalsMap.set(row.number, parseFloat(row.total) || 0);
+    }
+
+    const drawTotalsMap = new Map();
+    if (numbersWithDrawLimit.size > 0) {
+      const resTot = await pool.query(`
+        SELECT bet->>'cleanNumber' as number, SUM((bet->>'amount')::numeric) as total
+        FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+        WHERE owner_id = $1 AND draw_id = $2 AND DATE(date) = CURRENT_DATE AND bet->>'cleanNumber' = ANY($3)
+        GROUP BY bet->>'cleanNumber'
+      `, [ownerId, drawId, Array.from(numbersWithDrawLimit)]);
+      for (const row of resTot.rows) drawTotalsMap.set(row.number, parseFloat(row.total) || 0);
+    }
+
+    const exceeded = [];
+    for (const bet of bets) {
+      const game = bet.game || bet.specialType;
+      const rawNumber = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+      if (!rawNumber) continue;
+      let normalized = rawNumber;
+      if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+        normalized = rawNumber.padStart(2, '0');
+      } else if (game === 'lotto3' || game === 'auto_lotto3') {
+        normalized = rawNumber.padStart(3, '0');
+      }
+      if (globalBlockedSet.has(normalized)) return res.status(403).json({ error: `Numéro ${normalized} est bloqué globalement` });
+      if (drawBlockedSet.has(normalized)) return res.status(403).json({ error: `Numéro ${normalized} est bloqué pour ce tirage` });
+      if ((game === 'lotto3' || game === 'auto_lotto3') && normalized.length === 3 && blockedLotto3Set.has(normalized)) {
+        return res.status(403).json({ error: `Numéro Lotto3 ${normalized} est bloqué globalement` });
+      }
+      if (drawLimitsMap.has(normalized) && !bet.free) {
+        const limit = drawLimitsMap.get(normalized);
+        const current = drawTotalsMap.get(normalized) || 0;
+        const amount = parseFloat(bet.amount) || 0;
+        if (current + amount > limit) {
+          exceeded.push({ type: 'tirage', number: normalized, limit, already: current, requested: amount, remaining: limit - current });
+        }
+      }
+      if (globalLimitsMap.has(normalized) && !bet.free) {
+        const limit = globalLimitsMap.get(normalized);
+        const current = globalTotalsMap.get(normalized) || 0;
+        const amount = parseFloat(bet.amount) || 0;
+        if (current + amount > limit) {
+          exceeded.push({ type: 'global', number: normalized, limit, already: current, requested: amount, remaining: limit - current });
+        }
+      }
+    }
+    if (exceeded.length > 0) {
+      const message = exceeded.map(e => `Numéro ${e.number} (${e.type === 'global' ? 'limite globale' : 'limite tirage'}) : limite ${e.limit} G, déjà ${e.already} G, demande ${e.requested} G, reste ${e.remaining} G.`).join('\n');
+      return res.status(403).json({ error: `Limite dépassée.\n${message}`, limitExceeded: exceeded });
+    }
+
+    const totalsByGame = {};
+    for (const bet of bets) {
+      const game = bet.game || bet.specialType;
+      let category = null;
+      if (game === 'lotto3' || game === 'auto_lotto3') category = 'lotto3';
+      else if (game === 'lotto4' || game === 'auto_lotto4') category = 'lotto4';
+      else if (game === 'lotto5' || game === 'auto_lotto5') category = 'lotto5';
+      else if (game === 'mariage' || game === 'auto_marriage') category = 'mariage';
+      if (category) {
+        const amount = parseFloat(bet.amount) || 0;
+        totalsByGame[category] = (totalsByGame[category] || 0) + amount;
+      }
+    }
+    for (const [category, total] of Object.entries(totalsByGame)) {
+      const limit = gameLimits[category] || 0;
+      if (limit > 0 && total > limit) {
+        return res.status(403).json({ error: `Limite de mise pour ${category} dépassée (max ${limit} Gdes par ticket)` });
+      }
+    }
+
+    const paidBets = bets.filter(b => !b.free);
+    const totalPaid = paidBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+    let requiredFree = 0;
+    if (totalPaid >= 100 && totalPaid <= 5000) requiredFree = 4;
+    else if (totalPaid >= 151 && totalPaid <= 153) requiredFree = 4;
+    else if (totalPaid >= 5000) requiredFree = 4;
+    const newFreeBets = [];
+    for (let i = 0; i < requiredFree; i++) {
+      const n1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      const n2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      newFreeBets.push({
+        game: 'auto_marriage',
+        number: `${n1}&${n2}`,
+        cleanNumber: n1 + n2,
+        amount: 0,
+        free: true,
+        freeType: 'special_marriage',
+        freeWin: 2500
+      });
+    }
+    const finalBets = [...bets, ...newFreeBets];
+    const finalTotal = finalBets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+
+    const result = await pool.query(
+      `INSERT INTO tickets (owner_id, agent_id, agent_name, draw_id, draw_name, ticket_id, total_amount, bets, date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id`,
+      [ownerId, agentId, agentName, drawId, drawName, ticketId, finalTotal, JSON.stringify(finalBets)]
+    );
+    res.json({ success: true, ticket: { id: result.rows[0].id, ticket_id: ticketId, ...req.body } });
+  } catch (err) {
+    console.error('❌ Erreur sauvegarde ticket:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
-const blockFrom = drawTime.clone().subtract(3, 'minutes');
-if (now.isSameOrAfter(blockFrom)) {
-  return res.status(403).json({
-    error: `Tirage fermé. Aucune mise possible depuis ${blockFrom.format('HH:mm')} (3 minutes avant l'heure du tirage).`
-  });
-}
 
     const globalBlocked = await pool.query('SELECT number FROM global_blocked_numbers WHERE owner_id = $1', [ownerId]);
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
