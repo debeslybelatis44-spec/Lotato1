@@ -518,7 +518,7 @@ function generateAggregatedTicketHTML(ticket) {
     const infoHTML = `
         <div class="info">
             <p># : ${ticket.ticket_id}</p>
-            <p>Tirages: ${drawNamesStr}</p>
+            <p>Tirages:</p> ${drawNamesStr}
             <p>Date: ${formattedDate}</p>
             <p>Ajan: ${ticket.agent_name || ''}</p>
         </div>
