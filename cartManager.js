@@ -1,12 +1,14 @@
 // ============================================================================
-// cartManager.js - Version avec tailles fixes et # sans "Ticket"
+// cartManager.js - Version finale avec fusion multi-tirage et impression pro
 // ============================================================================
 
+// ---------- Utilitaire date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
     return dateStr.replace(' ', 'T');
 }
 
+// ---------- Paramètres avancés (mariages gratuits, etc.) ----------
 async function loadAdvancedSettings() {
     if (!APP_STATE.advancedSettings) {
         try {
@@ -57,6 +59,7 @@ async function loadAdvancedSettings() {
     return APP_STATE.advancedSettings;
 }
 
+// ---------- Vérifications ----------
 function isNumberBlocked(number, drawId) {
     if (APP_STATE.globalBlockedNumbers.includes(number)) return true;
     const drawBlocked = APP_STATE.drawBlockedNumbers[drawId] || [];
@@ -82,6 +85,7 @@ function checkNumberLimit(number, drawId, amountToAdd) {
     return { success: true };
 }
 
+// ---------- Génération mariage gratuit ----------
 function generateRandomMarriageBet(amount) {
     const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
     const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
@@ -93,6 +97,7 @@ function generateRandomMarriageBet(amount) {
     };
 }
 
+// ---------- CartManager ----------
 var CartManager = {
 
     updateFreeMarriages() {
@@ -144,7 +149,6 @@ var CartManager = {
                 APP_STATE.currentCart.push(newFree);
             }
         });
-
         this.renderCart();
     },
 
@@ -157,7 +161,6 @@ var CartManager = {
         const numInput = document.getElementById('num-input');
         const amtInput = document.getElementById('amt-input');
         const amt = parseFloat(amtInput.value);
-
         if (isNaN(amt) || amt <= 0) {
             alert("Montan pa valid");
             return;
@@ -174,14 +177,12 @@ var CartManager = {
                 case 'auto_lotto4': autoBets = GameEngine.generateAutoLotto4Bets(amt); break;
                 case 'auto_lotto5': autoBets = GameEngine.generateAutoLotto5Bets(amt); break;
             }
-
             if (autoBets.length === 0) {
                 alert("Pa gen ase nimevo nan panye pou jenere " + game);
                 return;
             }
 
             const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
-
             const errors = [];
             for (const drawId of draws) {
                 for (const bet of autoBets) {
@@ -208,7 +209,6 @@ var CartManager = {
                     APP_STATE.currentCart.push({ ...bet, id: Date.now() + Math.random(), drawId, drawName });
                 });
             });
-
             this.updateFreeMarriages();
             amtInput.value = '';
             numInput.focus();
@@ -252,7 +252,6 @@ var CartManager = {
                     });
                 });
             });
-
             this.updateFreeMarriages();
             numInput.value = '';
             amtInput.value = '';
@@ -298,7 +297,6 @@ var CartManager = {
                 });
             }
         });
-
         this.updateFreeMarriages();
         numInput.value = '';
         amtInput.value = '';
@@ -324,7 +322,6 @@ var CartManager = {
 
         let total = 0;
         let count = 0;
-
         display.innerHTML = APP_STATE.currentCart.map(bet => {
             total += bet.amount;
             count++;
@@ -341,12 +338,12 @@ var CartManager = {
                 </div>
             `;
         }).join('');
-
         totalEl.innerText = total.toLocaleString('fr-FR') + ' Gdes';
         if (itemsCount) itemsCount.innerText = count + ' jwèt';
     }
 };
 
+// ---------- Abréviation jeux ----------
 function getGameAbbreviation(gameName, bet) {
     if (bet && bet.free && bet.freeType === 'special_marriage') return 'marg';
     const map = {
@@ -362,10 +359,12 @@ function getGameAbbreviation(gameName, bet) {
     return map[key] || gameName;
 }
 
+// ---------- Détection Android WebView ----------
 function isAndroidWebView() {
     return /Android/i.test(navigator.userAgent) && typeof window.AndroidPrint !== 'undefined';
 }
 
+// ---------- Impression et fusion multi-tirage ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
         alert("Panye vid");
@@ -389,11 +388,12 @@ async function processFinalTicket() {
         printWindow.document.close();
     }
 
+    const savedTickets = [];
+
     try {
         for (const drawId in betsByDraw) {
             const bets = betsByDraw[drawId];
             const total = bets.reduce((s, b) => s + b.amount, 0);
-
             const payload = {
                 agentId: APP_STATE.agentId,
                 agentName: APP_STATE.agentName,
@@ -425,16 +425,18 @@ async function processFinalTicket() {
 
             const data = await res.json();
             data.ticket.date = new Date().toISOString();
-
-            if (isAndroidWebView()) {
-                const ticketHTML = generateTicketHTML(data.ticket);
-                const fullHTML = buildFullPrintHTML(ticketHTML);
-                window.AndroidPrint.printHTML(fullHTML);
-            } else {
-                printThermalTicket(data.ticket, printWindow);
-            }
-
+            savedTickets.push(data.ticket);
             APP_STATE.ticketsHistory.unshift(data.ticket);
+        }
+
+        // Construction du ticket unique agrégé
+        const aggregatedTicket = buildAggregatedTicket(savedTickets, betsByDraw);
+        if (isAndroidWebView()) {
+            const ticketHTML = generateAggregatedTicketHTML(aggregatedTicket);
+            const fullHTML = buildFullPrintHTML(ticketHTML);
+            window.AndroidPrint.printHTML(fullHTML);
+        } else {
+            printAggregatedTicket(aggregatedTicket, printWindow);
         }
 
         APP_STATE.currentCart = [];
@@ -444,14 +446,107 @@ async function processFinalTicket() {
     } catch (err) {
         console.error(err);
         alert(`❌ ${err.message}`);
-        if (printWindow && !printWindow.closed) {
-            printWindow.close();
-        }
+        if (printWindow && !printWindow.closed) printWindow.close();
     }
 }
 
+// ---------- Agrégation des tickets ----------
+function buildAggregatedTicket(ticketsList, betsByDraw) {
+    if (!ticketsList.length) return null;
+    const firstTicket = ticketsList[0];
+    const drawNames = ticketsList.map(t => t.draw_name || t.drawName);
+    const grandTotal = ticketsList.reduce((sum, t) => sum + (t.total_amount || t.total || 0), 0);
+    const bets = firstTicket.bets || [];
+    return {
+        ticket_id: ticketsList.map(t => t.ticket_id || t.id).join('_'),
+        drawNames: drawNames,
+        bets: bets,
+        total: grandTotal,
+        date: new Date().toISOString(),
+        agent_name: firstTicket.agent_name || firstTicket.agentName,
+    };
+}
+
+function printAggregatedTicket(aggregatedTicket, printWindow) {
+    const html = generateAggregatedTicketHTML(aggregatedTicket);
+    const fullHTML = buildFullPrintHTML(html);
+    printWindow.document.write(fullHTML);
+    printWindow.document.close();
+    printWindow.onload = function() {
+        printWindow.focus();
+        printWindow.print();
+    };
+}
+
+// ---------- Génération HTML du ticket fusionné ----------
+function generateAggregatedTicketHTML(ticket) {
+    const cfg = APP_STATE.lotteryConfig || CONFIG;
+    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
+    const slogan = cfg.slogan || '';
+    const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
+    const address = cfg.address || '';
+    const phoneNumbers = cfg.phone_numbers || '';
+
+    let formattedDate = 'Date invalide';
+    if (ticket.date) {
+        const normalized = normalizeDateString(ticket.date);
+        const dateObj = new Date(normalized);
+        if (!isNaN(dateObj)) {
+            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' +
+                            dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
+        }
+    }
+
+    const drawNamesStr = ticket.drawNames.join(', ');
+    const betsHTML = (ticket.bets || []).map(b => {
+        const gameAbbr = getGameAbbreviation(b.game || '', b);
+        let displayNumber = b.number || '';
+        if (b.game === 'auto_marriage' && displayNumber.includes('&')) {
+            displayNumber = displayNumber.replace('&', '*');
+        }
+        return `<div class="bet-row"><span>${gameAbbr} ${displayNumber}</span><span>${b.amount || 0} G</span></div>`;
+    }).join('');
+
+    let headerHTML = `<div class="header">`;
+    if (logoUrl) headerHTML += `<img src="${logoUrl}" alt="Logo">`;
+    headerHTML += `<div class="lottery-name">${lotteryName}</div>`;
+    if (slogan) headerHTML += `<div class="slogan">${slogan}</div>`;
+    if (address) headerHTML += `<div class="address">${address}</div>`;
+    if (phoneNumbers) headerHTML += `<div class="phone">${phoneNumbers}</div>`;
+    headerHTML += `</div>`;
+
+    const infoHTML = `
+        <div class="info">
+            <p># : ${ticket.ticket_id}</p>
+            <p>Tirages: ${drawNamesStr}</p>
+            <p>Date: ${formattedDate}</p>
+            <p>Ajan: ${ticket.agent_name || ''}</p>
+        </div>
+    `;
+
+    const footerHTML = `
+        <div class="footer">
+            <p>tickets valable pour 90 jours</p>
+            <p><strong>LOTATO S.A.</strong></p>
+        </div>
+    `;
+
+    return `
+        ${headerHTML}
+        ${infoHTML}
+        <hr>
+        ${betsHTML}
+        <hr>
+        <div class="total-row">
+            <span>TOTAL:</span>
+            <span>${ticket.total} Gdes</span>
+        </div>
+        ${footerHTML}
+    `;
+}
+
+// ---------- Construction HTML complet avec styles fixes ----------
 function buildFullPrintHTML(bodyHTML) {
-    // Tailles fixes demandées
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -538,97 +633,14 @@ function buildFullPrintHTML(bodyHTML) {
 </html>`;
 }
 
-function printThermalTicket(ticket, printWindow) {
-    const html = generateTicketHTML(ticket);
-    const fullHTML = buildFullPrintHTML(html);
-    printWindow.document.write(fullHTML);
-    printWindow.document.close();
-    printWindow.onload = function() {
-        printWindow.focus();
-        printWindow.print();
-    };
-}
-
-function generateTicketHTML(ticket) {
-    const cfg = APP_STATE.lotteryConfig || CONFIG;
-    const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
-    const slogan = cfg.slogan || '';
-    const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
-    const address = cfg.address || '';
-    const phoneNumbers = cfg.phone_numbers || '';
-
-    let formattedDate = 'Date invalide';
-    if (ticket.date) {
-        const normalized = normalizeDateString(ticket.date);
-        const dateObj = new Date(normalized);
-        if (!isNaN(dateObj)) {
-            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' +
-                            dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
-        }
-    }
-
-    let drawName = ticket.draw_name || ticket.drawName;
-    if (!drawName && APP_STATE.draws && ticket.draw_id) {
-        const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
-        drawName = draw ? draw.name : 'Tiraj Inkonu';
-    } else if (!drawName) {
-        drawName = 'Tiraj Inkonu';
-    }
-
-    const betsHTML = (ticket.bets || []).map(b => {
-        const gameAbbr = getGameAbbreviation(b.game || '', b);
-        let displayNumber = b.number || '';
-        if (b.game === 'auto_marriage' && displayNumber.includes('&')) {
-            displayNumber = displayNumber.replace('&', '*');
-        }
-        return `<div class="bet-row"><span>${gameAbbr} ${displayNumber}</span><span>${b.amount || 0} G</span></div>`;
-    }).join('');
-
-    let headerHTML = `<div class="header">`;
-    if (logoUrl) headerHTML += `<img src="${logoUrl}" alt="Logo">`;
-    headerHTML += `<div class="lottery-name">${lotteryName}</div>`;
-    if (slogan) headerHTML += `<div class="slogan">${slogan}</div>`;
-    if (address) headerHTML += `<div class="address">${address}</div>`;
-    if (phoneNumbers) headerHTML += `<div class="phone">${phoneNumbers}</div>`;
-    headerHTML += `</div>`;
-
-    // Suppression du mot "Ticket", on garde juste "#" + numéro
-    const infoHTML = `
-        <div class="info">
-            <p># : ${ticket.ticket_id || ticket.id}</p>
-            <p>Tiraj: ${drawName}</p>
-            <p>Date: ${formattedDate}</p>
-            <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
-        </div>
-    `;
-
-    const footerHTML = `
-        <div class="footer">
-            <p>tickets valable pour 90 jours</p>
-            <p><strong>LOTATO S.A.</strong></p>
-        </div>
-    `;
-
-    return `
-        ${headerHTML}
-        ${infoHTML}
-        <hr>
-        ${betsHTML}
-        <hr>
-        <div class="total-row">
-            <span>TOTAL:</span>
-            <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
-        </div>
-        ${footerHTML}
-    `;
-}
-
+// ---------- Chargement initial ----------
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => loadAdvancedSettings());
 } else {
     loadAdvancedSettings();
 }
 
+// ---------- Exports globaux ----------
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
-window.printThermalTicket = printThermalTicket;
+window.printThermalTicket = printThermalTicket;  // conservé pour compatibilité
