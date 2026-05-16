@@ -1,15 +1,12 @@
-// resultsManager.js - Version avec commission sélectionnable par l'agent (10% à 20%)
-// Les tickets sont analysés sur les 15 derniers jours pour déterminer les ventes.
-// Le taux de commission est choisi manuellement via un menu déroulant.
-// Sauvegarde locale (localStorage) en cas d'échec de l'API.
+// resultsManager.js - Version simplifiée (sans onglet Agents)
+// Affiche uniquement les résultats des tirages avec filtres.
 (function() {
     if (window.resultsManagerReady) return;
     window.resultsManagerReady = true;
 
     let currentFilter = 'all';
-    const COMMISSION_DAYS = 15; // Période de calcul des ventes
 
-    // ==================== Création de l'UI si absente ====================
+    // ==================== Création de l'UI (sans onglet Agents) ====================
     function createResultsUI() {
         const main = document.querySelector('.content-area');
         if (!main) {
@@ -37,26 +34,7 @@
             main.appendChild(screen);
         }
 
-        // Écran des agents
-        if (!document.getElementById('agents-screen')) {
-            const agentsScreen = document.createElement('section');
-            agentsScreen.id = 'agents-screen';
-            agentsScreen.className = 'screen';
-            agentsScreen.innerHTML = `
-                <div style="padding: 20px;">
-                    <h2 class="section-title">Balans Ajan ak Komisyon (dènye ${COMMISSION_DAYS} jou)</h2>
-                    <div class="agents-actions" style="margin-bottom: 15px; text-align: right;">
-                        <button id="refresh-agents-btn" class="filter-btn" style="padding: 8px 16px;">
-                            <i class="fas fa-sync-alt"></i> Rafraîchir
-                        </button>
-                    </div>
-                    <div id="agents-container" class="agents-list">Chajman...</div>
-                </div>
-            `;
-            main.appendChild(agentsScreen);
-        }
-
-        // Onglet Résultats
+        // Onglet Résultats (et uniquement celui-ci)
         const nav = document.querySelector('.nav-bar');
         if (nav && !document.querySelector('.nav-item[data-tab="results"]')) {
             const tab = document.createElement('a');
@@ -75,25 +53,7 @@
             nav.appendChild(tab);
         }
 
-        // Onglet Agents
-        if (nav && !document.querySelector('.nav-item[data-tab="agents"]')) {
-            const agentsTab = document.createElement('a');
-            agentsTab.href = '#';
-            agentsTab.className = 'nav-item';
-            agentsTab.setAttribute('data-tab', 'agents');
-            agentsTab.innerHTML = '<i class="fas fa-users"></i><span>Agents</span>';
-            agentsTab.addEventListener('click', function(e) {
-                e.preventDefault();
-                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-                document.getElementById('agents-screen').classList.add('active');
-                this.classList.add('active');
-                loadAgentsBalance();
-            });
-            nav.appendChild(agentsTab);
-        }
-
-        // Ajout des styles (avec scroll horizontal adapté)
+        // Ajout des styles (uniquement pour les résultats)
         if (!document.getElementById('results-styles')) {
             const style = document.createElement('style');
             style.id = 'results-styles';
@@ -109,54 +69,8 @@
                 .draw-time { font-size: 0.8rem; color: var(--text-dim); }
                 .result-numbers { font-family: 'Courier New', monospace; font-weight: bold; font-size: 1.2rem; background: rgba(0,212,255,0.1); padding: 6px 12px; border-radius: 20px; color: var(--secondary); }
                 .no-result { color: var(--text-dim); font-style: italic; text-align: center; padding: 20px; }
-
-                /* Styles pour l'affichage des agents avec scroll horizontal */
-                .agents-list {
-                    padding-bottom: 80px;
-                    overflow-x: auto;
-                    width: 100%;
-                }
-                .agents-table {
-                    width: 100%;
-                    min-width: 1000px;
-                    border-collapse: collapse;
-                    background: var(--surface);
-                    border-radius: 16px;
-                    overflow: hidden;
-                }
-                .agents-table th, .agents-table td {
-                    padding: 12px;
-                    text-align: left;
-                    border-bottom: 1px solid var(--glass-border);
-                }
-                .agents-table th {
-                    background: var(--primary);
-                    color: white;
-                }
-                .profit { color: var(--success); font-weight: bold; }
-                .loss { color: var(--danger); font-weight: bold; }
-                .recevoir { color: var(--danger); font-weight: bold; }
-                .remettre { color: var(--success); font-weight: bold; }
-                .commission-rate-select {
-                    padding: 6px 10px;
-                    border-radius: 8px;
-                    background: var(--surface);
-                    color: var(--text);
-                    border: 1px solid var(--glass-border);
-                    cursor: pointer;
-                }
-                .commission-amount {
-                    font-weight: bold;
-                    color: var(--secondary);
-                }
             `;
             document.head.appendChild(style);
-        }
-
-        // Bouton de rafraîchissement
-        const refreshBtn = document.getElementById('refresh-agents-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => loadAgentsBalance());
         }
     }
 
@@ -273,294 +187,6 @@
         container.innerHTML = html;
     }
 
-    // ==================== Gestion locale des taux de commission ====================
-    const LOCAL_STORAGE_KEY = 'agent_commission_rates';
-
-    function getLocalCommissionRates() {
-        try {
-            const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-            return stored ? new Map(Object.entries(JSON.parse(stored))) : new Map();
-        } catch (e) {
-            return new Map();
-        }
-    }
-
-    function saveLocalCommissionRate(agentId, rate) {
-        const map = getLocalCommissionRates();
-        map.set(agentId.toString(), rate);
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(Object.fromEntries(map)));
-    }
-
-    // ==================== Récupération des taux de commission (API + fallback) ====================
-    async function fetchAgentsCommission() {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return getLocalCommissionRates();
-
-        try {
-            const res = await fetch('/api/agents', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const agents = await res.json();
-                const apiMap = new Map();
-                agents.forEach(agent => {
-                    apiMap.set(agent.id.toString(), agent.commission_rate || 10);
-                });
-                // Fusion avec les taux locaux (ceux-ci prévalent)
-                const localMap = getLocalCommissionRates();
-                for (let [id, rate] of localMap) {
-                    apiMap.set(id, rate);
-                }
-                return apiMap;
-            } else {
-                console.warn('API agents inaccessible, utilisation des taux locaux');
-                return getLocalCommissionRates();
-            }
-        } catch (error) {
-            console.error('Erreur chargement taux commission depuis API:', error);
-            return getLocalCommissionRates();
-        }
-    }
-
-    // ==================== Balance des agents avec commission sélectionnable ====================
-    async function loadAgentsBalance() {
-        const container = document.getElementById('agents-container');
-        if (!container) return;
-        container.innerHTML = '<div class="no-result">Chajman...</div>';
-
-        try {
-            const token = localStorage.getItem('auth_token');
-            if (!token) throw new Error('Non authentifié');
-
-            // Récupération des tickets
-            const response = await fetch('/api/tickets', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
-            const data = await response.json();
-            const tickets = data.tickets || [];
-
-            // Récupération des taux de commission (API + local)
-            const agentsCommissionMap = await fetchAgentsCommission();
-
-            // Calcul des ventes et gains par agent
-            const agentsMap = new Map();
-            const now = new Date();
-            const startDate = new Date(now);
-            startDate.setDate(now.getDate() - COMMISSION_DAYS);
-            startDate.setHours(0, 0, 0, 0);
-
-            tickets.forEach(ticket => {
-                const agentId = ticket.agent_id || ticket.agentId;
-                if (!agentId) return;
-
-                if (!agentsMap.has(agentId)) {
-                    agentsMap.set(agentId, {
-                        agentId,
-                        agentName: ticket.agent_name || ticket.agentName || 'Anonim',
-                        totalVentes: 0,
-                        totalGainsPayes: 0,
-                        ventes15j: 0
-                    });
-                }
-                const agent = agentsMap.get(agentId);
-
-                const montant = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
-                agent.totalVentes += montant;
-
-                let ticketDate = null;
-                if (ticket.created_at) ticketDate = new Date(ticket.created_at);
-                else if (ticket.date) ticketDate = new Date(ticket.date);
-                if (ticketDate && ticketDate >= startDate) {
-                    agent.ventes15j += montant;
-                }
-
-                const estGagnant = (ticket.checked || ticket.verified) && parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0) > 0;
-                const estPaye = ticket.paid === true;
-                if (estGagnant && estPaye) {
-                    const gain = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                    agent.totalGainsPayes += gain;
-                }
-            });
-
-            if (agentsMap.size === 0) {
-                container.innerHTML = '<div class="no-result">Pa gen done sou ajan.</div>';
-                return;
-            }
-
-            // Construction du tableau avec select pour le taux
-            let html = `<table class="agents-table">
-                <thead>
-                    <tr>
-                        <th>Ajan</th>
-                        <th>Vant Total (Gdes)</th>
-                        <th>Vant ${COMMISSION_DAYS}j (Gdes)</th>
-                        <th>Komisyon %</th>
-                        <th>Komisyon (Gdes)</th>
-                        <th>Ganyen Peye (Gdes)</th>
-                        <th>Balans (Gdes)</th>
-                        <th>Montan à Recevoir</th>
-                        <th>Montan à Remèt</th>
-                        <th>Eta</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-
-            for (const [, agent] of agentsMap) {
-                const balance = agent.totalVentes - agent.totalGainsPayes;
-                let montantRecevoir = 0;
-                let montantRemettre = 0;
-                let etat = 'Neut';
-
-                if (balance < 0) {
-                    montantRecevoir = Math.abs(balance);
-                    etat = 'Pèt (Mèt kay dwe bay ajan)';
-                } else if (balance > 0) {
-                    montantRemettre = balance;
-                    etat = 'Benefis (Ajan dwe remèt)';
-                } else {
-                    etat = 'Ekilibr';
-                }
-
-                const balanceClass = balance >= 0 ? 'profit' : 'loss';
-                const currentRate = agentsCommissionMap.get(agent.agentId.toString()) || 10;
-                const commissionAmount = agent.ventes15j * (currentRate / 100);
-
-                // Génération du select (10 à 20)
-                let selectHtml = `<select class="commission-rate-select" data-agent-id="${agent.agentId}">`;
-                for (let rate = 10; rate <= 20; rate++) {
-                    selectHtml += `<option value="${rate}" ${currentRate === rate ? 'selected' : ''}>${rate}%</option>`;
-                }
-                selectHtml += `</select>`;
-
-                html += `
-                    <tr data-agent-id="${agent.agentId}">
-                        <td>${escapeHtml(agent.agentName)} (ID: ${agent.agentId})</td>
-                        <td>${agent.totalVentes.toLocaleString('fr-FR')}</td>
-                        <td class="ventes-15j">${agent.ventes15j.toLocaleString('fr-FR')}</td>
-                        <td>${selectHtml}</td>
-                        <td class="commission-amount">${commissionAmount.toLocaleString('fr-FR')}</td>
-                        <td>${agent.totalGainsPayes.toLocaleString('fr-FR')}</td>
-                        <td class="${balanceClass}">${balance.toLocaleString('fr-FR')}</td>
-                        <td class="recevoir">${montantRecevoir > 0 ? montantRecevoir.toLocaleString('fr-FR') + ' Gdes' : '—'}</td>
-                        <td class="remettre">${montantRemettre > 0 ? montantRemettre.toLocaleString('fr-FR') + ' Gdes' : '—'}</td>
-                        <td>${etat}</td>
-                    </tr>
-                `;
-            }
-            html += `</tbody></table>`;
-            container.innerHTML = html;
-
-            // Attacher les événements de changement de taux
-            attachCommissionSelectListeners();
-
-        } catch (error) {
-            console.error('Erreur chargement balance agents:', error);
-            container.innerHTML = '<div class="no-result">Erè chajman done ajan.</div>';
-        }
-    }
-
-    // ==================== Gestion du changement de taux de commission ====================
-    function attachCommissionSelectListeners() {
-        document.querySelectorAll('.commission-rate-select').forEach(select => {
-            select.removeEventListener('change', handleCommissionChange);
-            select.addEventListener('change', handleCommissionChange);
-        });
-    }
-
-    async function handleCommissionChange(event) {
-        const select = event.target;
-        const agentId = select.dataset.agentId;
-        const newRate = parseInt(select.value, 10);
-        const row = select.closest('tr');
-        if (!row) return;
-
-        // Récupérer le montant des ventes sur 15 jours
-        const ventes15jCell = row.querySelector('.ventes-15j');
-        if (!ventes15jCell) return;
-        const ventes15j = parseFloat(ventes15jCell.textContent.replace(/\s/g, '').replace(',', '.'));
-
-        // Calculer et mettre à jour le montant de la commission
-        const commissionAmountCell = row.querySelector('.commission-amount');
-        if (commissionAmountCell) {
-            const newCommission = ventes15j * (newRate / 100);
-            commissionAmountCell.textContent = newCommission.toLocaleString('fr-FR');
-        }
-
-        // Sauvegarder le nouveau taux
-        const token = localStorage.getItem('auth_token');
-        let saved = false;
-
-        if (token) {
-            try {
-                const res = await fetch(`/api/agents/${agentId}/commission`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ commission_rate: newRate })
-                });
-                if (res.ok) {
-                    saved = true;
-                    // Nettoyer l'éventuelle entrée locale pour cet agent
-                    const localMap = getLocalCommissionRates();
-                    if (localMap.has(agentId)) {
-                        localMap.delete(agentId);
-                        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(Object.fromEntries(localMap)));
-                    }
-                    showTemporaryMessage('Taux de commission mis à jour', 'success');
-                } else {
-                    console.warn(`Sauvegarde API échouée (${res.status}), utilisation du stockage local`);
-                }
-            } catch (error) {
-                console.error('Erreur réseau lors de la sauvegarde:', error);
-            }
-        }
-
-        if (!saved) {
-            // Fallback : stockage local
-            saveLocalCommissionRate(agentId, newRate);
-            showTemporaryMessage('Taux enregistré localement (serveur indisponible)', 'warning');
-        }
-    }
-
-    // Petit utilitaire pour afficher un message temporaire
-    function showTemporaryMessage(message, type = 'info') {
-        const msgDiv = document.createElement('div');
-        msgDiv.textContent = message;
-        msgDiv.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: ${type === 'success' ? '#4caf50' : (type === 'warning' ? '#ff9800' : '#2196f3')};
-            color: white;
-            padding: 10px 20px;
-            border-radius: 8px;
-            z-index: 1000;
-            opacity: 0.9;
-            transition: opacity 0.5s;
-        `;
-        document.body.appendChild(msgDiv);
-        setTimeout(() => {
-            msgDiv.style.opacity = '0';
-            setTimeout(() => msgDiv.remove(), 500);
-        }, 3000);
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-
-    // Exposer la fonction de rafraîchissement globalement
-    window.refreshAgentsBalance = loadAgentsBalance;
-
     // ==================== Initialisation ====================
     function init() {
         createResultsUI();
@@ -581,7 +207,6 @@
         }
 
         fetchResults('all');
-        // Les agents seront chargés lors du clic sur l'onglet Agents
     }
 
     if (document.readyState === 'loading') {

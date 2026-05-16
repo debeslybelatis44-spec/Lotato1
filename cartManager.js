@@ -497,7 +497,9 @@ function generateAggregatedTicketHTML(ticket) {
         }
     }
 
-    const drawNamesStr = ticket.drawNames.join(', ');
+    // Liste verticale des tirages (un par ligne avec puce)
+    const drawNamesList = ticket.drawNames.map(name => `<p style="margin-left: 1em;">• ${name}</p>`).join('');
+
     const betsHTML = (ticket.bets || []).map(b => {
         const gameAbbr = getGameAbbreviation(b.game || '', b);
         let displayNumber = b.number || '';
@@ -518,7 +520,8 @@ function generateAggregatedTicketHTML(ticket) {
     const infoHTML = `
         <div class="info">
             <p># : ${ticket.ticket_id}</p>
-            <p>Tirages:</p> ${drawNamesStr}
+            <p>Tirages:</p>
+            ${drawNamesList}
             <p>Date: ${formattedDate}</p>
             <p>Ajan: ${ticket.agent_name || ''}</p>
         </div>
