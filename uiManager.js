@@ -1192,44 +1192,64 @@ window.loadDrawReport = loadDrawReport;
 window.logout = logout;
 window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
-// ==================== BLOC COMMISSION AGENT (AFFICHAGE SÉPARÉ, SOUSTRACTION DANS BALANCE) ====================
+// ==================== BLOC COMMISSION AGENT (AFFICHAGE SÉPARÉ, SOUSTRACTION DANS BALANCE) =====================================
+// ==================== BLOC COMMISSION AGENT (CALCUL DIRECT : VENTES - COMMISSION - GAINS) ====================
 (function() {
     const originalLoadReports = window.loadReports;
-    const originalPrintReport = window.printReport;
 
-    // Surcharge de loadReports pour les agents
     window.loadReports = async function() {
-        await originalLoadReports();  // Exécute le chargement normal (qui remplit les stats brutes)
+        await originalLoadReports();  // affichage de base (sans commission)
 
         const userRole = localStorage.getItem('user_role');
         if (userRole !== 'agent') return;
 
-        // Récupérer les éléments existants
+        // Récupérer les tickets déjà chargés
+        let allTickets = APP_STATE.ticketsHistory || [];
+        if (!allTickets.length) return;
+
+        // Appliquer les mêmes filtres (période + tirage) que dans loadReports original
+        const filteredByDate = filterTicketsByDate(allTickets, window.reportFilters);
+        const drawId = window.reportFilters.drawId;
+        const finalTickets = drawId !== 'all'
+            ? filteredByDate.filter(t => (t.draw_id == drawId || t.drawId == drawId))
+            : filteredByDate;
+
+        // Calcul du total des ventes (brut)
+        let totalVentes = 0;
+        for (const t of finalTickets) {
+            totalVentes += parseFloat(t.total_amount || t.totalAmount || t.amount || 0);
+        }
+
+        // Calcul du total des gains (uniquement les tickets vérifiés et gagnants)
+        let totalGains = 0;
+        for (const t of finalTickets) {
+            if (t.checked || t.verified) {
+                totalGains += parseFloat(t.win_amount || t.winAmount || t.prize_amount || 0);
+            }
+        }
+
+        // Commission agent
+        const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        const commissionAmount = totalVentes * commissionPercent / 100;
+
+        // Balance = ventes - commission - gains
+        const balance = totalVentes - commissionAmount - totalGains;
+
+        // Mise à jour des éléments d'affichage
         const totalBetsElem = document.getElementById('total-bets');
         const totalWinsElem = document.getElementById('total-wins');
         const balanceElem = document.getElementById('balance');
 
-        if (!totalBetsElem || !totalWinsElem || !balanceElem) return;
+        if (totalBetsElem) totalBetsElem.textContent = totalVentes.toLocaleString('fr-FR') + ' Gdes';
+        if (totalWinsElem) totalWinsElem.textContent = totalGains.toLocaleString('fr-FR') + ' Gdes';
+        if (balanceElem) {
+            balanceElem.textContent = balance.toLocaleString('fr-FR') + ' Gdes';
+            balanceElem.style.color = balance >= 0 ? 'var(--success)' : 'var(--danger)';
+        }
 
-        // Extraire les valeurs numériques brutes (total montant des tickets, total gagnants)
-        let totalBrut = parseFloat(totalBetsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
-        let totalWins = parseFloat(totalWinsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
-
-        // Récupérer le pourcentage de commission de l'agent (stocké lors du login)
-        const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
-        const commissionAmount = totalBrut * commissionPercent / 100;
-
-        // Calcul de la balance finale : brut - gains - commission
-        const finalBalance = totalBrut - totalWins - commissionAmount;
-
-        // Mettre à jour l'affichage de la balance avec la bonne couleur
-        balanceElem.textContent = finalBalance.toLocaleString('fr-FR') + ' Gdes';
-        balanceElem.style.color = finalBalance >= 0 ? 'var(--success)' : 'var(--danger)';
-
-        // Ajouter une carte pour la commission si elle n'existe pas déjà
+        // Ajouter la carte de commission si elle n'existe pas
         let commissionCard = document.getElementById('agent-commission-card');
         const statsGrid = document.querySelector('.reports-summary .stats-grid') || document.querySelector('.stats-grid');
-
         if (!commissionCard && statsGrid) {
             commissionCard = document.createElement('div');
             commissionCard.className = 'stat-card';
@@ -1240,53 +1260,35 @@ window.replayTicket = replayTicket;
             `;
             statsGrid.appendChild(commissionCard);
         }
-
-        // Mettre à jour la valeur de la commission
         const commissionValueElem = document.getElementById('agent-commission-value');
         if (commissionValueElem) {
             commissionValueElem.textContent = commissionAmount.toLocaleString('fr-FR') + ' Gdes';
-            commissionValueElem.style.color = 'var(--danger)';  // la commission est une soustraction
-        }
-
-        // Optionnel : ajouter une petite note explicative dans la console si la balance est négative
-        if (finalBalance < 0) {
-            console.warn(`Balance négative : Brut=${totalBrut}, Gains=${totalWins}, Commission=${commissionAmount}`);
+            commissionValueElem.style.color = 'var(--danger)';
         }
     };
 
-    // Surcharge de printReport pour les agents (inclure la commission dans l'impression)
+    // Impression avec la même formule
     window.printReport = function() {
-        const totalTicketsElem = document.getElementById('total-tickets');
-        const totalBetsElem = document.getElementById('total-bets');
-        const totalWinsElem = document.getElementById('total-wins');
-        const totalLossElem = document.getElementById('total-loss'); // peut être optionnel
-        const balanceElem = document.getElementById('balance');
-        const commissionValueElem = document.getElementById('agent-commission-value');
+        let allTickets = APP_STATE.ticketsHistory || [];
+        const filteredByDate = filterTicketsByDate(allTickets, window.reportFilters);
+        const drawId = window.reportFilters.drawId;
+        const finalTickets = drawId !== 'all'
+            ? filteredByDate.filter(t => (t.draw_id == drawId || t.drawId == drawId))
+            : filteredByDate;
 
-        if (!totalTicketsElem || !totalBetsElem || !totalWinsElem || !balanceElem) {
-            // Fallback : utiliser la fonction d'impression originale si les éléments sont absents
-            originalPrintReport();
-            return;
+        let totalVentes = 0, totalGains = 0;
+        for (const t of finalTickets) {
+            totalVentes += parseFloat(t.total_amount || t.totalAmount || t.amount || 0);
+            if (t.checked || t.verified) {
+                totalGains += parseFloat(t.win_amount || t.winAmount || t.prize_amount || 0);
+            }
         }
-
-        const totalTickets = totalTicketsElem.innerText;
-        let totalBrut = parseFloat(totalBetsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
-        let totalWins = parseFloat(totalWinsElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
-        let finalBalance = parseFloat(balanceElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
-
-        // Récupérer la commission en Gdes (depuis l'affichage)
-        let commissionAmount = 0;
-        if (commissionValueElem) {
-            commissionAmount = parseFloat(commissionValueElem.innerText.replace(/[^0-9.-]/g, '')) || 0;
-        } else {
-            // fallback : recalculer à partir du pourcentage
-            const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
-            commissionAmount = totalBrut * commissionPercent / 100;
-        }
-
         const commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        const commissionAmount = totalVentes * commissionPercent / 100;
+        const balance = totalVentes - commissionAmount - totalGains;
+        const totalTickets = finalTickets.length;
 
-        // Période et autres informations
+        // Période, etc.
         let periodText = '';
         if (window.reportFilters?.period === 'today') periodText = 'Jodi a';
         else if (window.reportFilters?.period === 'yesterday') periodText = 'Yè';
@@ -1335,10 +1337,10 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
     <div class="section">
         <div class="section-title">Rekapitilatif</div>
         <div class="row"><span>Total Tikè:</span><span>${totalTickets}</span></div>
-        <div class="row"><span>Total Montan Tikè:</span><span>${totalBrut.toLocaleString('fr-FR')} G</span></div>
-        <div class="row"><span>Total Ganyen:</span><span>${totalWins.toLocaleString('fr-FR')} G</span></div>
+        <div class="row"><span>Total Montan Tikè:</span><span>${totalVentes.toLocaleString('fr-FR')} G</span></div>
+        <div class="row"><span>Total Ganyen:</span><span>${totalGains.toLocaleString('fr-FR')} G</span></div>
         ${commissionPercent > 0 ? `<div class="row"><span>Komisyon Ajan (${commissionPercent}%) :</span><span>${commissionAmount.toLocaleString('fr-FR')} G</span></div>` : ''}
-        <div class="row total-row"><span>BALANS FINAL :</span><span>${finalBalance.toLocaleString('fr-FR')} G</span></div>
+        <div class="row total-row"><span>BALANS FINAL :</span><span>${balance.toLocaleString('fr-FR')} G</span></div>
     </div>
     <div class="footer">
         <p>Rapò jenere le: ${new Date().toLocaleString('fr-FR')}</p>
