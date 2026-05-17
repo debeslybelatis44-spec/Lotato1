@@ -1442,11 +1442,18 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
   if (supervisorId && supervisorId !== 'all') { baseQuery += ` AND agent_id IN (SELECT id FROM users WHERE supervisor_id = $${idx++})`; params.push(supervisorId); }
   if (agentId && agentId !== 'all') { baseQuery += ` AND agent_id = $${idx++}`; params.push(agentId); }
   if (drawId && drawId !== 'all') { baseQuery += ` AND draw_id = $${idx++}`; params.push(drawId); }
-  if (period === 'today') baseQuery += ` AND date >= CURRENT_DATE`;
-  else if (period === 'yesterday') baseQuery += ` AND date >= CURRENT_DATE - INTERVAL '1 day' AND date < CURRENT_DATE`;
-  else if (period === 'week') baseQuery += ` AND date >= DATE_TRUNC('week', CURRENT_DATE)`;
-  else if (period === 'month') baseQuery += ` AND date >= DATE_TRUNC('month', CURRENT_DATE)`;
-  else if (period === 'custom' && fromDate && toDate) { baseQuery += ` AND date >= $${idx++} AND date <= $${idx++}`; params.push(fromDate, toDate); }
+ if (period === 'today') {
+    baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = (NOW() AT TIME ZONE 'America/Port-au-Prince')::DATE`;
+} else if (period === 'yesterday') {
+    baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = (NOW() AT TIME ZONE 'America/Port-au-Prince')::DATE - INTERVAL '1 day'`;
+} else if (period === 'week') {
+    baseQuery += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/Port-au-Prince')`;
+} else if (period === 'month') {
+    baseQuery += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Port-au-Prince')`;
+} else if (period === 'custom' && fromDate && toDate) {
+    baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
+    params.push(fromDate, toDate);
+}
   if (gainLoss === 'gain') baseQuery += ` AND win_amount > 0`;
   else if (gainLoss === 'loss') baseQuery += ` AND (win_amount = 0 OR win_amount IS NULL)`;
   const summaryRes = await pool.query(baseQuery, params);
