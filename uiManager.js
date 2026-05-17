@@ -1,4 +1,4 @@
-// uiManager.js
+// uiManager.js - Version complète avec corrections des rapports et commission agent
 
 // Variable globale pour le terme de recherche
 window.historySearchTerm = '';
@@ -10,6 +10,13 @@ window.reportFilters = {
     toDate: '',
     drawId: 'all'
 };
+
+// État global
+window.APP_STATE = window.APP_STATE || {};
+APP_STATE.agentCommission = (() => {
+    const saved = localStorage.getItem('agent_commission');
+    return saved ? parseFloat(saved) : 0;
+})();
 
 // Fonction utilitaire pour récupérer les tickets depuis l'API
 async function fetchTickets() {
@@ -53,34 +60,36 @@ async function fetchTicketsWithFilters(filters) {
     return data.tickets || [];
 }
 
-// Filtrer les tickets par date (version corrigée avec comparaison en YYYY-MM-DD)
+// ==================== FILTRAGE AVEC FUSEAU HORAIRE CORRECT ====================
 function filterTicketsByDate(tickets, filters) {
+    const tz = 'America/Port-au-Prince';
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-
+    const formatter = new Intl.DateTimeFormat('fr-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+    const todayStr = formatter.format(now);
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
+    const yesterdayStr = formatter.format(yesterday);
     const weekAgo = new Date(now);
     weekAgo.setDate(now.getDate() - 7);
+    weekAgo.setHours(0, 0, 0, 0);
 
     return tickets.filter(ticket => {
-        const ticketDate = new Date(ticket.date || ticket.created_at);
-        if (isNaN(ticketDate)) return false;
-        const ticketDateStr = ticketDate.toISOString().split('T')[0];
-
-        if (filters.period === 'today') {
-            return ticketDateStr === todayStr;
-        } else if (filters.period === 'yesterday') {
-            return ticketDateStr === yesterdayStr;
-        } else if (filters.period === 'week') {
-            return ticketDate >= weekAgo;
-        } else if (filters.period === 'custom' && filters.fromDate && filters.toDate) {
-            const from = new Date(filters.fromDate);
-            const to = new Date(filters.toDate);
-            to.setHours(23, 59, 59, 999);
-            return ticketDate >= from && ticketDate <= to;
+        const raw = ticket.date || ticket.created_at;
+        if (!raw) return false;
+        const date = new Date(raw);
+        if (isNaN(date)) return false;
+        const dateStr = formatter.format(date);
+        if (filters.period === 'today') return dateStr === todayStr;
+        if (filters.period === 'yesterday') return dateStr === yesterdayStr;
+        if (filters.period === 'week') {
+            const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
+            return local >= weekAgo;
+        }
+        if (filters.period === 'custom' && filters.fromDate && filters.toDate) {
+            const from = new Date(filters.fromDate + 'T00:00:00');
+            const to = new Date(filters.toDate + 'T23:59:59.999');
+            const onlyDate = new Date(dateStr + 'T12:00:00');
+            return onlyDate >= from && onlyDate <= to;
         }
         return true;
     });
@@ -348,7 +357,7 @@ async function loadHistory() {
         
         const tickets = await fetchTickets();
         APP_STATE.ticketsHistory = tickets;
-        console.log('Tickets reçus:', tickets); // Pour déboguer
+        console.log('Tickets reçus:', tickets);
 
         initHistorySearchBar();
         renderHistory();
@@ -378,7 +387,6 @@ function renderHistory() {
         const numericId = ticket.id;
         const displayId = ticket.ticket_id || ticket.id;
         
-        // Récupération du nom du tirage : priorité à la correspondance via draw_id
         let drawName = null;
         if (APP_STATE.draws) {
             const draw = APP_STATE.draws.find(d => d.id == (ticket.draw_id || ticket.drawId));
@@ -424,7 +432,6 @@ function renderHistory() {
             statusClass = 'badge-wait';
         }
         
-        // Normalisation de la date
         let ticketDate;
         if (date) {
             const normalized = date.replace(' ', 'T') + (date.includes('Z') ? '' : 'Z');
@@ -607,13 +614,12 @@ async function replayTicket(ticketId) {
     }
 
     selectedDraws.forEach(drawId => {
-        // Récupérer le nom du tirage depuis APP_STATE.draws
         let drawName = null;
         if (APP_STATE.draws) {
             const draw = APP_STATE.draws.find(d => d.id == drawId);
             if (draw) drawName = draw.name;
         }
-        if (!drawName) drawName = drawId; // fallback
+        if (!drawName) drawName = drawId;
 
         bets.forEach(bet => {
             const betKey = getBetKey(bet);
@@ -668,7 +674,6 @@ function showDrawSelectionModal() {
             z-index: 10000;
         `;
 
-        // Utiliser APP_STATE.draws pour la liste
         const drawsList = APP_STATE.draws && APP_STATE.draws.length > 0 ? APP_STATE.draws : CONFIG.DRAWS;
 
         modal.innerHTML = `
@@ -746,110 +751,98 @@ function reprintTicket(ticketId) {
     printThermalTicket(ticket, printWindow);
 }
 
-// Chargement des rapports
+// ==================== RAPPORTS MODIFIÉS ====================
 async function loadReports() {
     try {
         initReportFilters();
 
+        // Créer l'affichage du pourcentage agent s'il n'existe pas
+        if (!document.getElementById('agent-percentage')) {
+            const generalCard = document.getElementById('general-report-card');
+            if (generalCard) {
+                const row = document.createElement('div');
+                row.className = 'report-row';
+                row.innerHTML = `<span>Pousantaj Ajan:</span><span class="val" id="agent-percentage">0%</span>`;
+                // Insérer avant la ligne "Balans Total" ou à la fin
+                const totalRow = generalCard.querySelector('.report-row.total');
+                if (totalRow) {
+                    generalCard.insertBefore(row, totalRow);
+                } else {
+                    generalCard.appendChild(row);
+                }
+            }
+        }
+
         const allTickets = await fetchTickets();
         APP_STATE.ticketsHistory = allTickets;
 
-        // Filtrer selon la période
-        const filteredTickets = filterTicketsByDate(allTickets, window.reportFilters);
+        let filtered = filterTicketsByDate(allTickets, window.reportFilters);
+        if (window.reportFilters.drawId !== 'all') {
+            filtered = filtered.filter(t => t.draw_id == window.reportFilters.drawId || t.drawId == window.reportFilters.drawId);
+        }
 
-        // Filtrer par tirage si nécessaire
-        const finalTickets = window.reportFilters.drawId !== 'all'
-            ? filteredTickets.filter(t => (t.draw_id === window.reportFilters.drawId || t.drawId === window.reportFilters.drawId))
-            : filteredTickets;
-
-        let totalTickets = finalTickets.length;
-        let totalBets = 0;
-        let totalWins = 0;
-        let totalLoss = 0;
-
-        finalTickets.forEach(ticket => {
-            const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
-            totalBets += ticketAmount;
-
-            if (ticket.checked || ticket.verified) {
-                const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                if (winAmount > 0) {
-                    totalWins += winAmount;
-                } else {
-                    totalLoss += ticketAmount;
-                }
+        let totalTickets = filtered.length;
+        let totalBets = 0, totalWins = 0;
+        for (const t of filtered) {
+            const amount = parseFloat(t.total_amount || t.totalAmount || t.amount || 0);
+            totalBets += amount;
+            if (t.checked || t.verified) {
+                const win = parseFloat(t.win_amount || t.winAmount || t.prize_amount || 0);
+                if (win > 0) totalWins += win;
             }
-        });
+        }
 
-        const totalProfit = totalBets - totalWins;
+        const commissionPct = APP_STATE.agentCommission || 0;
+        const commissionAmount = totalBets * (commissionPct / 100);
+        const balance = totalBets - totalWins - commissionAmount;
+        const totalLoss = totalBets - totalWins;
 
         document.getElementById('total-tickets').textContent = totalTickets;
         document.getElementById('total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
         document.getElementById('total-wins').textContent = totalWins.toLocaleString('fr-FR') + ' Gdes';
         document.getElementById('total-loss').textContent = totalLoss.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').textContent = totalProfit.toLocaleString('fr-FR') + ' Gdes';
-        document.getElementById('balance').style.color = (totalProfit >= 0) ? 'var(--success)' : 'var(--danger)';
+        document.getElementById('balance').textContent = balance.toLocaleString('fr-FR') + ' Gdes';
+        document.getElementById('balance').style.color = balance >= 0 ? 'var(--success)' : 'var(--danger)';
+        const pctSpan = document.getElementById('agent-percentage');
+        if (pctSpan) pctSpan.textContent = commissionPct + '%';
 
-        // Ajouter l'info de période
         let periodText = '';
         if (window.reportFilters.period === 'today') periodText = 'Jodi a';
         else if (window.reportFilters.period === 'yesterday') periodText = 'Yè';
         else if (window.reportFilters.period === 'week') periodText = 'Semèn sa a';
-        else if (window.reportFilters.period === 'custom') {
-            periodText = `Soti ${window.reportFilters.fromDate} rive ${window.reportFilters.toDate}`;
+        else if (window.reportFilters.period === 'custom') periodText = `${window.reportFilters.fromDate} → ${window.reportFilters.toDate}`;
+        let infoDiv = document.querySelector('.period-info');
+        if (!infoDiv) {
+            infoDiv = document.createElement('div');
+            infoDiv.className = 'period-info';
+            const summary = document.querySelector('.reports-summary');
+            if (summary) summary.after(infoDiv);
         }
+        infoDiv.innerHTML = `<strong>Peryòd:</strong> ${periodText}`;
 
-        const periodInfo = document.createElement('div');
-        periodInfo.className = 'period-info';
-        periodInfo.style.cssText = 'text-align: center; margin: 10px 0; font-size: 0.9rem; color: var(--text-dim);';
-        periodInfo.innerHTML = `Peryòd: <strong>${periodText}</strong>`;
-
-        const existingPeriodInfo = document.querySelector('.period-info');
-        if (existingPeriodInfo) existingPeriodInfo.remove();
-
-        const reportsSummary = document.querySelector('.reports-summary');
-        if (reportsSummary) {
-            reportsSummary.insertAdjacentElement('afterend', periodInfo);
+        const drawSel = document.getElementById('draw-report-selector');
+        if (drawSel) {
+            drawSel.innerHTML = '<option value="all">Tout Tiraj</option>';
+            const draws = APP_STATE.draws || CONFIG.DRAWS || [];
+            draws.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = d.name;
+                if (d.id == window.reportFilters.drawId) opt.selected = true;
+                drawSel.appendChild(opt);
+            });
         }
-
-        // Mettre à jour le sélecteur de tirage
-        const drawSelector = document.getElementById('draw-report-selector');
-        if (drawSelector) {
-            drawSelector.innerHTML = '<option value="all">Tout Tiraj</option>';
-            // Utiliser APP_STATE.draws
-            if (APP_STATE.draws && APP_STATE.draws.length > 0) {
-                APP_STATE.draws.forEach(draw => {
-                    const option = document.createElement('option');
-                    option.value = draw.id;
-                    option.textContent = draw.name;
-                    if (draw.id == window.reportFilters.drawId) {
-                        option.selected = true;
-                    }
-                    drawSelector.appendChild(option);
-                });
-            } else if (CONFIG && CONFIG.DRAWS) {
-                CONFIG.DRAWS.forEach(draw => {
-                    const option = document.createElement('option');
-                    option.value = draw.id;
-                    option.textContent = draw.name;
-                    if (draw.id == window.reportFilters.drawId) {
-                        option.selected = true;
-                    }
-                    drawSelector.appendChild(option);
-                });
-            }
-        }
-
         await loadDrawReport(window.reportFilters.drawId);
-
-    } catch (error) {
-        console.error('Erreur chargement rapports:', error);
-        document.getElementById('total-tickets').textContent = '0';
-        document.getElementById('total-bets').textContent = '0 Gdes';
-        document.getElementById('total-wins').textContent = '0 Gdes';
-        document.getElementById('total-loss').textContent = '0 Gdes';
-        document.getElementById('balance').textContent = '0 Gdes';
-        document.getElementById('balance').style.color = 'var(--success)';
+    } catch (err) {
+        console.error('Erreur chargement rapports:', err);
+        const fallback = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        fallback('total-tickets', '0');
+        fallback('total-bets', '0 Gdes');
+        fallback('total-wins', '0 Gdes');
+        fallback('total-loss', '0 Gdes');
+        fallback('balance', '0 Gdes');
+        const pct = document.getElementById('agent-percentage');
+        if (pct) pct.textContent = '0%';
     }
 }
 
@@ -905,30 +898,30 @@ async function loadDrawReport(drawId = null) {
     }
 }
 
-// Impression des rapports
+// ==================== IMPRESSION RAPPORT AVEC COMMISSION ====================
 function printReport() {
-    const drawSelector = document.getElementById('draw-report-selector');
-    const selectedDraw = drawSelector.options[drawSelector.selectedIndex].text;
-    const selectedDrawId = drawSelector.value;
+    const drawSel = document.getElementById('draw-report-selector');
+    const selectedDraw = drawSel.options[drawSel.selectedIndex].text;
+    const selectedDrawId = drawSel.value;
 
-    const filteredTickets = filterTicketsByDate(APP_STATE.ticketsHistory, window.reportFilters);
-
+    const filtered = filterTicketsByDate(APP_STATE.ticketsHistory, window.reportFilters);
     const tickets = selectedDrawId === 'all' 
-        ? filteredTickets
-        : filteredTickets.filter(t => t.draw_id === selectedDrawId || t.drawId === selectedDrawId);
+        ? filtered
+        : filtered.filter(t => t.draw_id == selectedDrawId || t.drawId == selectedDrawId);
 
     let totalTickets = tickets.length;
-    let totalBets = 0, totalWins = 0, totalLoss = 0;
+    let totalBets = 0, totalWins = 0;
     tickets.forEach(ticket => {
         const amount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
         totalBets += amount;
         if (ticket.checked || ticket.verified) {
             const win = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
             if (win > 0) totalWins += win;
-            else totalLoss += amount;
         }
     });
-    const balance = totalBets - totalWins;
+    const commissionPct = APP_STATE.agentCommission || 0;
+    const commissionAmount = totalBets * (commissionPct / 100);
+    const balance = totalBets - totalWins - commissionAmount;
 
     let periodText = '';
     if (window.reportFilters.period === 'today') periodText = 'Jodi a';
@@ -1049,8 +1042,8 @@ function printReport() {
                 <div class="row"><span>Total Tikè:</span> <span>${totalTickets}</span></div>
                 <div class="row"><span>Total Paris:</span> <span>${totalBets.toLocaleString('fr-FR')} G</span></div>
                 <div class="row"><span>Total Ganyen:</span> <span>${totalWins.toLocaleString('fr-FR')} G</span></div>
-                <div class="row"><span>Pèdi:</span> <span>${totalLoss.toLocaleString('fr-FR')} G</span></div>
-                <div class="row total-row"><span>Balans:</span> <span>${balance.toLocaleString('fr-FR')} G</span></div>
+                <div class="row"><span>Pousantaj Ajan:</span> <span>${commissionPct}%</span></div>
+                <div class="row total-row"><span>Balans (apres komisyon):</span> <span>${balance.toLocaleString('fr-FR')} G</span></div>
             </div>
 
             <div class="footer">
@@ -1120,7 +1113,6 @@ function updateWinnersDisplay() {
         const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0) || 0;
         const netProfit = winAmount - betAmount;
 
-        // Récupération du nom du tirage
         let drawName = null;
         if (APP_STATE.draws) {
             const draw = APP_STATE.draws.find(d => d.id == (ticket.draw_id || ticket.drawId));
@@ -1197,7 +1189,6 @@ function viewTicketDetails(ticketId) {
         return;
     }
 
-    // Récupération du nom du tirage
     let drawName = null;
     if (APP_STATE.draws) {
         const draw = APP_STATE.draws.find(d => d.id == (ticket.draw_id || ticket.drawId));
@@ -1212,7 +1203,6 @@ function viewTicketDetails(ticketId) {
     const winAmount = ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0;
     const checked = ticket.checked || ticket.verified || false;
 
-    // Normalisation de la date
     let formattedDateTime = 'Date invalide';
     if (date) {
         const normalized = date.replace(' ', 'T') + (date.includes('Z') ? '' : 'Z');
@@ -1395,9 +1385,16 @@ function logout() {
         localStorage.removeItem('agent_id');
         localStorage.removeItem('agent_name');
         localStorage.removeItem('user_role');
+        localStorage.removeItem('agent_commission');
 
         window.location.href = 'index.html';
     });
+}
+
+// Initialisation de la commission après login (à appeler dans la fonction de login)
+function setAgentCommission(percentage) {
+    APP_STATE.agentCommission = parseFloat(percentage) || 0;
+    localStorage.setItem('agent_commission', APP_STATE.agentCommission);
 }
 
 // Exposer les fonctions globales
@@ -1411,3 +1408,4 @@ window.loadDrawReport = loadDrawReport;
 window.logout = logout;
 window.reprintTicket = reprintTicket;
 window.replayTicket = replayTicket;
+window.setAgentCommission = setAgentCommission;
