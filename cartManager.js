@@ -1,71 +1,24 @@
-// ============================================================================
-// cartManager.js - Version finale avec fusion multi-tirage et impression pro
-// ============================================================================
+// ==========================
+// cartManager.js (corrigé - date normalisée sans forçage UTC)
+// ==========================
 
-// ---------- Utilitaire date ----------
+// ---------- Fonction utilitaire pour normaliser une chaîne de date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
-    return dateStr.replace(' ', 'T');
+    // Remplacer l'espace par 'T' pour un format ISO partiel
+    let normalized = dateStr.replace(' ', 'T');
+    // Ne pas ajouter 'Z' pour éviter de forcer UTC
+    return normalized;
 }
 
-// ---------- Paramètres avancés (mariages gratuits, etc.) ----------
-async function loadAdvancedSettings() {
-    if (!APP_STATE.advancedSettings) {
-        try {
-            const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_CONFIG.BASE_URL}/agent/advanced-settings`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                APP_STATE.advancedSettings = await res.json();
-            } else {
-                APP_STATE.advancedSettings = {
-                    freeMarriage: {
-                        tiers: [
-                            { min: 100, max: 500, count: 4 },
-                            { min: 501, max: 1500, count: 4 },
-                            { min: 1501, max: null, count: 4 }
-                        ],
-                        winAmount: 1000
-                    },
-                    print: { fontSize: 24 },
-                    footer: {
-                        line1: "tickets valable jusqu'à 90 jours",
-                        line2: "",
-                        line3: "LOTATO S.A."
-                    }
-                };
-            }
-        } catch (e) {
-            console.error(e);
-            APP_STATE.advancedSettings = {
-                freeMarriage: {
-                    tiers: [
-                        { min: 100, max: 500, count: 4 },
-                        { min: 501, max: 1500, count: 4 },
-                        { min: 1501, max: null, count: 4 }
-                    ],
-                    winAmount: 2500
-                },
-                print: { fontSize: 25 },
-                footer: {
-                    line1: "tickets valable jusqu'à 90 jours",
-                    line2: "",
-                    line3: "LOTATO S.A."
-                }
-            };
-        }
-    }
-    return APP_STATE.advancedSettings;
-}
-
-// ---------- Vérifications ----------
+// ---------- Utils ----------
 function isNumberBlocked(number, drawId) {
     if (APP_STATE.globalBlockedNumbers.includes(number)) return true;
     const drawBlocked = APP_STATE.drawBlockedNumbers[drawId] || [];
     return drawBlocked.includes(number);
 }
 
+// Vérifie si le montant dépasse la limite pour ce numéro et ce tirage
 function checkNumberLimit(number, drawId, amountToAdd) {
     const key = `${drawId}_${number}`;
     const limit = APP_STATE.numberLimits[key];
@@ -85,7 +38,7 @@ function checkNumberLimit(number, drawId, amountToAdd) {
     return { success: true };
 }
 
-// ---------- Génération mariage gratuit ----------
+// ---------- Génération aléatoire d'un mariage ----------
 function generateRandomMarriageBet(amount) {
     const num1 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
     const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
@@ -97,7 +50,7 @@ function generateRandomMarriageBet(amount) {
     };
 }
 
-// ---------- CartManager ----------
+// ---------- Cart Manager ----------
 var CartManager = {
 
     updateFreeMarriages() {
@@ -111,30 +64,14 @@ var CartManager = {
             }
         });
 
-        const cfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.freeMarriage) || {
-            tiers: [
-                { min: 100, max: 500, count: 4 },
-                { min: 501, max: 1500, count: 4 },
-                { min: 1501, max: null, count: 4 }
-            ],
-            winAmount: 2500
-        };
-        const tiers = cfg.tiers;
-
         Object.keys(payantsByDraw).forEach(drawId => {
             const payants = payantsByDraw[drawId];
             const totalPayant = payants.reduce((sum, b) => sum + b.amount, 0);
 
             let requiredFree = 0;
-            for (const tier of tiers) {
-                if (tier.max === null && totalPayant >= tier.min) {
-                    requiredFree = tier.count;
-                    break;
-                } else if (tier.max !== null && totalPayant >= tier.min && totalPayant <= tier.max) {
-                    requiredFree = tier.count;
-                    break;
-                }
-            }
+            if (totalPayant >= 1 && totalPayant <= 50) requiredFree = 1;
+            else if (totalPayant >= 51 && totalPayant <= 150) requiredFree = 2;
+            else if (totalPayant >= 151) requiredFree = 3;
 
             for (let i = 0; i < requiredFree; i++) {
                 const freeBet = generateRandomMarriageBet(0);
@@ -149,6 +86,7 @@ var CartManager = {
                 APP_STATE.currentCart.push(newFree);
             }
         });
+
         this.renderCart();
     },
 
@@ -161,6 +99,7 @@ var CartManager = {
         const numInput = document.getElementById('num-input');
         const amtInput = document.getElementById('amt-input');
         const amt = parseFloat(amtInput.value);
+
         if (isNaN(amt) || amt <= 0) {
             alert("Montan pa valid");
             return;
@@ -168,21 +107,34 @@ var CartManager = {
 
         const game = APP_STATE.selectedGame;
 
+        // --- Gestion des jeux automatiques ---
         if (game === 'auto_marriage' || game === 'bo' || game === 'grap' || game === 'auto_lotto4' || game === 'auto_lotto5') {
             let autoBets = [];
             switch (game) {
-                case 'auto_marriage': autoBets = GameEngine.generateAutoMarriageBets(amt); break;
-                case 'bo': autoBets = SpecialGames.generateBOBets(amt); break;
-                case 'grap': autoBets = SpecialGames.generateGRAPBets(amt); break;
-                case 'auto_lotto4': autoBets = GameEngine.generateAutoLotto4Bets(amt); break;
-                case 'auto_lotto5': autoBets = GameEngine.generateAutoLotto5Bets(amt); break;
+                case 'auto_marriage':
+                    autoBets = GameEngine.generateAutoMarriageBets(amt);
+                    break;
+                case 'bo':
+                    autoBets = SpecialGames.generateBOBets(amt);
+                    break;
+                case 'grap':
+                    autoBets = SpecialGames.generateGRAPBets(amt);
+                    break;
+                case 'auto_lotto4':
+                    autoBets = GameEngine.generateAutoLotto4Bets(amt);
+                    break;
+                case 'auto_lotto5':
+                    autoBets = GameEngine.generateAutoLotto5Bets(amt);
+                    break;
             }
+
             if (autoBets.length === 0) {
                 alert("Pa gen ase nimevo nan panye pou jenere " + game);
                 return;
             }
 
             const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
+
             const errors = [];
             for (const drawId of draws) {
                 for (const bet of autoBets) {
@@ -191,7 +143,10 @@ var CartManager = {
                     if (!check.success) errors.push(check.message);
                 }
             }
-            if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+            if (errors.length > 0) {
+                alert("❌ Limites dépassées :\n" + errors.join("\n"));
+                return;
+            }
 
             for (const drawId of draws) {
                 for (const bet of autoBets) {
@@ -206,15 +161,22 @@ var CartManager = {
             draws.forEach(drawId => {
                 const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
                 autoBets.forEach(bet => {
-                    APP_STATE.currentCart.push({ ...bet, id: Date.now() + Math.random(), drawId, drawName });
+                    APP_STATE.currentCart.push({
+                        ...bet,
+                        id: Date.now() + Math.random(),
+                        drawId: drawId,
+                        drawName: drawName
+                    });
                 });
             });
+
             this.updateFreeMarriages();
             amtInput.value = '';
             numInput.focus();
             return;
         }
 
+        // --- Gestion des jeux NX (n0 à n9) ---
         if (/^n[0-9]$/.test(game)) {
             const lastDigit = parseInt(game.substring(1), 10);
             const numbers = [];
@@ -223,6 +185,7 @@ var CartManager = {
             }
 
             const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
+
             const errors = [];
             for (const drawId of draws) {
                 for (const num of numbers) {
@@ -230,7 +193,10 @@ var CartManager = {
                     if (!check.success) errors.push(check.message);
                 }
             }
-            if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+            if (errors.length > 0) {
+                alert("❌ Limites dépassées :\n" + errors.join("\n"));
+                return;
+            }
 
             for (const drawId of draws) {
                 for (const num of numbers) {
@@ -246,12 +212,17 @@ var CartManager = {
                 numbers.forEach(num => {
                     APP_STATE.currentCart.push({
                         id: Date.now() + Math.random(),
-                        game, number: num, cleanNumber: num,
-                        amount: amt, drawId, drawName,
+                        game: game,
+                        number: num,
+                        cleanNumber: num,
+                        amount: amt,
+                        drawId: drawId,
+                        drawName: drawName,
                         timestamp: new Date().toISOString()
                     });
                 });
             });
+
             this.updateFreeMarriages();
             numInput.value = '';
             amtInput.value = '';
@@ -259,17 +230,27 @@ var CartManager = {
             return;
         }
 
+        // --- Gestion des jeux normaux (saisie manuelle) ---
         let num = numInput.value.trim();
-        if (!GameEngine.validateEntry(game, num)) { alert("Nimewo pa valid"); return; }
+
+        if (!GameEngine.validateEntry(game, num)) {
+            alert("Nimewo pa valid");
+            return;
+        }
+
         num = GameEngine.getCleanNumber(num);
 
         const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
+
         const errors = [];
         for (const drawId of draws) {
             const check = checkNumberLimit(num, drawId, amt);
             if (!check.success) errors.push(check.message);
         }
-        if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+        if (errors.length > 0) {
+            alert("❌ Limites dépassées :\n" + errors.join("\n"));
+            return;
+        }
 
         for (const drawId of draws) {
             if (isNumberBlocked(num, drawId)) {
@@ -283,20 +264,25 @@ var CartManager = {
                 const optionBets = GameEngine.generateLottoBetsWithOptions(game, num, amt);
                 optionBets.forEach(bet => {
                     APP_STATE.currentCart.push({
-                        ...bet, drawId,
+                        ...bet,
+                        drawId: drawId,
                         drawName: APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId
                     });
                 });
             } else {
                 APP_STATE.currentCart.push({
                     id: Date.now() + Math.random(),
-                    game, number: num, cleanNumber: num,
-                    amount: amt, drawId,
+                    game: game,
+                    number: num,
+                    cleanNumber: num,
+                    amount: amt,
+                    drawId: drawId,
                     drawName: APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId,
                     timestamp: new Date().toISOString()
                 });
             }
         });
+
         this.updateFreeMarriages();
         numInput.value = '';
         amtInput.value = '';
@@ -322,6 +308,7 @@ var CartManager = {
 
         let total = 0;
         let count = 0;
+
         display.innerHTML = APP_STATE.currentCart.map(bet => {
             total += bet.amount;
             count++;
@@ -338,38 +325,64 @@ var CartManager = {
                 </div>
             `;
         }).join('');
+
         totalEl.innerText = total.toLocaleString('fr-FR') + ' Gdes';
         if (itemsCount) itemsCount.innerText = count + ' jwèt';
     }
 };
 
-// ---------- Abréviation jeux ----------
+// ---------- Fonction d'abréviation des jeux ----------
 function getGameAbbreviation(gameName, bet) {
-    if (bet && bet.free && bet.freeType === 'special_marriage') return 'marg';
+    if (bet && bet.free && bet.freeType === 'special_marriage') {
+        return 'marg';
+    }
     const map = {
-        'borlette': 'bor', 'lotto3': 'lo3', 'lotto4': 'lo4', 'lotto5': 'lo5',
-        'auto_marriage': 'mara', 'auto_lotto4': 'loa4', 'auto_lotto5': 'loa5',
-        'mariage': 'mar', 'lotto 3': 'lo3', 'lotto 4': 'lo4', 'lotto 5': 'lo5',
-        'loto3': 'lo3', 'loto4': 'lo4', 'loto5': 'lo5',
-        'bo': 'bo', 'grap': 'grap',
-        'n0': 'n0', 'n1': 'n1', 'n2': 'n2', 'n3': 'n3', 'n4': 'n4',
-        'n5': 'n5', 'n6': 'n6', 'n7': 'n7', 'n8': 'n8', 'n9': 'n9'
+        'borlette': 'bor',
+        'lotto3': 'lo3',
+        'lotto4': 'lo4',
+        'lotto5': 'lo5',
+        'auto_marriage': 'mara',
+        'auto_lotto4': 'loa4',
+        'auto_lotto5': 'loa5',
+        'mariage': 'mar',
+        'lotto 3': 'lo3',
+        'lotto 4': 'lo4',
+        'lotto 5': 'lo5',
+        'loto3': 'lo3',
+        'loto4': 'lo4',
+        'loto5': 'lo5',
+        'bo': 'bo',
+        'grap': 'grap',
+        'n0': 'n0',
+        'n1': 'n1',
+        'n2': 'n2',
+        'n3': 'n3',
+        'n4': 'n4',
+        'n5': 'n5',
+        'n6': 'n6',
+        'n7': 'n7',
+        'n8': 'n8',
+        'n9': 'n9'
     };
     const key = (gameName || '').trim().toLowerCase();
     return map[key] || gameName;
 }
 
-// ---------- Détection Android WebView ----------
-function isAndroidWebView() {
-    return /Android/i.test(navigator.userAgent) && typeof window.AndroidPrint !== 'undefined';
-}
-
-// ---------- Impression et fusion multi-tirage ----------
+// ---------- Save & Print Ticket ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
         alert("Panye vid");
         return;
     }
+
+    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    if (!printWindow) {
+        alert("Veuillez autoriser les pop-ups pour imprimer le ticket.");
+        return;
+    }
+
+    printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px; text-align:center;">Génération du ticket en cours...</p></body></html>');
+    printWindow.document.close();
 
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
@@ -377,23 +390,11 @@ async function processFinalTicket() {
         betsByDraw[b.drawId].push(b);
     });
 
-    let printWindow = null;
-    if (!isAndroidWebView()) {
-        printWindow = window.open('', '_blank', 'width=500,height=700');
-        if (!printWindow) {
-            alert("Autorize popups pou enprime.");
-            return;
-        }
-        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px;text-align:center;">Génération du ticket en cours...</p></body></html>');
-        printWindow.document.close();
-    }
-
-    const savedTickets = [];
-
     try {
         for (const drawId in betsByDraw) {
             const bets = betsByDraw[drawId];
             const total = bets.reduce((s, b) => s + b.amount, 0);
+
             const payload = {
                 agentId: APP_STATE.agentId,
                 agentName: APP_STATE.agentName,
@@ -412,31 +413,13 @@ async function processFinalTicket() {
                 body: JSON.stringify(payload)
             });
 
-            if (!res.ok) {
-                let errorMsg = "Erreur inconnue du serveur";
-                try {
-                    const errorData = await res.json();
-                    errorMsg = errorData.error || errorData.message || JSON.stringify(errorData);
-                } catch (e) {
-                    errorMsg = await res.text() || `HTTP ${res.status}`;
-                }
-                throw new Error(errorMsg);
-            }
+            if (!res.ok) throw new Error("Erreur serveur");
 
             const data = await res.json();
+            // Ajout de la date actuelle pour l'impression immédiate
             data.ticket.date = new Date().toISOString();
-            savedTickets.push(data.ticket);
+            printThermalTicket(data.ticket, printWindow);
             APP_STATE.ticketsHistory.unshift(data.ticket);
-        }
-
-        // Construction du ticket unique agrégé
-        const aggregatedTicket = buildAggregatedTicket(savedTickets, betsByDraw);
-        if (isAndroidWebView()) {
-            const ticketHTML = generateAggregatedTicketHTML(aggregatedTicket);
-            const fullHTML = buildFullPrintHTML(ticketHTML);
-            window.AndroidPrint.printHTML(fullHTML);
-        } else {
-            printAggregatedTicket(aggregatedTicket, printWindow);
         }
 
         APP_STATE.currentCart = [];
@@ -445,60 +428,144 @@ async function processFinalTicket() {
 
     } catch (err) {
         console.error(err);
-        alert(`❌ ${err.message}`);
-        if (printWindow && !printWindow.closed) printWindow.close();
+        alert("❌ Erè pandan enpresyon");
+        printWindow.close();
     }
 }
 
-// ---------- Agrégation des tickets ----------
-function buildAggregatedTicket(ticketsList, betsByDraw) {
-    if (!ticketsList.length) return null;
-    const firstTicket = ticketsList[0];
-    const drawNames = ticketsList.map(t => t.draw_name || t.drawName);
-    const grandTotal = ticketsList.reduce((sum, t) => sum + (t.total_amount || t.total || 0), 0);
-    const bets = firstTicket.bets || [];
-    return {
-        ticket_id: ticketsList.map(t => t.ticket_id || t.id).join('_'),
-        drawNames: drawNames,
-        bets: bets,
-        total: grandTotal,
-        date: new Date().toISOString(),
-        agent_name: firstTicket.agent_name || firstTicket.agentName,
-    };
-}
+// ---------- PRINT ----------
+function printThermalTicket(ticket, printWindow) {
+    const html = generateTicketHTML(ticket);
 
-function printAggregatedTicket(aggregatedTicket, printWindow) {
-    const html = generateAggregatedTicketHTML(aggregatedTicket);
-    const fullHTML = buildFullPrintHTML(html);
-    printWindow.document.write(fullHTML);
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Ticket</title>
+            <style>
+                @page {
+                    size: 80mm auto;
+                    margin: 2mm;
+                }
+                body {
+                    font-family: 'Courier New', monospace;
+                    font-size: 32px;
+                    font-weight: bold;
+                    width: 76mm;
+                    margin: 0 auto;
+                    padding: 4mm;
+                    background: white;
+                    color: black;
+                }
+                .header {
+                    text-align: center !important;
+                    border-bottom: 2px dashed #000;
+                    padding: 0 !important;
+                    margin: 0 0 2px 0 !important;
+                    line-height: 1;
+                }
+                .header img {
+                    display: block !important;
+                    margin: 0 auto !important;
+                    vertical-align: bottom !important;
+                    max-height: 350px;
+                    max-width: 100%;
+                }
+                .header strong {
+                    display: block;
+                    font-size: 40px;
+                    font-weight: bold;
+                    margin: 0;
+                    line-height: 1;
+                }
+                .header small {
+                    display: block;
+                    font-size: 26px;
+                    color: #555;
+                    margin: 0;
+                    line-height: 1;
+                }
+                .info {
+                    margin: 10px 0;
+                }
+                .info p {
+                    margin: 5px 0;
+                    font-size: 20px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                hr {
+                    border: none;
+                    border-top: 2px dashed #000;
+                    margin: 10px 0;
+                }
+                .bet-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 5px 0;
+                    font-weight: bold;
+                    font-size: 32px;
+                }
+                .total-row {
+                    display: flex;
+                    justify-content: space-between;
+                    font-weight: bold;
+                    margin-top: 10px;
+                    font-size: 36px;
+                }
+                .footer {
+                    text-align: center;
+                    margin-top: 20px;
+                    font-style: italic;
+                    font-size: 28px;
+                }
+                .footer p {
+                    font-weight: bold;
+                    margin: 3px 0;
+                }
+            </style>
+        </head>
+        <body>
+            ${html}
+        </body>
+        </html>
+    `);
     printWindow.document.close();
+
     printWindow.onload = function() {
         printWindow.focus();
         printWindow.print();
     };
 }
 
-// ---------- Génération HTML du ticket fusionné ----------
-function generateAggregatedTicketHTML(ticket) {
+// ---------- Ticket HTML ----------
+function generateTicketHTML(ticket) {
     const cfg = APP_STATE.lotteryConfig || CONFIG;
+
     const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTATO';
     const slogan = cfg.slogan || '';
     const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
-    const address = cfg.address || '';
-    const phoneNumbers = cfg.phone_numbers || '';
 
+    // Normalisation de la date
     let formattedDate = 'Date invalide';
     if (ticket.date) {
         const normalized = normalizeDateString(ticket.date);
         const dateObj = new Date(normalized);
         if (!isNaN(dateObj)) {
-            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' +
+            formattedDate = dateObj.toLocaleDateString('fr-FR', { timeZone: 'America/Port-au-Prince' }) + ' ' + 
                             dateObj.toLocaleTimeString('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit' });
         }
     }
 
-    // Liste verticale des tirages (un par ligne avec puce)
-    const drawNamesList = ticket.drawNames.map(name => `<p style="margin-left: 1em;">• ${name}</p>`).join('');
+    // Récupération du nom du tirage
+    let drawName = ticket.draw_name || ticket.drawName;
+    if (!drawName && APP_STATE.draws && ticket.draw_id) {
+        const draw = APP_STATE.draws.find(d => d.id == ticket.draw_id);
+        drawName = draw ? draw.name : 'Tiraj Inkonu';
+    } else if (!drawName) {
+        drawName = 'Tiraj Inkonu';
+    }
 
     const betsHTML = (ticket.bets || []).map(b => {
         const gameAbbr = getGameAbbreviation(b.game || '', b);
@@ -506,144 +573,46 @@ function generateAggregatedTicketHTML(ticket) {
         if (b.game === 'auto_marriage' && displayNumber.includes('&')) {
             displayNumber = displayNumber.replace('&', '*');
         }
-        return `<div class="bet-row"><span>${gameAbbr} ${displayNumber}</span><span>${b.amount || 0} G</span></div>`;
+        return `
+            <div class="bet-row">
+                <span>${gameAbbr} ${displayNumber}</span>
+                <span>${b.amount || 0} G</span>
+            </div>
+        `;
     }).join('');
 
-    let headerHTML = `<div class="header">`;
-    if (logoUrl) headerHTML += `<img src="${logoUrl}" alt="Logo">`;
-    headerHTML += `<div class="lottery-name">${lotteryName}</div>`;
-    if (slogan) headerHTML += `<div class="slogan">${slogan}</div>`;
-    if (address) headerHTML += `<div class="address">${address}</div>`;
-    if (phoneNumbers) headerHTML += `<div class="phone">${phoneNumbers}</div>`;
-    headerHTML += `</div>`;
-
-    const infoHTML = `
-        <div class="info">
-            <p># : ${ticket.ticket_id}</p>
-            <p>Tirages:</p>
-            ${drawNamesList}
-            <p>Date: ${formattedDate}</p>
-            <p>Ajan: ${ticket.agent_name || ''}</p>
-        </div>
-    `;
-
-    const footerHTML = `
-        <div class="footer">
-            <p>tickets valable pour 90 jours</p>
-            <p><strong>LOTATO S.A.</strong></p>
-        </div>
-    `;
-
     return `
-        ${headerHTML}
-        ${infoHTML}
+        <div class="header">
+            ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
+            <strong>${lotteryName}</strong>
+            ${slogan ? `<small>${slogan}</small>` : ''}
+        </div>
+
+        <div class="info">
+            <p>Ticket #: ${ticket.ticket_id || ticket.id}</p>
+            <p>Tiraj: ${drawName}</p>
+            <p>Date: ${formattedDate}</p>
+            <p>Ajan: ${ticket.agent_name || ticket.agentName || ''}</p>
+        </div>
+
         <hr>
         ${betsHTML}
         <hr>
+
         <div class="total-row">
-            <span>TOTAL:</span>
-            <span>${ticket.total} Gdes</span>
+            <span>TOTAL</span>
+            <span>${ticket.total_amount || ticket.total || 0} Gdes</span>
         </div>
-        ${footerHTML}
+
+        <div class="footer">
+            <p>tickets valable jusqu'à 90 jours</p>
+            <p>Ref : +509 </p>
+            <p><strong>LOTATO S.A.</strong></p>
+        </div>
     `;
 }
 
-// ---------- Construction HTML complet avec styles fixes ----------
-function buildFullPrintHTML(bodyHTML) {
-    return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-    @page { size: 80mm auto; margin: 2mm; }
-    body {
-        font-family: 'Courier New', monospace;
-        font-weight: bold;
-        width: 76mm;
-        margin: 0 auto;
-        padding: 4mm;
-        background: white;
-        color: black;
-    }
-    .header {
-        text-align: center;
-        border-bottom: 2px solid #000;
-        padding-bottom: 8px;
-        margin-bottom: 12px;
-    }
-    .header img {
-        display: block;
-        margin: 0 auto;
-        max-height: 100px;
-        max-width: 80%;
-    }
-    .header .lottery-name {
-        font-size: 30px;
-        font-weight: bold;
-        letter-spacing: 1px;
-        margin: 4px 0;
-    }
-    .header .slogan, .header .address, .header .phone {
-        font-size: 17px;
-        margin: 2px 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .info {
-        margin: 8px 0;
-        font-size: 17px;
-    }
-    .info p {
-        margin: 3px 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    hr {
-        border: none;
-        border-top: 1px dashed #000;
-        margin: 8px 0;
-    }
-    .bet-row {
-        display: flex;
-        justify-content: space-between;
-        margin: 6px 0;
-        font-weight: bold;
-        font-size: 20px;
-    }
-    .total-row {
-        display: flex;
-        justify-content: space-between;
-        font-weight: bold;
-        margin-top: 12px;
-        padding-top: 6px;
-        border-top: 2px solid #000;
-        font-size: 22px;
-    }
-    .footer {
-        text-align: center;
-        margin-top: 18px;
-        font-size: 17px;
-        font-weight: bold;
-    }
-    .footer p {
-        margin: 5px 0;
-    }
-</style>
-</head>
-<body>${bodyHTML}</body>
-</html>`;
-}
-
-// ---------- Chargement initial ----------
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => loadAdvancedSettings());
-} else {
-    loadAdvancedSettings();
-}
-
-// ---------- Exports globaux ----------
+// ---------- Global ----------
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
-window.printThermalTicket = printThermalTicket;  // conservé pour compatibilité
+window.printThermalTicket = printThermalTicket;
