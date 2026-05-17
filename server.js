@@ -437,13 +437,13 @@ const CACHE_TTL = 90 * 1000;
 // Tous les championnats disponibles sur football-data.org
 const COMPETITIONS = ['PL','PD','BL1','SA','FL1','CL','ELC','PPL','DED','BSA','WC','EC','CLI'];
 const COMP_LABELS = {
-  PL:  '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League',
+  PL:  '🏴 Premier League',
   PD:  '🇪🇸 La Liga',
   BL1: '🇩🇪 Bundesliga',
   SA:  '🇮🇹 Serie A',
   FL1: '🇫🇷 Ligue 1',
   CL:  '🏆 Champions League',
-  ELC: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Championship',
+  ELC: '🏴 Championship',
   PPL: '🇵🇹 Primeira Liga',
   DED: '🇳🇱 Eredivisie',
   BSA: '🇧🇷 Brasileirão',
@@ -1890,4 +1890,4 @@ app.post('/api/borlette/resolve', requireAuth, async (req, res) => {
 
     await client.query('BEGIN');
     // Sauvegarder résultat
-    await client.query("INSERT INTO borlette_resul
+    await client.query("INSERT INTO borlette_results (draw, lot1, lot2, lo
