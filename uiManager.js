@@ -1197,16 +1197,13 @@ window.replayTicket = replayTicket;
     const originalLoadReports = window.loadReports;
 
     window.loadReports = async function() {
-        await originalLoadReports();  // affichage de base
-
+        await originalLoadReports();
         const userRole = localStorage.getItem('user_role');
         if (userRole !== 'agent') return;
 
-        // Récupérer les tickets
+        // Récupérer tous les tickets et appliquer les filtres (comme original)
         let allTickets = APP_STATE.ticketsHistory || [];
         if (!allTickets.length) return;
-
-        // Appliquer les filtres (date + tirage) – identiques à ceux utilisés pour l'affichage
         const filteredByDate = filterTicketsByDate(allTickets, window.reportFilters);
         const drawId = window.reportFilters.drawId;
         const finalTickets = drawId !== 'all'
@@ -1226,22 +1223,12 @@ window.replayTicket = replayTicket;
         const balance = totalVentes - commissionAmount - totalGains;
         const totalTickets = finalTickets.length;
 
-        // STOCKER DANS UNE VARIABLE GLOBALE POUR L'IMPRESSION
-        window.lastReportData = {
-            totalTickets,
-            totalVentes,
-            totalGains,
-            commissionPercent,
-            commissionAmount,
-            balance,
-            periodText: getPeriodText(),      // fonction utilitaire ci-dessous
-            selectedDraw: getSelectedDrawName()
-        };
-
-        // Mise à jour de l'affichage
+        // Mettre à jour l'affichage
+        const totalTicketsElem = document.getElementById('total-tickets');
         const totalBetsElem = document.getElementById('total-bets');
         const totalWinsElem = document.getElementById('total-wins');
         const balanceElem = document.getElementById('balance');
+        if (totalTicketsElem) totalTicketsElem.textContent = totalTickets;
         if (totalBetsElem) totalBetsElem.textContent = totalVentes.toLocaleString('fr-FR') + ' Gdes';
         if (totalWinsElem) totalWinsElem.textContent = totalGains.toLocaleString('fr-FR') + ' Gdes';
         if (balanceElem) {
@@ -1249,7 +1236,7 @@ window.replayTicket = replayTicket;
             balanceElem.style.color = balance >= 0 ? 'var(--success)' : 'var(--danger)';
         }
 
-        // Gestion de la carte commission
+        // Gérer la carte commission
         let commissionCard = document.getElementById('agent-commission-card');
         const statsGrid = document.querySelector('.reports-summary .stats-grid') || document.querySelector('.stats-grid');
         if (!commissionCard && statsGrid) {
@@ -1262,35 +1249,68 @@ window.replayTicket = replayTicket;
             `;
             statsGrid.appendChild(commissionCard);
         }
-        const commissionValueElem = document.getElementById('agent-commission-value');
-        if (commissionValueElem) {
-            commissionValueElem.textContent = commissionAmount.toLocaleString('fr-FR') + ' Gdes';
-            commissionValueElem.style.color = 'var(--danger)';
+        const commissionElem = document.getElementById('agent-commission-value');
+        if (commissionElem) {
+            commissionElem.textContent = commissionAmount.toLocaleString('fr-FR') + ' Gdes';
+            commissionElem.style.color = 'var(--danger)';
         }
     };
 
-    // Fonctions utilitaires pour l'impression
-    function getPeriodText() {
-        const p = window.reportFilters;
-        if (p?.period === 'today') return 'Jodi a';
-        if (p?.period === 'yesterday') return 'Yè';
-        if (p?.period === 'week') return 'Semèn sa a';
-        if (p?.period === 'custom') return `Soti ${p.fromDate} rive ${p.toDate}`;
-        return 'Jodi a';
-    }
-
-    function getSelectedDrawName() {
-        const selector = document.getElementById('draw-report-selector');
-        return selector ? selector.options[selector.selectedIndex]?.text : 'Rapò';
-    }
-
-    // Impression : utilise les données stockées
-    window.printReport = function() {
-        if (!window.lastReportData) {
-            alert("Chaje rapò a anvan enprime.");
-            return;
+    // Fonction utilitaire pour extraire un nombre depuis un élément (ex: "1 080 Gdes" → 1080)
+    function extractNumber(element) {
+        if (!element) return 0;
+        let text = element.textContent || '';
+        let match = text.match(/([\d,\.\s]+)/);
+        if (match) {
+            let numStr = match[1].replace(/\s/g, '').replace(/,/g, '');
+            return parseFloat(numStr) || 0;
         }
-        const data = window.lastReportData;
+        return 0;
+    }
+
+    // Impression : utilise exactement les valeurs affichées à l'écran
+    window.printReport = function() {
+        // Lire les éléments DOM
+        const totalTicketsElem = document.getElementById('total-tickets');
+        const totalBetsElem = document.getElementById('total-bets');
+        const totalWinsElem = document.getElementById('total-wins');
+        const balanceElem = document.getElementById('balance');
+        const commissionElem = document.getElementById('agent-commission-value');
+
+        const totalTickets = totalTicketsElem ? totalTicketsElem.textContent.trim() : '0';
+        const totalVentes = extractNumber(totalBetsElem);
+        const totalGains = extractNumber(totalWinsElem);
+        const balance = extractNumber(balanceElem);
+        const commissionAmount = commissionElem ? extractNumber(commissionElem) : 0;
+
+        // Récupérer le pourcentage depuis le localStorage ou depuis le label
+        let commissionPercent = parseFloat(localStorage.getItem('agent_commission')) || 0;
+        if (commissionPercent === 0 && commissionElem) {
+            const card = document.getElementById('agent-commission-card');
+            const label = card?.querySelector('.stat-label');
+            if (label) {
+                const match = label.textContent.match(/(\d+(?:\.\d+)?)%/);
+                if (match) commissionPercent = parseFloat(match[1]);
+            }
+        }
+
+        // Période
+        let periodText = '';
+        const periodInfoElem = document.querySelector('.period-info');
+        if (periodInfoElem) {
+            periodText = periodInfoElem.textContent.replace('Peryòd:', '').trim();
+        } else {
+            const p = window.reportFilters;
+            if (p?.period === 'today') periodText = 'Jodi a';
+            else if (p?.period === 'yesterday') periodText = 'Yè';
+            else if (p?.period === 'week') periodText = 'Semèn sa a';
+            else if (p?.period === 'custom') periodText = `Soti ${p.fromDate} rive ${p.toDate}`;
+            else periodText = 'Jodi a';
+        }
+
+        const drawSelector = document.getElementById('draw-report-selector');
+        const selectedDraw = drawSelector ? drawSelector.options[drawSelector.selectedIndex]?.text : 'Rapò';
+
         const cfg = APP_STATE?.lotteryConfig || CONFIG || {};
         const lotteryName = cfg.LOTTERY_NAME || cfg.name || 'LOTERIE';
         const logoUrl = cfg.LOTTERY_LOGO || cfg.logo || cfg.logoUrl || '';
@@ -1322,17 +1342,17 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
         ${logoUrl ? `<img src="${logoUrl}" alt="Logo">` : ''}
         <h1>${lotteryName}</h1>
         ${slogan ? `<p>${slogan}</p>` : ''}
-        <h2>${data.selectedDraw}</h2>
+        <h2>${selectedDraw}</h2>
         <p>${new Date().toLocaleDateString('fr-FR')} - Ajan: ${APP_STATE?.agentName || localStorage.getItem('agent_name') || ''}</p>
     </div>
-    <div class="period-info">Peryòd: ${data.periodText}</div>
+    <div class="period-info">Peryòd: ${periodText}</div>
     <div class="section">
         <div class="section-title">Rekapitilatif</div>
-        <div class="row"><span>Total Tikè:</span><span>${data.totalTickets}</span></div>
-        <div class="row"><span>Total Montan Tikè:</span><span>${data.totalVentes.toLocaleString('fr-FR')} G</span></div>
-        <div class="row"><span>Total Ganyen:</span><span>${data.totalGains.toLocaleString('fr-FR')} G</span></div>
-        ${data.commissionPercent > 0 ? `<div class="row"><span>Komisyon Ajan (${data.commissionPercent}%) :</span><span>${data.commissionAmount.toLocaleString('fr-FR')} G</span></div>` : ''}
-        <div class="row total-row"><span>BALANS FINAL :</span><span>${data.balance.toLocaleString('fr-FR')} G</span></div>
+        <div class="row"><span>Total Tikè:</span><span>${totalTickets}</span></div>
+        <div class="row"><span>Total Montan Tikè:</span><span>${totalVentes.toLocaleString('fr-FR')} G</span></div>
+        <div class="row"><span>Total Ganyen:</span><span>${totalGains.toLocaleString('fr-FR')} G</span></div>
+        ${commissionPercent > 0 ? `<div class="row"><span>Komisyon Ajan (${commissionPercent}%) :</span><span>${commissionAmount.toLocaleString('fr-FR')} G</span></div>` : ''}
+        <div class="row total-row"><span>BALANS FINAL :</span><span>${balance.toLocaleString('fr-FR')} G</span></div>
     </div>
     <div class="footer">
         <p>Rapò jenere le: ${new Date().toLocaleString('fr-FR')}</p>
@@ -1341,7 +1361,7 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
 </body>
 </html>`;
 
-        printHTMLContent(html, `Rapò ${data.selectedDraw}`);
+        printHTMLContent(html, `Rapò ${selectedDraw}`);
     };
 })();
 // ==================== FIN BLOC ====================
