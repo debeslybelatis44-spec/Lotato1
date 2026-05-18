@@ -238,7 +238,7 @@ cron.schedule('* * * * *', async () => {
     }
 });
 
-// Tâche exécutée à minuit (00:00) pour réactiver tous les tirages
+// Tâche exécutée à minuit (00:00) heure d'Haïti pour réactiver tous les tirages
 cron.schedule('0 0 * * *', async () => {
     try {
         const result = await pool.query(
@@ -250,8 +250,7 @@ cron.schedule('0 0 * * *', async () => {
     } catch (err) {
         console.error('❌ Erreur lors de la réactivation des tirages :', err);
     }
-});
-
+}, { timezone: 'America/Port-au-Prince' });
 // ==================== Middleware ====================
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
