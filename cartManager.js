@@ -433,7 +433,7 @@ async function processFinalTicket() {
         const aggregatedTicket = buildAggregatedTicket(savedTickets, betsByDraw);
         if (isAndroidWebView()) {
             const ticketHTML = generateAggregatedTicketHTML(aggregatedTicket);
-            const fullHTML = buildFullPrintHTML(ticketHTML);
+            const fullHTML = buildTicketPrintHTML(ticketHTML);  // ← renommé
             window.AndroidPrint.printHTML(fullHTML);
         } else {
             printAggregatedTicket(aggregatedTicket, printWindow);
@@ -469,7 +469,7 @@ function buildAggregatedTicket(ticketsList, betsByDraw) {
 
 function printAggregatedTicket(aggregatedTicket, printWindow) {
     const html = generateAggregatedTicketHTML(aggregatedTicket);
-    const fullHTML = buildFullPrintHTML(html);
+    const fullHTML = buildTicketPrintHTML(html);  // ← renommé
     printWindow.document.write(fullHTML);
     printWindow.document.close();
     printWindow.onload = function() {
@@ -548,8 +548,8 @@ function generateAggregatedTicketHTML(ticket) {
     `;
 }
 
-// ---------- Construction HTML complet avec styles fixes ----------
-function buildFullPrintHTML(bodyHTML) {
+// ---------- Construction HTML complet avec styles fixes pour ticket (renommée) ----------
+function buildTicketPrintHTML(bodyHTML) {
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -646,4 +646,6 @@ if (document.readyState === 'loading') {
 // ---------- Exports globaux ----------
 window.CartManager = CartManager;
 window.processFinalTicket = processFinalTicket;
-window.printThermalTicket = printThermalTicket;  // conservé pour compatibilité
+// La fonction buildFullPrintHTML n'est plus exposée globalement pour éviter conflit.
+// On expose plutôt buildTicketPrintHTML si nécessaire (optionnel)
+window.buildTicketPrintHTML = buildTicketPrintHTML;
