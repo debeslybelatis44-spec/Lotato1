@@ -2355,6 +2355,378 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
     results
   });
 });
+// ============================================================
+// PATCH : Ajout du support win_details pour winnersDetails.js
+// (À placer à la fin de server.js, avant le démarrage)
+// ============================================================
+
+// Fonction utilitaire pour l'abréviation des jeux
+function getGameAbbreviationForWin(gameName, bet) {
+    if (bet && bet.free && bet.freeType === 'special_marriage') return 'marg';
+    const map = {
+        'borlette': 'bor', 'lotto3': 'lo3', 'lotto4': 'lo4', 'lotto5': 'lo5',
+        'auto_marriage': 'mara', 'auto_lotto4': 'loa4', 'auto_lotto5': 'loa5',
+        'mariage': 'mar', 'bo': 'bo', 'grap': 'grap'
+    };
+    const key = (gameName || '').trim().toLowerCase();
+    return map[key] || gameName;
+}
+
+// Patch : route owner publish-results
+app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async (req, res) => {
+    const ownerId = req.user.id;
+    const { drawId, numbers, lotto3 } = req.body;
+    if (!drawId || !numbers || numbers.length !== 3) return res.status(400).json({ error: 'Données invalides' });
+    try {
+        await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
+        const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
+        let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
+        if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
+            const raw = settingsRes.rows[0].multipliers;
+            multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        }
+        const [lot1, lot2, lot3_num] = numbers;
+        const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
+        
+        for (const ticket of ticketsRes.rows) {
+            let totalWin = 0;
+            const win_details = [];
+            const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
+            if (Array.isArray(bets)) {
+                for (const bet of bets) {
+                    const game = bet.game || bet.specialType;
+                    const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+                    const amount = parseFloat(bet.amount) || 0;
+                    let gain = 0;
+                    let reason = '';
+
+                    // Borlette
+                    if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+                        if (clean.length === 2) {
+                            if (clean === lot1) { gain = amount * multipliers.lot1; reason = 'lot1'; }
+                            else if (clean === lot2) { gain = amount * multipliers.lot2; reason = 'lot2'; }
+                            else if (clean === lot3_num) { gain = amount * multipliers.lot3; reason = 'lot3'; }
+                            if (gain > 0) {
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                    // Lotto3
+                    else if (game === 'lotto3' || game === 'auto_lotto3') {
+                        if (clean.length === 3 && clean === lotto3) {
+                            gain = amount * multipliers.lotto3;
+                            win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: 'lotto3' });
+                            totalWin += gain;
+                        }
+                    }
+                    // Mariage
+                    else if (game === 'mariage' || game === 'auto_marriage') {
+                        if (clean.length === 4) {
+                            const first = clean.slice(0,2), second = clean.slice(2,4);
+                            const pairs = [lot1, lot2, lot3_num];
+                            let win = false;
+                            for (let i=0; i<3; i++) {
+                                for (let j=0; j<3; j++) {
+                                    if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+                                }
+                                if (win) break;
+                            }
+                            if (win) {
+                                let freeWinAmount = 2500;
+                                if (bet.free && bet.freeType === 'special_marriage') {
+                                    const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
+                                    if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                                    gain = freeWinAmount;
+                                } else {
+                                    gain = amount * multipliers.mariage;
+                                }
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                    // Lotto4
+                    else if (game === 'lotto4' || game === 'auto_lotto4') {
+                        if (clean.length === 4 && bet.option) {
+                            let expected = '';
+                            if (bet.option == 1) expected = lot1 + lot2;
+                            else if (bet.option == 2) expected = lot2 + lot3_num;
+                            else if (bet.option == 3) expected = lot1 + lot3_num;
+                            if (clean === expected) {
+                                gain = amount * multipliers.lotto4;
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto4_option${bet.option}` });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                    // Lotto5
+                    else if (game === 'lotto5' || game === 'auto_lotto5') {
+                        if (clean.length === 5 && bet.option) {
+                            let expected = '';
+                            if (bet.option == 1) expected = lotto3 + lot2;
+                            else if (bet.option == 2) expected = lotto3 + lot3_num;
+                            if (clean === expected) {
+                                gain = amount * multipliers.lotto5;
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto5_option${bet.option}` });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                }
+            }
+            await pool.query('UPDATE tickets SET win_amount = $1, checked = true, win_details = $2 WHERE id = $3', [totalWin, JSON.stringify(win_details), ticket.id]);
+        }
+        await pool.query('INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)', [ownerId, 'owner', 'publish_results', `Tirage ${drawId}`, req.ip]);
+        res.json({ success: true });
+    } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur publication' }); }
+});
+
+// Patch : route superadmin publish-results
+app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, async (req, res) => {
+    const { ownerId, drawId, numbers, lotto3 } = req.body;
+    if (!ownerId || !drawId || !numbers || !Array.isArray(numbers) || numbers.length !== 3 || !lotto3) {
+        return res.status(400).json({ error: 'Données invalides' });
+    }
+    for (let n of numbers) if (!/^\d{2}$/.test(n)) return res.status(400).json({ error: `Numéro invalide` });
+    if (!/^\d{3}$/.test(lotto3)) return res.status(400).json({ error: 'Lotto3 invalide' });
+
+    try {
+        const ownerCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
+        if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Propriétaire introuvable' });
+
+        await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
+
+        const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
+        let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
+        if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
+            const raw = settingsRes.rows[0].multipliers;
+            multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        }
+
+        const [lot1, lot2, lot3_num] = numbers;
+        const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
+
+        for (const ticket of ticketsRes.rows) {
+            let totalWin = 0;
+            const win_details = [];
+            const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
+            if (Array.isArray(bets)) {
+                for (const bet of bets) {
+                    const game = bet.game || bet.specialType;
+                    const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+                    const amount = parseFloat(bet.amount) || 0;
+                    let gain = 0, reason = '';
+
+                    if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+                        if (clean.length === 2) {
+                            if (clean === lot1) { gain = amount * multipliers.lot1; reason = 'lot1'; }
+                            else if (clean === lot2) { gain = amount * multipliers.lot2; reason = 'lot2'; }
+                            else if (clean === lot3_num) { gain = amount * multipliers.lot3; reason = 'lot3'; }
+                            if (gain > 0) {
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                    else if (game === 'lotto3' || game === 'auto_lotto3') {
+                        if (clean.length === 3 && clean === lotto3) {
+                            gain = amount * multipliers.lotto3;
+                            win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: 'lotto3' });
+                            totalWin += gain;
+                        }
+                    }
+                    else if (game === 'mariage' || game === 'auto_marriage') {
+                        if (clean.length === 4) {
+                            const first = clean.slice(0,2), second = clean.slice(2,4);
+                            const pairs = [lot1, lot2, lot3_num];
+                            let win = false;
+                            for (let i=0; i<3; i++) {
+                                for (let j=0; j<3; j++) {
+                                    if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+                                }
+                                if (win) break;
+                            }
+                            if (win) {
+                                let freeWinAmount = 2500;
+                                if (bet.free && bet.freeType === 'special_marriage') {
+                                    const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
+                                    if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                                    gain = freeWinAmount;
+                                } else {
+                                    gain = amount * multipliers.mariage;
+                                }
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                    else if (game === 'lotto4' || game === 'auto_lotto4') {
+                        if (clean.length === 4 && bet.option) {
+                            let expected = '';
+                            if (bet.option == 1) expected = lot1 + lot2;
+                            else if (bet.option == 2) expected = lot2 + lot3_num;
+                            else if (bet.option == 3) expected = lot1 + lot3_num;
+                            if (clean === expected) {
+                                gain = amount * multipliers.lotto4;
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto4_option${bet.option}` });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                    else if (game === 'lotto5' || game === 'auto_lotto5') {
+                        if (clean.length === 5 && bet.option) {
+                            let expected = '';
+                            if (bet.option == 1) expected = lotto3 + lot2;
+                            else if (bet.option == 2) expected = lotto3 + lot3_num;
+                            if (clean === expected) {
+                                gain = amount * multipliers.lotto5;
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto5_option${bet.option}` });
+                                totalWin += gain;
+                            }
+                        }
+                    }
+                }
+            }
+            await pool.query('UPDATE tickets SET win_amount = $1, checked = true, win_details = $2 WHERE id = $3', [totalWin, JSON.stringify(win_details), ticket.id]);
+        }
+
+        await pool.query(`INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)`, [req.user.id, 'superadmin', 'publish_results', `Owner ${ownerId}, Draw ${drawId}`, req.ip]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Patch : route superadmin publish-results-bulk
+app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin, async (req, res) => {
+    const { ownerIds, drawId, numbers, lotto3 } = req.body;
+    if (!ownerIds || !Array.isArray(ownerIds) || ownerIds.length === 0) {
+        return res.status(400).json({ error: 'Liste ownerIds requise' });
+    }
+    if (!drawId || !numbers || numbers.length !== 3 || !lotto3) {
+        return res.status(400).json({ error: 'drawId, numbers, lotto3 requis' });
+    }
+    for (let n of numbers) if (!/^\d{2}$/.test(n)) return res.status(400).json({ error: `Numéro invalide` });
+    if (!/^\d{3}$/.test(lotto3)) return res.status(400).json({ error: 'Lotto3 invalide' });
+
+    async function publishForOneOwner(ownerId) {
+        try {
+            const ownerCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
+            if (ownerCheck.rows.length === 0) return { success: false, ownerId, error: 'Propriétaire introuvable' };
+
+            await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
+
+            const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
+            let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
+            if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
+                const raw = settingsRes.rows[0].multipliers;
+                multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            }
+
+            const [lot1, lot2, lot3_num] = numbers;
+            const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
+
+            for (const ticket of ticketsRes.rows) {
+                let totalWin = 0;
+                const win_details = [];
+                const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
+                if (Array.isArray(bets)) {
+                    for (const bet of bets) {
+                        const game = bet.game || bet.specialType;
+                        const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+                        const amount = parseFloat(bet.amount) || 0;
+                        let gain = 0, reason = '';
+
+                        if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+                            if (clean.length === 2) {
+                                if (clean === lot1) { gain = amount * multipliers.lot1; reason = 'lot1'; }
+                                else if (clean === lot2) { gain = amount * multipliers.lot2; reason = 'lot2'; }
+                                else if (clean === lot3_num) { gain = amount * multipliers.lot3; reason = 'lot3'; }
+                                if (gain > 0) {
+                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason });
+                                    totalWin += gain;
+                                }
+                            }
+                        }
+                        else if (game === 'lotto3' || game === 'auto_lotto3') {
+                            if (clean.length === 3 && clean === lotto3) {
+                                gain = amount * multipliers.lotto3;
+                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: 'lotto3' });
+                                totalWin += gain;
+                            }
+                        }
+                        else if (game === 'mariage' || game === 'auto_marriage') {
+                            if (clean.length === 4) {
+                                const first = clean.slice(0,2), second = clean.slice(2,4);
+                                const pairs = [lot1, lot2, lot3_num];
+                                let win = false;
+                                for (let i=0; i<3; i++) {
+                                    for (let j=0; j<3; j++) {
+                                        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+                                    }
+                                    if (win) break;
+                                }
+                                if (win) {
+                                    let freeWinAmount = 2500;
+                                    if (bet.free && bet.freeType === 'special_marriage') {
+                                        const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
+                                        if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                                        gain = freeWinAmount;
+                                    } else {
+                                        gain = amount * multipliers.mariage;
+                                    }
+                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
+                                    totalWin += gain;
+                                }
+                            }
+                        }
+                        else if (game === 'lotto4' || game === 'auto_lotto4') {
+                            if (clean.length === 4 && bet.option) {
+                                let expected = '';
+                                if (bet.option == 1) expected = lot1 + lot2;
+                                else if (bet.option == 2) expected = lot2 + lot3_num;
+                                else if (bet.option == 3) expected = lot1 + lot3_num;
+                                if (clean === expected) {
+                                    gain = amount * multipliers.lotto4;
+                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto4_option${bet.option}` });
+                                    totalWin += gain;
+                                }
+                            }
+                        }
+                        else if (game === 'lotto5' || game === 'auto_lotto5') {
+                            if (clean.length === 5 && bet.option) {
+                                let expected = '';
+                                if (bet.option == 1) expected = lotto3 + lot2;
+                                else if (bet.option == 2) expected = lotto3 + lot3_num;
+                                if (clean === expected) {
+                                    gain = amount * multipliers.lotto5;
+                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto5_option${bet.option}` });
+                                    totalWin += gain;
+                                }
+                            }
+                        }
+                    }
+                }
+                await pool.query('UPDATE tickets SET win_amount = $1, checked = true, win_details = $2 WHERE id = $3', [totalWin, JSON.stringify(win_details), ticket.id]);
+            }
+
+            await pool.query(`INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)`, [req.user.id, 'superadmin', 'publish_results_bulk', `Owner ${ownerId}, Draw ${drawId}`, req.ip]);
+            return { success: true, ownerId };
+        } catch (err) {
+            console.error(`Erreur pour owner ${ownerId}:`, err);
+            return { success: false, ownerId, error: err.message };
+        }
+    }
+
+    const results = await Promise.all(ownerIds.map(id => publishForOneOwner(id)));
+    const successCount = results.filter(r => r.success).length;
+    res.json({ success: true, summary: { total: results.length, success: successCount, failed: results.length - successCount }, results });
+});
+
+console.log('✅ Patch win_details appliqué (routes owner et superadmin surchargées)');
+// ============================================================
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
