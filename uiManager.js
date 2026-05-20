@@ -872,6 +872,209 @@ function logout() {
 function setAgentCommission(percentage) {
     APP_STATE.agentCommission = parseFloat(percentage) || 0;
     localStorage.setItem('agent_commission', APP_STATE.agentCommission);
+    // ============================================================
+// PATCH : Filtres (jour, semaine, mois, personnalisé + recherche) pour les tickets gagnants
+// À coller à la fin de uiManager.js
+// ============================================================
+
+// Sauvegarde des fonctions originales pour éviter les conflits
+const _originalLoadWinners = window.loadWinners || loadWinners;
+const _originalUpdateWinnersDisplay = window.updateWinnersDisplay || updateWinnersDisplay;
+
+// Nouvelle fonction d'initialisation des filtres
+function initWinnersFilters() {
+    const winnersScreen = document.getElementById('winners-screen');
+    if (!winnersScreen) return;
+    if (document.getElementById('winners-filters')) return;
+
+    const filtersDiv = document.createElement('div');
+    filtersDiv.id = 'winners-filters';
+    filtersDiv.className = 'winners-filters';
+    filtersDiv.innerHTML = `
+        <div class="filter-row">
+            <select id="winners-period" class="filter-select">
+                <option value="today">Jodi a</option>
+                <option value="yesterday">Yè</option>
+                <option value="week">Semèn sa a</option>
+                <option value="month">Mwa sa a</option>
+                <option value="custom">Dat pèsonalize</option>
+            </select>
+            <div id="winners-custom-range" style="display: none; gap: 10px; margin-top: 10px;">
+                <input type="date" id="winners-from-date" class="filter-input">
+                <input type="date" id="winners-to-date" class="filter-input">
+            </div>
+            <input type="text" id="winners-search" placeholder="Rechèch tikè (nimewo, tiraj...)" class="filter-input" style="flex:1;">
+            <button id="apply-winners-filters" class="filter-btn">Filtre</button>
+        </div>
+    `;
+    const container = document.getElementById('winners-container');
+    if (container) winnersScreen.insertBefore(filtersDiv, container);
+
+    const periodSelect = document.getElementById('winners-period');
+    const customRange = document.getElementById('winners-custom-range');
+    if (periodSelect) {
+        periodSelect.addEventListener('change', () => {
+            customRange.style.display = periodSelect.value === 'custom' ? 'flex' : 'none';
+        });
+    }
+
+    const applyBtn = document.getElementById('apply-winners-filters');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', () => applyWinnersFilters());
+    }
+
+    // Dates par défaut
+    const today = new Date().toISOString().split('T')[0];
+    const fromInput = document.getElementById('winners-from-date');
+    const toInput = document.getElementById('winners-to-date');
+    if (fromInput) fromInput.value = today;
+    if (toInput) toInput.value = today;
+}
+
+// Fonction de filtrage
+function applyWinnersFilters() {
+    const period = document.getElementById('winners-period').value;
+    let fromDate = null, toDate = null;
+    if (period === 'custom') {
+        fromDate = document.getElementById('winners-from-date').value;
+        toDate = document.getElementById('winners-to-date').value;
+        if (!fromDate || !toDate) {
+            alert("Chwazi dat kòmansman ak dat fini");
+            return;
+        }
+    }
+    const searchTerm = document.getElementById('winners-search').value.toLowerCase();
+    
+    let filtered = [...(APP_STATE.winningTickets || [])];
+    
+    // Filtre temporel (fuseau America/Port-au-Prince)
+    const tz = 'America/Port-au-Prince';
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('fr-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+    const todayStr = formatter.format(now);
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    const yesterdayStr = formatter.format(yesterday);
+    const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
+    weekAgo.setHours(0,0,0,0);
+    const monthAgo = new Date(now); monthAgo.setMonth(now.getMonth() - 1);
+    monthAgo.setHours(0,0,0,0);
+    
+    filtered = filtered.filter(ticket => {
+        const raw = ticket.date || ticket.created_at;
+        if (!raw) return false;
+        const date = new Date(raw);
+        if (isNaN(date)) return false;
+        const dateStr = formatter.format(date);
+        if (period === 'today') return dateStr === todayStr;
+        if (period === 'yesterday') return dateStr === yesterdayStr;
+        if (period === 'week') {
+            const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
+            return local >= weekAgo;
+        }
+        if (period === 'month') {
+            const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
+            return local >= monthAgo;
+        }
+        if (period === 'custom' && fromDate && toDate) {
+            const from = new Date(fromDate + 'T00:00:00');
+            const to = new Date(toDate + 'T23:59:59.999');
+            const onlyDate = new Date(dateStr + 'T12:00:00');
+            return onlyDate >= from && onlyDate <= to;
+        }
+        return true;
+    });
+    
+    // Filtre texte (ticket_id, draw_name, numéros)
+    if (searchTerm) {
+        filtered = filtered.filter(ticket => {
+            const ticketId = (ticket.ticket_id || ticket.id || '').toString().toLowerCase();
+            if (ticketId.includes(searchTerm)) return true;
+            const drawName = (ticket.draw_name || ticket.drawName || '').toLowerCase();
+            if (drawName.includes(searchTerm)) return true;
+            let bets = ticket.bets || [];
+            if (typeof bets === 'string') {
+                try { bets = JSON.parse(bets); } catch(e) { bets = []; }
+            }
+            const numbersStr = bets.map(b => b.number || b.cleanNumber || '').join(' ').toLowerCase();
+            if (numbersStr.includes(searchTerm)) return true;
+            return false;
+        });
+    }
+    
+    // Mettre à jour l'affichage avec les tickets filtrés
+    updateWinnersDisplay(filtered);
+}
+
+// Redéfinition de loadWinners pour ajouter l'initialisation des filtres
+window.loadWinners = async function() {
+    try {
+        await APIService.getWinningTickets();
+        await APIService.getWinningResults();
+        if (!document.getElementById('winners-filters')) {
+            initWinnersFilters();
+        }
+        updateWinnersDisplay(); // affiche tous
+    } catch (error) {
+        console.error('Erreur chargement gagnants:', error);
+        APP_STATE.winningTickets = [];
+        APP_STATE.winningResults = [];
+        updateWinnersDisplay();
+    }
+};
+
+// Redéfinition de updateWinnersDisplay pour accepter un paramètre optionnel
+window.updateWinnersDisplay = function(filteredTickets = null) {
+    const container = document.getElementById('winners-container');
+    if (!container) return;
+    const winningTickets = filteredTickets !== null ? filteredTickets : (APP_STATE.winningTickets || []);
+    const winningResults = APP_STATE.winningResults || [];
+    
+    // Mise à jour des stats
+    const totalWins = winningTickets.length;
+    const totalAmount = winningTickets.reduce((sum, ticket) => sum + (parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0)), 0);
+    const averageWin = totalWins > 0 ? totalAmount / totalWins : 0;
+    const totalWinnersEl = document.getElementById('total-winners-today');
+    const totalWinningAmountEl = document.getElementById('total-winning-amount');
+    const averageWinningEl = document.getElementById('average-winning');
+    if (totalWinnersEl) totalWinnersEl.textContent = totalWins;
+    if (totalWinningAmountEl) totalWinningAmountEl.textContent = totalAmount.toLocaleString('fr-FR') + ' Gdes';
+    if (averageWinningEl) averageWinningEl.textContent = averageWin.toFixed(2).toLocaleString('fr-FR') + ' Gdes';
+    
+    if (winningTickets.length === 0) {
+        container.innerHTML = '<div class="empty-msg">Pa gen tikè ki koresponn ak filtre yo</div>';
+        return;
+    }
+    
+    container.innerHTML = winningTickets.map(ticket => {
+        const isPaid = ticket.paid || false;
+        const winningResult = winningResults.find(r => r.draw_id == (ticket.draw_id || ticket.drawId));
+        const resultStr = winningResult ? winningResult.numbers.join(', ') : 'N/A';
+        const betAmount = parseFloat(ticket.bet_amount || ticket.total_amount || ticket.amount || 0) || 0;
+        const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0) || 0;
+        const netProfit = winAmount - betAmount;
+        let drawName = null;
+        if (APP_STATE.draws) { 
+            const draw = APP_STATE.draws.find(d => d.id == (ticket.draw_id || ticket.drawId)); 
+            if (draw) drawName = draw.name; 
+        }
+        if (!drawName) drawName = ticket.draw_name || ticket.drawName || 'Tiraj Inkonu';
+        const ticketDate = ticket.date || ticket.created_at;
+        const formattedDate = ticketDate ? new Date(ticketDate).toLocaleDateString('fr-FR') : '';
+        return `
+            <div class="winner-ticket">
+                <div class="winner-header">
+                    <div><strong>Tikè #${ticket.ticket_id || ticket.id}</strong><div style="font-size:0.8rem; color:var(--text-dim);">${drawName} - ${formattedDate}</div></div>
+                    <div style="text-align:right;"><div style="font-weight:bold; color:var(--success); font-size:1.1rem;">${winAmount.toLocaleString('fr-FR')} Gdes</div><div style="font-size:0.8rem; color:var(--text-dim);">(Mise: ${betAmount.toLocaleString('fr-FR')}G | Net: ${netProfit.toLocaleString('fr-FR')}G)</div></div>
+                </div>
+                <div><p><strong>Rezilta Tiraj:</strong> ${resultStr}</p><p><strong>Jwèt:</strong> ${ticket.game_type || ticket.gameType || 'Borlette'}</p><p><strong>Nimewo Ganyen:</strong> ${ticket.winning_number || ticket.winningNumber || 'N/A'}</p></div>
+                <div class="winner-actions">${isPaid ? '<button class="btn-paid" disabled><i class="fas fa-check"></i> Peye</button>' : '<button class="btn-paid" onclick="markAsPaid(\'' + (ticket.id || ticket.ticket_id) + '\')"><i class="fas fa-money-bill-wave"></i> Make kòm Peye</button>'}</div>
+            </div>
+        `;
+    }).join('');
+};
+
+// Conserver l'ancienne fonction au cas où (mais elle est remplacée)
+console.log('✅ Filtres pour tickets gagnants ajoutés (jour, semaine, mois, recherche)');
 }
 
 // Exposer les fonctions globales
