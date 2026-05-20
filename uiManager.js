@@ -873,6 +873,128 @@ function setAgentCommission(percentage) {
     APP_STATE.agentCommission = parseFloat(percentage) || 0;
     localStorage.setItem('agent_commission', APP_STATE.agentCommission);
 }
+// ============================================================
+// Barre de recherche/filtres pour tickets gagnants (sans modifier updateWinnersDisplay)
+// ============================================================
+(function() {
+    if (window.winnersFilterAdded) return;
+    window.winnersFilterAdded = true;
+
+    function addWinnersFilterBar() {
+        const winnersScreen = document.getElementById('winners-screen');
+        if (!winnersScreen) return;
+        if (document.getElementById('winners-filter-bar')) return;
+
+        const container = document.getElementById('winners-container');
+        if (!container) return;
+
+        const filterBar = document.createElement('div');
+        filterBar.id = 'winners-filter-bar';
+        filterBar.style.cssText = 'padding: 10px; background: var(--surface); border-bottom: 1px solid var(--glass-border); display: flex; gap: 10px; flex-wrap: wrap; align-items: center;';
+        filterBar.innerHTML = `
+            <select id="winners-filter-period" style="padding: 8px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--bg-light); color: var(--text);">
+                <option value="all">Tout</option>
+                <option value="today">Jodi a</option>
+                <option value="yesterday">Yè</option>
+                <option value="week">Semèn sa a</option>
+                <option value="month">Mwa sa a</option>
+            </select>
+            <input type="text" id="winners-filter-search" placeholder="Rechèch (ID, tiraj, nimewo)" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--bg-light); color: var(--text);">
+            <button id="winners-filter-apply" style="padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer;">Filtre</button>
+            <button id="winners-filter-reset" style="padding: 8px 16px; background: var(--text-dim); color: white; border: none; border-radius: 8px; cursor: pointer;">Reinit</button>
+        `;
+        winnersScreen.insertBefore(filterBar, container);
+
+        const applyBtn = document.getElementById('winners-filter-apply');
+        const resetBtn = document.getElementById('winners-filter-reset');
+        const periodSelect = document.getElementById('winners-filter-period');
+        const searchInput = document.getElementById('winners-filter-search');
+
+        function filterWinners() {
+            const period = periodSelect.value;
+            const searchTerm = searchInput.value.toLowerCase();
+            const allTickets = APP_STATE.winningTickets || [];
+            let filtered = [...allTickets];
+
+            // Filtre temporel (fuseau Haiti)
+            if (period !== 'all') {
+                const tz = 'America/Port-au-Prince';
+                const now = new Date();
+                const formatter = new Intl.DateTimeFormat('fr-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+                const todayStr = formatter.format(now);
+                const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+                const yesterdayStr = formatter.format(yesterday);
+                const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
+                const monthAgo = new Date(now); monthAgo.setMonth(now.getMonth() - 1);
+
+                filtered = filtered.filter(ticket => {
+                    const raw = ticket.date || ticket.created_at;
+                    if (!raw) return false;
+                    const date = new Date(raw);
+                    if (isNaN(date)) return false;
+                    const dateStr = formatter.format(date);
+                    if (period === 'today') return dateStr === todayStr;
+                    if (period === 'yesterday') return dateStr === yesterdayStr;
+                    if (period === 'week') {
+                        const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
+                        return local >= weekAgo;
+                    }
+                    if (period === 'month') {
+                        const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
+                        return local >= monthAgo;
+                    }
+                    return true;
+                });
+            }
+
+            // Filtre texte
+            if (searchTerm) {
+                filtered = filtered.filter(ticket => {
+                    const id = (ticket.ticket_id || ticket.id || '').toString().toLowerCase();
+                    if (id.includes(searchTerm)) return true;
+                    const drawName = (ticket.draw_name || ticket.drawName || '').toLowerCase();
+                    if (drawName.includes(searchTerm)) return true;
+                    let bets = ticket.bets || [];
+                    if (typeof bets === 'string') {
+                        try { bets = JSON.parse(bets); } catch(e) { bets = []; }
+                    }
+                    const numbers = bets.map(b => b.number || b.cleanNumber || '').join(' ').toLowerCase();
+                    if (numbers.includes(searchTerm)) return true;
+                    return false;
+                });
+            }
+
+            // Afficher les tickets filtrés sans modifier la fonction updateWinnersDisplay
+            // On remplace temporairement APP_STATE.winningTickets, on appelle l'affichage original, puis on restaure
+            const originalTickets = APP_STATE.winningTickets;
+            APP_STATE.winningTickets = filtered;
+            updateWinnersDisplay();  // fonction originale sans paramètre
+            APP_STATE.winningTickets = originalTickets;
+        }
+
+        applyBtn.addEventListener('click', filterWinners);
+        resetBtn.addEventListener('click', () => {
+            periodSelect.value = 'all';
+            searchInput.value = '';
+            filterWinners();
+        });
+        searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') filterWinners(); });
+    }
+
+    // Détecter quand l'écran "Gagnants" devient actif
+    const observer = new MutationObserver(() => {
+        const winnersScreen = document.getElementById('winners-screen');
+        if (winnersScreen && winnersScreen.classList.contains('active') && !document.getElementById('winners-filter-bar')) {
+            addWinnersFilterBar();
+        }
+    });
+    observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+
+    // Si déjà actif
+    if (document.getElementById('winners-screen')?.classList.contains('active')) {
+        addWinnersFilterBar();
+    }
+})();
 
 // Exposer les fonctions globales
 window.editTicket = editTicket;
