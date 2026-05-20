@@ -402,29 +402,80 @@
     <script src="/installer.js" defer></script>
 <script>
 (function() {
-    // Attendre que le DOM et les données des gagnants soient prêtes
+    // Attendre que le DOM et les données des gagnants soient prêts
     function initWinnersFilter() {
-        const filterPeriod = document.getElementById('winners-filter-period');
-        const filterSearch = document.getElementById('winners-filter-search');
+        const periodSelect = document.getElementById('winners-filter-period');
+        const searchInput = document.getElementById('winners-filter-search');
         const applyBtn = document.getElementById('winners-filter-apply');
         const resetBtn = document.getElementById('winners-filter-reset');
+        const winnersContainer = document.getElementById('winners-container');
 
-        if (!filterPeriod || !applyBtn) {
-            console.warn("Filtres winners non trouvés, réessai dans 500ms");
+        if (!periodSelect || !applyBtn || !winnersContainer) {
+            console.warn("Filtres winners non trouvés, réessai...");
             setTimeout(initWinnersFilter, 500);
             return;
         }
 
+        // Variable pour stocker la liste complète des gagnants (tous, sans filtre)
+        let fullWinnersList = [];
+
+        // Fonction pour récupérer les gagnants depuis APP_STATE ou depuis l'API
+        function loadFullWinnersList() {
+            if (window.APP_STATE && Array.isArray(window.APP_STATE.winningTickets)) {
+                fullWinnersList = [...window.APP_STATE.winningTickets];
+                return true;
+            }
+            // Si APP_STATE n'est pas encore prêt, on écoute un événement ou on attend
+            return false;
+        }
+
+        // Fonction d'affichage des gagnants filtrés
+        function displayFilteredWinners(filteredList) {
+            if (!winnersContainer) return;
+            if (!filteredList.length) {
+                winnersContainer.innerHTML = '<div class="empty-state">Aucun ticket gagnant trouvé</div>';
+                return;
+            }
+
+            // Réutilise la même structure d'affichage que l'application existante
+            // On crée les éléments HTML des tickets
+            let html = '';
+            filteredList.forEach(ticket => {
+                const date = new Date(ticket.date).toLocaleString();
+                const amount = parseFloat(ticket.win_amount).toFixed(2);
+                const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
+                const betNumbers = bets.map(b => b.number || b.cleanNumber).join(', ');
+                html += `
+                    <div class="winner-card" style="background: var(--surface); border-radius: 16px; padding: 12px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span><strong>Ticket:</strong> ${ticket.ticket_id}</span>
+                            <span><strong>Montant:</strong> ${amount} Gdes</span>
+                        </div>
+                        <div><strong>Tirage:</strong> ${ticket.draw_name}</div>
+                        <div><strong>Mises:</strong> ${betNumbers}</div>
+                        <div><strong>Date:</strong> ${date}</div>
+                        ${!ticket.paid ? '<span class="unpaid-badge" style="color: orange;">Non payé</span>' : '<span class="paid-badge" style="color: green;">Payé</span>'}
+                    </div>
+                `;
+            });
+            winnersContainer.innerHTML = html;
+        }
+
         // Fonction de filtrage
         function filterWinners() {
-            const period = filterPeriod.value;
-            const searchTerm = filterSearch.value.toLowerCase();
-            let allTickets = window.APP_STATE?.winningTickets || [];
-            if (!allTickets.length) return;
+            if (!fullWinnersList.length) {
+                // Si pas encore chargé, on tente de charger
+                if (!loadFullWinnersList()) {
+                    setTimeout(filterWinners, 300);
+                    return;
+                }
+            }
 
-            let filtered = [...allTickets];
+            const period = periodSelect.value;
+            const searchTerm = searchInput.value.toLowerCase();
+            let filtered = [...fullWinnersList];
 
-            // Filtre temporel
+            // Filtre période
             if (period !== 'all') {
                 const tz = 'America/Port-au-Prince';
                 const now = new Date();
@@ -455,7 +506,7 @@
                 });
             }
 
-            // Filtre texte
+            // Filtre recherche
             if (searchTerm) {
                 filtered = filtered.filter(ticket => {
                     const id = (ticket.ticket_id || ticket.id || '').toString().toLowerCase();
@@ -472,59 +523,39 @@
                 });
             }
 
-            // Sauvegarde temporaire et mise à jour de l'affichage
-            if (!window._originalWinningTickets) {
-                window._originalWinningTickets = window.APP_STATE.winningTickets;
-            }
-            window.APP_STATE.winningTickets = filtered;
-            if (typeof updateWinnersDisplay === 'function') {
-                updateWinnersDisplay();
-            } else {
-                console.error("updateWinnersDisplay n'est pas définie");
-            }
-            // Rétablir les originaux après affichage (pour ne pas perdre les données)
-            window.APP_STATE.winningTickets = window._originalWinningTickets;
+            displayFilteredWinners(filtered);
         }
 
         function resetFilters() {
-            filterPeriod.value = 'all';
-            filterSearch.value = '';
-            if (window._originalWinningTickets) {
-                window.APP_STATE.winningTickets = window._originalWinningTickets;
-            }
-            if (typeof updateWinnersDisplay === 'function') {
-                updateWinnersDisplay();
+            periodSelect.value = 'all';
+            searchInput.value = '';
+            filterWinners();
+        }
+
+        // Initialisation : attendre que les données soient disponibles
+        function waitForData() {
+            if (loadFullWinnersList()) {
+                filterWinners(); // Affiche tous les gagnants au départ
+                applyBtn.addEventListener('click', filterWinners);
+                resetBtn.addEventListener('click', resetFilters);
+                searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') filterWinners(); });
+                console.log("✅ Filtres winners opérationnels");
+            } else {
+                setTimeout(waitForData, 500);
             }
         }
 
-        // Écouteurs
-        applyBtn.addEventListener('click', filterWinners);
-        resetBtn.addEventListener('click', resetFilters);
-        filterSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') filterWinners(); });
-        console.log("✅ Filtres winners initialisés");
+        waitForData();
     }
 
-    // Attendre que APP_STATE et updateWinnersDisplay soient disponibles
-    if (window.APP_STATE && typeof updateWinnersDisplay !== 'undefined') {
-        initWinnersFilter();
+    // Démarrer après chargement du DOM
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initWinnersFilter);
     } else {
-        window.addEventListener('load', () => {
-            // Réessayer plusieurs fois si nécessaire
-            let attempts = 0;
-            function tryInit() {
-                if (window.APP_STATE && typeof updateWinnersDisplay !== 'undefined') {
-                    initWinnersFilter();
-                } else if (attempts < 20) {
-                    attempts++;
-                    setTimeout(tryInit, 200);
-                } else {
-                    console.error("Impossible d'initialiser les filtres winners");
-                }
-            }
-            tryInit();
-        });
+        initWinnersFilter();
     }
 })();
+</script>
 </script>
 </body>
 </html>
