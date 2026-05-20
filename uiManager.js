@@ -873,6 +873,19 @@ function setAgentCommission(percentage) {
     APP_STATE.agentCommission = parseFloat(percentage) || 0;
     localStorage.setItem('agent_commission', APP_STATE.agentCommission);
 }
+
+// Exposer les fonctions globales
+window.editTicket = editTicket;
+window.deleteTicket = deleteTicket;
+window.deleteTicketFromCard = deleteTicketFromCard;
+window.viewTicketDetails = viewTicketDetails;
+window.markAsPaid = markAsPaid;
+window.printReport = printReport;
+window.loadDrawReport = loadDrawReport;
+window.logout = logout;
+window.reprintTicket = reprintTicket;
+window.replayTicket = replayTicket;
+window.setAgentCommission = setAgentCommission;
 // ============================================================
 // Barre de recherche/filtres pour tickets gagnants (sans modifier updateWinnersDisplay)
 // ============================================================
@@ -995,16 +1008,3 @@ function setAgentCommission(percentage) {
         addWinnersFilterBar();
     }
 })();
-
-// Exposer les fonctions globales
-window.editTicket = editTicket;
-window.deleteTicket = deleteTicket;
-window.deleteTicketFromCard = deleteTicketFromCard;
-window.viewTicketDetails = viewTicketDetails;
-window.markAsPaid = markAsPaid;
-window.printReport = printReport;
-window.loadDrawReport = loadDrawReport;
-window.logout = logout;
-window.reprintTicket = reprintTicket;
-window.replayTicket = replayTicket;
-window.setAgentCommission = setAgentCommission;
