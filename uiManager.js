@@ -872,16 +872,12 @@ function logout() {
 function setAgentCommission(percentage) {
     APP_STATE.agentCommission = parseFloat(percentage) || 0;
     localStorage.setItem('agent_commission', APP_STATE.agentCommission);
-    // ============================================================
-// PATCH : Filtres (jour, semaine, mois, personnalisé + recherche) pour les tickets gagnants
-// À coller à la fin de uiManager.js
+// ============================================================
+// PATCH : Filtres pour tickets gagnants (jour, semaine, mois, recherche)
+// À coller à la fin de uiManager.js - Version corrigée
 // ============================================================
 
-// Sauvegarde des fonctions originales pour éviter les conflits
-const _originalLoadWinners = window.loadWinners || loadWinners;
-const _originalUpdateWinnersDisplay = window.updateWinnersDisplay || updateWinnersDisplay;
-
-// Nouvelle fonction d'initialisation des filtres
+// Fonction d'initialisation des filtres
 function initWinnersFilters() {
     const winnersScreen = document.getElementById('winners-screen');
     if (!winnersScreen) return;
@@ -899,7 +895,7 @@ function initWinnersFilters() {
                 <option value="month">Mwa sa a</option>
                 <option value="custom">Dat pèsonalize</option>
             </select>
-            <div id="winners-custom-range" style="display: none; gap: 10px; margin-top: 10px;">
+            <div id="winners-custom-range" style="display: none; gap: 10px;">
                 <input type="date" id="winners-from-date" class="filter-input">
                 <input type="date" id="winners-to-date" class="filter-input">
             </div>
@@ -984,7 +980,7 @@ function applyWinnersFilters() {
         return true;
     });
     
-    // Filtre texte (ticket_id, draw_name, numéros)
+    // Filtre texte
     if (searchTerm) {
         filtered = filtered.filter(ticket => {
             const ticketId = (ticket.ticket_id || ticket.id || '').toString().toLowerCase();
@@ -1001,28 +997,13 @@ function applyWinnersFilters() {
         });
     }
     
-    // Mettre à jour l'affichage avec les tickets filtrés
     updateWinnersDisplay(filtered);
 }
 
-// Redéfinition de loadWinners pour ajouter l'initialisation des filtres
-window.loadWinners = async function() {
-    try {
-        await APIService.getWinningTickets();
-        await APIService.getWinningResults();
-        if (!document.getElementById('winners-filters')) {
-            initWinnersFilters();
-        }
-        updateWinnersDisplay(); // affiche tous
-    } catch (error) {
-        console.error('Erreur chargement gagnants:', error);
-        APP_STATE.winningTickets = [];
-        APP_STATE.winningResults = [];
-        updateWinnersDisplay();
-    }
-};
+// Sauvegarde de l'ancienne fonction updateWinnersDisplay si elle existe
+const originalUpdateWinnersDisplay = window.updateWinnersDisplay || updateWinnersDisplay;
 
-// Redéfinition de updateWinnersDisplay pour accepter un paramètre optionnel
+// Nouvelle fonction updateWinnersDisplay avec support du filtrage
 window.updateWinnersDisplay = function(filteredTickets = null) {
     const container = document.getElementById('winners-container');
     if (!container) return;
@@ -1073,19 +1054,55 @@ window.updateWinnersDisplay = function(filteredTickets = null) {
     }).join('');
 };
 
-// Conserver l'ancienne fonction au cas où (mais elle est remplacée)
-console.log('✅ Filtres pour tickets gagnants ajoutés (jour, semaine, mois, recherche)');
+// Redéfinition de loadWinners pour initialiser les filtres
+const originalLoadWinners = window.loadWinners || loadWinners;
+window.loadWinners = async function() {
+    try {
+        await APIService.getWinningTickets();
+        await APIService.getWinningResults();
+        // Initialiser les filtres s'ils n'existent pas encore
+        if (!document.getElementById('winners-filters')) {
+            initWinnersFilters();
+        }
+        updateWinnersDisplay(); // affiche tous
+    } catch (error) {
+        console.error('Erreur chargement gagnants:', error);
+        APP_STATE.winningTickets = [];
+        APP_STATE.winningResults = [];
+        updateWinnersDisplay();
+    }
+};
+
+// Forcer l'initialisation des filtres quand le DOM est prêt et que l'onglet "gagnants" est actif
+function ensureWinnersFilters() {
+    const winnersScreen = document.getElementById('winners-screen');
+    if (winnersScreen && winnersScreen.classList.contains('active')) {
+        if (!document.getElementById('winners-filters')) {
+            initWinnersFilters();
+        }
+    }
 }
 
-// Exposer les fonctions globales
-window.editTicket = editTicket;
-window.deleteTicket = deleteTicket;
-window.deleteTicketFromCard = deleteTicketFromCard;
-window.viewTicketDetails = viewTicketDetails;
-window.markAsPaid = markAsPaid;
-window.printReport = printReport;
-window.loadDrawReport = loadDrawReport;
-window.logout = logout;
-window.reprintTicket = reprintTicket;
-window.replayTicket = replayTicket;
-window.setAgentCommission = setAgentCommission;
+// Observer les changements d'onglet pour initialiser les filtres dès que l'écran "gagnants" devient actif
+const originalSwitchTab = window.switchTab || switchTab;
+window.switchTab = function(tabName) {
+    if (originalSwitchTab) originalSwitchTab(tabName);
+    if (tabName === 'winners') {
+        setTimeout(() => {
+            if (!document.getElementById('winners-filters')) {
+                initWinnersFilters();
+            }
+        }, 100);
+    }
+};
+
+// Si la page est déjà chargée, vérifier si l'onglet "gagnants" est actif
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        ensureWinnersFilters();
+    });
+} else {
+    ensureWinnersFilters();
+}
+
+console.log('✅ Filtres pour tickets gagnants ajoutés (avec initialisation automatique)');
