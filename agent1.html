@@ -402,159 +402,164 @@
     <script src="/installer.js" defer></script>
 <script>
 (function() {
-    // Attendre que le DOM et les données des gagnants soient prêts
-    function initWinnersFilter() {
-        const periodSelect = document.getElementById('winners-filter-period');
-        const searchInput = document.getElementById('winners-filter-search');
-        const applyBtn = document.getElementById('winners-filter-apply');
-        const resetBtn = document.getElementById('winners-filter-reset');
-        const winnersContainer = document.getElementById('winners-container');
+    // Éléments DOM
+    const winnersContainer = document.getElementById('winners-container');
+    const periodSelect = document.getElementById('winners-filter-period');
+    const searchInput = document.getElementById('winners-filter-search');
+    const applyBtn = document.getElementById('winners-filter-apply');
+    const resetBtn = document.getElementById('winners-filter-reset');
 
-        if (!periodSelect || !applyBtn || !winnersContainer) {
-            console.warn("Filtres winners non trouvés, réessai...");
-            setTimeout(initWinnersFilter, 500);
-            return;
-        }
+    // Vérifier que les éléments existent
+    if (!winnersContainer) {
+        console.error("❌ #winners-container introuvable");
+        return;
+    }
 
-        // Variable pour stocker la liste complète des gagnants (tous, sans filtre)
-        let fullWinnersList = [];
+    let allWinners = [];      // Tous les gagnants (originaux)
+    let filteredWinners = []; // Gagnants après filtre
 
-        // Fonction pour récupérer les gagnants depuis APP_STATE ou depuis l'API
-        function loadFullWinnersList() {
-            if (window.APP_STATE && Array.isArray(window.APP_STATE.winningTickets)) {
-                fullWinnersList = [...window.APP_STATE.winningTickets];
-                return true;
-            }
-            // Si APP_STATE n'est pas encore prêt, on écoute un événement ou on attend
+    // Fonction pour charger les gagnants depuis l'API
+    async function loadWinnersFromAPI() {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            console.warn("Pas de token, impossible de charger les gagnants");
             return false;
         }
 
-        // Fonction d'affichage des gagnants filtrés
-        function displayFilteredWinners(filteredList) {
-            if (!winnersContainer) return;
-            if (!filteredList.length) {
-                winnersContainer.innerHTML = '<div class="empty-state">Aucun ticket gagnant trouvé</div>';
-                return;
-            }
-
-            // Réutilise la même structure d'affichage que l'application existante
-            // On crée les éléments HTML des tickets
-            let html = '';
-            filteredList.forEach(ticket => {
-                const date = new Date(ticket.date).toLocaleString();
-                const amount = parseFloat(ticket.win_amount).toFixed(2);
-                const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
-                const betNumbers = bets.map(b => b.number || b.cleanNumber).join(', ');
-                html += `
-                    <div class="winner-card" style="background: var(--surface); border-radius: 16px; padding: 12px; margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span><strong>Ticket:</strong> ${ticket.ticket_id}</span>
-                            <span><strong>Montant:</strong> ${amount} Gdes</span>
-                        </div>
-                        <div><strong>Tirage:</strong> ${ticket.draw_name}</div>
-                        <div><strong>Mises:</strong> ${betNumbers}</div>
-                        <div><strong>Date:</strong> ${date}</div>
-                        ${!ticket.paid ? '<span class="unpaid-badge" style="color: orange;">Non payé</span>' : '<span class="paid-badge" style="color: green;">Payé</span>'}
-                    </div>
-                `;
+        try {
+            const res = await fetch('/api/winners', {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
-            winnersContainer.innerHTML = html;
+            if (!res.ok) throw new Error('Erreur API');
+            const data = await res.json();
+            allWinners = data.winners || [];
+            // Trier par date décroissante
+            allWinners.sort((a, b) => new Date(b.date) - new Date(a.date));
+            // Sauvegarder aussi dans APP_STATE si nécessaire pour compatibilité
+            if (window.APP_STATE) window.APP_STATE.winningTickets = allWinners;
+            console.log(`✅ ${allWinners.length} tickets gagnants chargés`);
+            return true;
+        } catch (err) {
+            console.error("Erreur chargement winners:", err);
+            return false;
+        }
+    }
+
+    // Fonction pour filtrer selon période et recherche
+    function applyFilters() {
+        const period = periodSelect ? periodSelect.value : 'all';
+        const search = searchInput ? searchInput.value.toLowerCase() : '';
+
+        let filtered = [...allWinners];
+
+        // Filtre période
+        if (period !== 'all') {
+            const tz = 'America/Port-au-Prince';
+            const now = new Date();
+            const todayStr = new Intl.DateTimeFormat('fr-CA', { timeZone: tz }).format(now);
+            const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+            const yesterdayStr = new Intl.DateTimeFormat('fr-CA', { timeZone: tz }).format(yesterday);
+            const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
+            const monthAgo = new Date(now); monthAgo.setMonth(now.getMonth() - 1);
+
+            filtered = filtered.filter(ticket => {
+                const d = new Date(ticket.date);
+                if (isNaN(d)) return false;
+                const dateStr = new Intl.DateTimeFormat('fr-CA', { timeZone: tz }).format(d);
+                if (period === 'today') return dateStr === todayStr;
+                if (period === 'yesterday') return dateStr === yesterdayStr;
+                if (period === 'week') return d >= weekAgo;
+                if (period === 'month') return d >= monthAgo;
+                return true;
+            });
         }
 
-        // Fonction de filtrage
-        function filterWinners() {
-            if (!fullWinnersList.length) {
-                // Si pas encore chargé, on tente de charger
-                if (!loadFullWinnersList()) {
-                    setTimeout(filterWinners, 300);
-                    return;
+        // Filtre recherche (ID tirage, ticket_id, numéros)
+        if (search) {
+            filtered = filtered.filter(ticket => {
+                if ((ticket.ticket_id || '').toLowerCase().includes(search)) return true;
+                if ((ticket.draw_name || '').toLowerCase().includes(search)) return true;
+                let bets = ticket.bets;
+                if (typeof bets === 'string') {
+                    try { bets = JSON.parse(bets); } catch(e) { bets = []; }
                 }
-            }
-
-            const period = periodSelect.value;
-            const searchTerm = searchInput.value.toLowerCase();
-            let filtered = [...fullWinnersList];
-
-            // Filtre période
-            if (period !== 'all') {
-                const tz = 'America/Port-au-Prince';
-                const now = new Date();
-                const formatter = new Intl.DateTimeFormat('fr-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-                const todayStr = formatter.format(now);
-                const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-                const yesterdayStr = formatter.format(yesterday);
-                const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
-                const monthAgo = new Date(now); monthAgo.setMonth(now.getMonth() - 1);
-
-                filtered = filtered.filter(ticket => {
-                    const raw = ticket.date || ticket.created_at;
-                    if (!raw) return false;
-                    const date = new Date(raw);
-                    if (isNaN(date)) return false;
-                    const dateStr = formatter.format(date);
-                    if (period === 'today') return dateStr === todayStr;
-                    if (period === 'yesterday') return dateStr === yesterdayStr;
-                    if (period === 'week') {
-                        const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
-                        return local >= weekAgo;
-                    }
-                    if (period === 'month') {
-                        const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
-                        return local >= monthAgo;
-                    }
-                    return true;
-                });
-            }
-
-            // Filtre recherche
-            if (searchTerm) {
-                filtered = filtered.filter(ticket => {
-                    const id = (ticket.ticket_id || ticket.id || '').toString().toLowerCase();
-                    if (id.includes(searchTerm)) return true;
-                    const drawName = (ticket.draw_name || ticket.drawName || '').toLowerCase();
-                    if (drawName.includes(searchTerm)) return true;
-                    let bets = ticket.bets || [];
-                    if (typeof bets === 'string') {
-                        try { bets = JSON.parse(bets); } catch(e) { bets = []; }
-                    }
-                    const numbers = bets.map(b => b.number || b.cleanNumber || '').join(' ').toLowerCase();
-                    if (numbers.includes(searchTerm)) return true;
-                    return false;
-                });
-            }
-
-            displayFilteredWinners(filtered);
+                const numbers = bets.map(b => b.cleanNumber || b.number || '').join(' ');
+                if (numbers.toLowerCase().includes(search)) return true;
+                return false;
+            });
         }
 
-        function resetFilters() {
-            periodSelect.value = 'all';
-            searchInput.value = '';
-            filterWinners();
+        filteredWinners = filtered;
+        renderWinners();
+    }
+
+    // Affichage des tickets gagnants
+    function renderWinners() {
+        if (!winnersContainer) return;
+        if (!filteredWinners.length) {
+            winnersContainer.innerHTML = '<div class="empty-state" style="text-align:center; padding:40px;">Aucun ticket gagnant trouvé</div>';
+            return;
         }
 
-        // Initialisation : attendre que les données soient disponibles
-        function waitForData() {
-            if (loadFullWinnersList()) {
-                filterWinners(); // Affiche tous les gagnants au départ
-                applyBtn.addEventListener('click', filterWinners);
-                resetBtn.addEventListener('click', resetFilters);
-                searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') filterWinners(); });
-                console.log("✅ Filtres winners opérationnels");
-            } else {
-                setTimeout(waitForData, 500);
+        let html = '';
+        for (const t of filteredWinners) {
+            const date = new Date(t.date).toLocaleString('fr-FR', { timeZone: 'America/Port-au-Prince' });
+            const amount = parseFloat(t.win_amount).toFixed(2);
+            let bets = t.bets;
+            if (typeof bets === 'string') {
+                try { bets = JSON.parse(bets); } catch(e) { bets = []; }
             }
-        }
+            const betNumbers = bets.map(b => b.cleanNumber || b.number || '').join(', ');
+            const paidBadge = t.paid ? '<span style="color:#10b981;">✓ Payé</span>' : '<span style="color:#f59e0b;">⏳ Non payé</span>';
 
-        waitForData();
+            html += `
+                <div style="background: var(--surface); border-radius: 16px; padding: 14px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; flex-wrap:wrap;">
+                        <div><strong>Ticket:</strong> ${t.ticket_id}</div>
+                        <div><strong>Gain:</strong> ${amount} Gdes</div>
+                        <div>${paidBadge}</div>
+                    </div>
+                    <div><strong>Tirage:</strong> ${t.draw_name}</div>
+                    <div><strong>Mises:</strong> ${betNumbers || '—'}</div>
+                    <div><strong>Date:</strong> ${date}</div>
+                </div>
+            `;
+        }
+        winnersContainer.innerHTML = html;
+    }
+
+    // Réinitialiser les filtres
+    function resetFilters() {
+        if (periodSelect) periodSelect.value = 'all';
+        if (searchInput) searchInput.value = '';
+        applyFilters();
+    }
+
+    // Initialisation : charger les données puis attacher les événements
+    async function init() {
+        const loaded = await loadWinnersFromAPI();
+        if (!loaded) {
+            winnersContainer.innerHTML = '<div class="error">Impossible de charger les tickets gagnants. Vérifiez votre connexion.</div>';
+            return;
+        }
+        applyFilters(); // affiche tout
+
+        if (applyBtn) applyBtn.addEventListener('click', applyFilters);
+        if (resetBtn) resetBtn.addEventListener('click', resetFilters);
+        if (searchInput) searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') applyFilters(); });
+        if (periodSelect) periodSelect.addEventListener('change', applyFilters); // filtre direct au changement
+
+        console.log("✅ Filtres winners actifs");
     }
 
     // Démarrer après chargement du DOM
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initWinnersFilter);
+        document.addEventListener('DOMContentLoaded', init);
     } else {
-        initWinnersFilter();
+        init();
     }
 })();
+</script>
 </script>
 </script>
 </body>
