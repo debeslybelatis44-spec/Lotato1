@@ -923,9 +923,14 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
 app.get('/api/winners', authenticate, async (req, res) => {
   const user = req.user;
   const ownerId = user.ownerId;
+  const { period, search, page = 0, limit = 50, fromDate, toDate, drawId } = req.query;
+  const offset = parseInt(page) * parseInt(limit);
+
   let query = 'SELECT * FROM tickets WHERE owner_id = $1 AND win_amount > 0';
   const params = [ownerId];
   let idx = 2;
+
+  // Filtres par rôle (agent, superviseur, propriétaire)
   if (user.role === 'agent') {
     query += ` AND agent_id = $${idx++}`;
     params.push(user.id);
@@ -947,13 +952,60 @@ app.get('/api/winners', authenticate, async (req, res) => {
       params.push(agentId);
     }
   }
-  query += ' ORDER BY date DESC LIMIT 20';
+
+  // Filtre par tirage
+  if (drawId && drawId !== 'all') {
+    query += ` AND draw_id = $${idx++}`;
+    params.push(drawId);
+  }
+
+  // Filtre par période (date)
+  const moment = require('moment-timezone');
+  const now = moment().tz('America/Port-au-Prince');
+  let dateCondition = '';
+  if (period === 'today') {
+    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') = '${now.format('YYYY-MM-DD')}'`;
+  } else if (period === 'yesterday') {
+    const yesterday = now.clone().subtract(1, 'day');
+    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') = '${yesterday.format('YYYY-MM-DD')}'`;
+  } else if (period === 'week') {
+    const startOfWeek = now.clone().startOf('week');
+    dateCondition = `date AT TIME ZONE 'America/Port-au-Prince' >= '${startOfWeek.format('YYYY-MM-DD HH:mm:ss')}'`;
+  } else if (period === 'month') {
+    const startOfMonth = now.clone().startOf('month');
+    dateCondition = `date AT TIME ZONE 'America/Port-au-Prince' >= '${startOfMonth.format('YYYY-MM-DD HH:mm:ss')}'`;
+  } else if (period === 'custom' && fromDate && toDate) {
+    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
+    params.push(fromDate, toDate);
+  }
+  if (dateCondition) {
+    query += ` AND ${dateCondition}`;
+  }
+
+  // Recherche textuelle (ticket_id, draw_name, numéros misés)
+  if (search && search.trim() !== '') {
+    const searchTerm = `%${search.trim()}%`;
+    query += ` AND (ticket_id ILIKE $${idx++} OR draw_name ILIKE $${idx++} OR EXISTS (SELECT 1 FROM jsonb_array_elements(bets) bet WHERE bet->>'cleanNumber' ILIKE $${idx-2} OR bet->>'number' ILIKE $${idx-2}))`;
+    params.push(searchTerm, searchTerm, searchTerm);
+  }
+
+  // Compter le total
+  const countQuery = query.replace('SELECT *', 'SELECT COUNT(*)');
+  const countRes = await pool.query(countQuery, params);
+  const total = parseInt(countRes.rows[0].count);
+
+  // Pagination
+  query += ` ORDER BY date DESC LIMIT $${idx++} OFFSET $${idx++}`;
+  params.push(parseInt(limit), offset);
+
   try {
     const result = await pool.query(query, params);
-    res.json({ winners: result.rows });
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+    res.json({ winners: result.rows, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    console.error('Erreur route winners:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
-
 app.get('/api/winners/results', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
