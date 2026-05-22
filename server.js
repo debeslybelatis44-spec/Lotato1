@@ -2658,30 +2658,53 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
                             }
                         }
                         else if (game === 'mariage' || game === 'auto_marriage') {
-                            if (clean.length === 4) {
-                                const first = clean.slice(0,2), second = clean.slice(2,4);
-                                const pairs = [lot1, lot2, lot3_num];
-                                let win = false;
-                                for (let i=0; i<3; i++) {
-                                    for (let j=0; j<3; j++) {
-                                        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-                                    }
-                                    if (win) break;
-                                }
-                                if (win) {
-                                    let freeWinAmount = 2500;
-                                    if (bet.free && bet.freeType === 'special_marriage') {
-                                        const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
-                                        if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
-                                        gain = freeWinAmount;
-                                    } else {
-                                        gain = amount * multipliers.mariage;
-                                    }
-                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
-                                    totalWin += gain;
-                                }
-                            }
-                        }
+    if (clean.length === 4) {
+        const first = clean.slice(0,2), second = clean.slice(2,4);
+        const pairs = [lot1, lot2, lot3_num];
+        let win = false;
+        for (let i=0; i<3; i++) {
+            for (let j=0; j<3; j++) {
+                if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+            }
+            if (win) break;
+        }
+        if (win) {
+            let gain = 0;
+            // Détection robuste du mariage gratuit (insensible à la casse, accepte freeType manquant mais free=true)
+            const isFree = bet.free === true && 
+                           (bet.freeType === 'special_marriage' || 
+                            (bet.freeType && bet.freeType.toLowerCase() === 'special_marriage'));
+            
+            if (isFree) {
+                // Récupérer le montant forfaitaire paramétré
+                const advRes = await pool.query(
+                    `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount 
+                     FROM lottery_settings WHERE owner_id = $1`,
+                    [ownerId]
+                );
+                let freeWinAmount = 2500;
+                if (advRes.rows[0] && advRes.rows[0].win_amount) {
+                    freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                }
+                gain = freeWinAmount;
+                console.log(`🎁 Mariage gratuit gagnant pour ticket ${ticket.id} : ${first}&${second} -> ${gain} G`);
+            } else {
+                gain = amount * multipliers.mariage;
+            }
+            
+            if (gain > 0) {
+                win_details.push({
+                    game,
+                    gameAbbr: getGameAbbreviationForWin(game, bet),
+                    number: `${first}&${second}`,
+                    gain,
+                    reason: isFree ? 'free_marriage' : 'mariage'
+                });
+                totalWin += gain;
+            }
+        }
+    }
+}
                         else if (game === 'lotto4' || game === 'auto_lotto4') {
                             if (clean.length === 4 && bet.option) {
                                 let expected = '';
