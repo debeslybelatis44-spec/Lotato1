@@ -2650,6 +2650,29 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
+// ==================== SUPERADMIN : Résultats publiés aujourd'hui ====================
+app.get('/api/superadmin/results-today', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT wr.id, wr.owner_id, u.name as owner_name, wr.draw_id, d.name as draw_name,
+             wr.numbers, wr.lotto3, wr.date
+      FROM winning_results wr
+      JOIN users u ON wr.owner_id = u.id
+      JOIN draws d ON wr.draw_id = d.id
+      WHERE DATE(wr.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE
+      ORDER BY wr.date DESC
+    `);
+    // Transformer numbers (jsonb) en tableau pour l'affichage
+    const rows = result.rows.map(row => ({
+      ...row,
+      numbers: typeof row.numbers === 'string' ? JSON.parse(row.numbers) : row.numbers
+    }));
+    res.json({ results: rows });
+  } catch (err) {
+    console.error('Erreur /superadmin/results-today:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // Patch : route superadmin publish-results-bulk
 app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin, async (req, res) => {
