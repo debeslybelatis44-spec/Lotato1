@@ -43,6 +43,11 @@
         .checkbox-item input[type="checkbox"] { width:auto; margin-right:5px; }
         .profit { color:#00f190; }
         .loss { color:#ff4d4d; }
+        /* Amélioration affichage tableau propriétaires */
+        .owners-table td, .owners-table th { padding:12px 10px; vertical-align:middle; }
+        .owners-table tr:hover { background:rgba(255,255,255,0.03); }
+        .status-badge { display:inline-block; min-width:90px; text-align:center; }
+        .result-numbers { font-family:monospace; font-size:1.1em; letter-spacing:1px; }
     </style>
 </head>
 <body>
@@ -79,6 +84,7 @@
             <div class="tab" onclick="switchTab('messages')">📢 Messages</div>
             <div class="tab" onclick="switchTab('reports')">📊 Rapports consolidés</div>
             <div class="tab" onclick="switchTab('publish')">📢 Publier résultats (multi)</div>
+            <div class="tab" onclick="switchTab('results')">📋 Résultats du jour</div>
         </div>
 
         <!-- Onglet Propriétaires -->
@@ -104,14 +110,16 @@
             <div id="agents-list-container" class="list-container">
                 <table style="width:100%">
                     <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
-                    <tbody id="agents-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
+                    <tbody id="agents-table-body"><tr><td colspan="6">Chargement...</td></tr>
+                </tbody>
                 </table>
             </div>
             <div class="section-title" style="margin-top:30px;"><i class="fas fa-user-tie"></i> Liste des superviseurs</div>
             <div id="supervisors-list-container" class="list-container">
                 <table style="width:100%">
                     <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
-                    <tbody id="supervisors-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
+                    <tbody id="supervisors-table-body"><tr><td colspan="6">Chargement...</td></tr>
+                </tbody>
                 </table>
             </div>
             <div id="delete-message" class="alert"></div>
@@ -182,6 +190,14 @@
             </div>
             <div id="publish-result-message" class="alert"></div>
         </div>
+
+        <!-- Nouvel onglet : Résultats du jour -->
+        <div id="tab-results" class="tab-content">
+            <div class="section-title"><i class="fas fa-calendar-day"></i> Résultats publiés aujourd'hui</div>
+            <div id="today-results-container" class="list-container">
+                <p>Chargement...</p>
+            </div>
+        </div>
     </div>
 
     <!-- Modals -->
@@ -211,6 +227,7 @@
             loadReports();
             loadPublishOwnersCheckbox();
             loadDrawsForPublish();
+            loadTodayResults(); // Nouvelle fonction
         }
 
         // ========== AUTHENTIFICATION ==========
@@ -245,6 +262,7 @@
                     loadReports();
                     loadPublishOwnersCheckbox();
                     loadDrawsForPublish();
+                    loadTodayResults();
                 } else {
                     errorDiv.style.display = 'block';
                     errorDiv.innerText = data.error || 'Identifiants incorrects';
@@ -271,6 +289,7 @@
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
             if (tabId === 'publish') { loadPublishOwnersCheckbox(); loadDrawsForPublish(); }
+            if (tabId === 'results') loadTodayResults();
         }
 
         async function fetchWithToken(url, options = {}) {
@@ -293,16 +312,18 @@
             setTimeout(() => el.style.display = 'none', 4000);
         }
 
-        // ========== GESTION PROPRIÉTAIRES (avec abonnements) ==========
+        // ========== GESTION PROPRIÉTAIRES ==========
         async function loadOwners() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
-            let html = '<table style="width:100%"><thead><tr><th>Nom</th><th>Email</th><th>Inscrit le</th><th>Dernier paiement</th><th>Statut abonnement</th><th>Quota</th><th>Actions</th></tr></thead><tbody>';
+            let html = '<table class="owners-table" style="width:100%"><thead><tr><th>Nom</th><th>Email</th><th>Inscrit le</th><th>Dernier paiement</th><th>Statut abonnement</th><th>Quota</th><th>Actions</th></tr></thead><tbody>';
             owners.forEach(o => {
                 const created = new Date(o.created_at).toLocaleDateString('fr-FR');
                 const lastPay = o.last_payment_date ? new Date(o.last_payment_date).toLocaleDateString('fr-FR') : 'Jamais';
-                let statusBadge = o.subscription_status === 'paid' ? '<span class="badge-success">✅ Payé</span>' : '<span class="badge-danger">⏳ En attente</span>';
+                // Correction : accepter 'active' ou 'paid'
+                const isPaid = (o.subscription_status === 'active' || o.subscription_status === 'paid');
+                let statusBadge = isPaid ? '<span class="badge-success status-badge">✅ Payé</span>' : '<span class="badge-danger status-badge">⏳ En attente</span>';
                 const used = o.current_count || 0;
                 const quota = o.quota || 0;
                 const remaining = quota - used;
@@ -323,8 +344,8 @@
                         <button class="btn-primary" style="padding:4px 8px;" onclick="markAsPaid(${o.id})">💰 Marquer payé</button>
                         <button class="btn-danger" style="padding:4px 8px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Bloquer' : 'Débloquer'}</button>
                         <button class="btn-danger" style="padding:4px 8px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
-                      </td>
-                </tr>`;
+                       </td>
+                 </tr>`;
             });
             html += '</tbody></table>';
             document.getElementById('owners-list').innerHTML = html || '<p>Aucun propriétaire</p>';
@@ -706,9 +727,41 @@
                 document.getElementById('publish-lotto3').value = '';
                 deselectAllPublishOwners();
                 if (document.getElementById('tab-reports').classList.contains('active')) loadReports();
+                if (document.getElementById('tab-results').classList.contains('active')) loadTodayResults(); // Rafraîchir l'onglet résultats
             } else {
                 showMessage('publish-result-message', '❌ Erreur lors de la publication', false);
             }
+        }
+
+        // ========== NOUVEAU : Résultats du jour ==========
+        async function loadTodayResults() {
+            const container = document.getElementById('today-results-container');
+            container.innerHTML = '<p>Chargement des résultats...</p>';
+            const res = await fetchWithToken('/superadmin/results-today');
+            if (!res) {
+                container.innerHTML = '<p class="alert-danger">Erreur de chargement</p>';
+                return;
+            }
+            const data = await res.json();
+            const results = data.results || [];
+            if (results.length === 0) {
+                container.innerHTML = '<p>Aucun résultat publié aujourd’hui.</p>';
+                return;
+            }
+            let html = '<table style="width:100%"><thead><tr><th>Propriétaire</th><th>Tirage</th><th>Numéros gagnants</th><th>Lotto3</th><th>Publié à</th></tr></thead><tbody>';
+            results.forEach(r => {
+                const numbersStr = Array.isArray(r.numbers) ? r.numbers.join(' - ') : r.numbers;
+                const dateFormatted = new Date(r.date).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+                html += `<tr>
+                    <td>${escapeHtml(r.owner_name)}</td>
+                    <td>${escapeHtml(r.draw_name)}</td>
+                    <td class="result-numbers">${numbersStr}</td>
+                    <td class="result-numbers">${r.lotto3}</td>
+                    <td>${dateFormatted}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
         }
 
         function escapeHtml(text) {
