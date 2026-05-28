@@ -218,6 +218,7 @@ async function checkDatabaseConnection() {
     process.exit(1);
   }
 }
+const { CronJob } = require('cron');
 const cron = require('node-cron');
 
 // Tâche exécutée toutes les minutes pour fermer les tirages 3 minutes avant l'heure
@@ -239,18 +240,25 @@ cron.schedule('* * * * *', async () => {
 });
 
 // Tâche exécutée à minuit (00:00) heure d'Haïti pour réactiver tous les tirages
-cron.schedule('0 0 * * *', async () => {
-    try {
-        const result = await pool.query(
-            `UPDATE draws
-             SET active = true
-             WHERE active = false`
-        );
-        console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée`);
-    } catch (err) {
-        console.error('❌ Erreur lors de la réactivation des tirages :', err);
-    }
-}, { timezone: 'America/Port-au-Prince' });
+// Tâche exécutée à minuit (00:00) heure d'Haïti pour réactiver tous les tirages
+new CronJob(
+    '0 0 * * *',                           // expression cron
+    async () => {
+        try {
+            const result = await pool.query(
+                `UPDATE draws
+                 SET active = true
+                 WHERE active = false`
+            );
+            console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée`);
+        } catch (err) {
+            console.error('❌ Erreur lors de la réactivation des tirages :', err);
+        }
+    },
+    null,                                   // onComplete
+    true,                                   // démarrer automatiquement
+    'America/Port-au-Prince'                // fuseau horaire
+);
 // ==================== Middleware ====================
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
