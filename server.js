@@ -218,7 +218,6 @@ async function checkDatabaseConnection() {
     process.exit(1);
   }
 }
-const { CronJob } = require('cron');
 const cron = require('node-cron');
 
 // Tâche exécutée toutes les minutes pour fermer les tirages 3 minutes avant l'heure
@@ -240,25 +239,18 @@ cron.schedule('* * * * *', async () => {
 });
 
 // Tâche exécutée à minuit (00:00) heure d'Haïti pour réactiver tous les tirages
-// Tâche exécutée à minuit (00:00) heure d'Haïti pour réactiver tous les tirages
-new CronJob(
-    '0 0 * * *',                           // expression cron
-    async () => {
-        try {
-            const result = await pool.query(
-                `UPDATE draws
-                 SET active = true
-                 WHERE active = false`
-            );
-            console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée`);
-        } catch (err) {
-            console.error('❌ Erreur lors de la réactivation des tirages :', err);
-        }
-    },
-    null,                                   // onComplete
-    true,                                   // démarrer automatiquement
-    'America/Port-au-Prince'                // fuseau horaire
-);
+cron.schedule('0 0 * * *', async () => {
+    try {
+        const result = await pool.query(
+            `UPDATE draws
+             SET active = true
+             WHERE active = false`
+        );
+        console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée`);
+    } catch (err) {
+        console.error('❌ Erreur lors de la réactivation des tirages :', err);
+    }
+}, { timezone: 'America/Port-au-Prince' });
 // ==================== Middleware ====================
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -931,14 +923,9 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
 app.get('/api/winners', authenticate, async (req, res) => {
   const user = req.user;
   const ownerId = user.ownerId;
-  const { period, search, page = 0, limit = 50, fromDate, toDate, drawId } = req.query;
-  const offset = parseInt(page) * parseInt(limit);
-
   let query = 'SELECT * FROM tickets WHERE owner_id = $1 AND win_amount > 0';
   const params = [ownerId];
   let idx = 2;
-
-  // Filtres par rôle (agent, superviseur, propriétaire)
   if (user.role === 'agent') {
     query += ` AND agent_id = $${idx++}`;
     params.push(user.id);
@@ -960,60 +947,13 @@ app.get('/api/winners', authenticate, async (req, res) => {
       params.push(agentId);
     }
   }
-
-  // Filtre par tirage
-  if (drawId && drawId !== 'all') {
-    query += ` AND draw_id = $${idx++}`;
-    params.push(drawId);
-  }
-
-  // Filtre par période (date)
-  const moment = require('moment-timezone');
-  const now = moment().tz('America/Port-au-Prince');
-  let dateCondition = '';
-  if (period === 'today') {
-    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') = '${now.format('YYYY-MM-DD')}'`;
-  } else if (period === 'yesterday') {
-    const yesterday = now.clone().subtract(1, 'day');
-    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') = '${yesterday.format('YYYY-MM-DD')}'`;
-  } else if (period === 'week') {
-    const startOfWeek = now.clone().startOf('week');
-    dateCondition = `date AT TIME ZONE 'America/Port-au-Prince' >= '${startOfWeek.format('YYYY-MM-DD HH:mm:ss')}'`;
-  } else if (period === 'month') {
-    const startOfMonth = now.clone().startOf('month');
-    dateCondition = `date AT TIME ZONE 'America/Port-au-Prince' >= '${startOfMonth.format('YYYY-MM-DD HH:mm:ss')}'`;
-  } else if (period === 'custom' && fromDate && toDate) {
-    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
-    params.push(fromDate, toDate);
-  }
-  if (dateCondition) {
-    query += ` AND ${dateCondition}`;
-  }
-
-  // Recherche textuelle (ticket_id, draw_name, numéros misés)
-  if (search && search.trim() !== '') {
-    const searchTerm = `%${search.trim()}%`;
-    query += ` AND (ticket_id ILIKE $${idx++} OR draw_name ILIKE $${idx++} OR EXISTS (SELECT 1 FROM jsonb_array_elements(bets) bet WHERE bet->>'cleanNumber' ILIKE $${idx-2} OR bet->>'number' ILIKE $${idx-2}))`;
-    params.push(searchTerm, searchTerm, searchTerm);
-  }
-
-  // Compter le total
-  const countQuery = query.replace('SELECT *', 'SELECT COUNT(*)');
-  const countRes = await pool.query(countQuery, params);
-  const total = parseInt(countRes.rows[0].count);
-
-  // Pagination
-  query += ` ORDER BY date DESC LIMIT $${idx++} OFFSET $${idx++}`;
-  params.push(parseInt(limit), offset);
-
+  query += ' ORDER BY date DESC LIMIT 20';
   try {
     const result = await pool.query(query, params);
-    res.json({ winners: result.rows, total, page: parseInt(page), limit: parseInt(limit) });
-  } catch (err) {
-    console.error('Erreur route winners:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
+    res.json({ winners: result.rows });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
+
 app.get('/api/winners/results', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -2658,29 +2598,6 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
-// ==================== SUPERADMIN : Résultats publiés aujourd'hui ====================
-app.get('/api/superadmin/results-today', authenticate, requireSuperAdmin, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT wr.id, wr.owner_id, u.name as owner_name, wr.draw_id, d.name as draw_name,
-             wr.numbers, wr.lotto3, wr.date
-      FROM winning_results wr
-      JOIN users u ON wr.owner_id = u.id
-      JOIN draws d ON wr.draw_id = d.id
-      WHERE DATE(wr.date AT TIME ZONE 'America/Port-au-Prince') = CURRENT_DATE
-      ORDER BY wr.date DESC
-    `);
-    // Transformer numbers (jsonb) en tableau pour l'affichage
-    const rows = result.rows.map(row => ({
-      ...row,
-      numbers: typeof row.numbers === 'string' ? JSON.parse(row.numbers) : row.numbers
-    }));
-    res.json({ results: rows });
-  } catch (err) {
-    console.error('Erreur /superadmin/results-today:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
 
 // Patch : route superadmin publish-results-bulk
 app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin, async (req, res) => {
@@ -2741,53 +2658,30 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
                             }
                         }
                         else if (game === 'mariage' || game === 'auto_marriage') {
-    if (clean.length === 4) {
-        const first = clean.slice(0,2), second = clean.slice(2,4);
-        const pairs = [lot1, lot2, lot3_num];
-        let win = false;
-        for (let i=0; i<3; i++) {
-            for (let j=0; j<3; j++) {
-                if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-            }
-            if (win) break;
-        }
-        if (win) {
-            let gain = 0;
-            // Détection robuste du mariage gratuit (insensible à la casse, accepte freeType manquant mais free=true)
-            const isFree = bet.free === true && 
-                           (bet.freeType === 'special_marriage' || 
-                            (bet.freeType && bet.freeType.toLowerCase() === 'special_marriage'));
-            
-            if (isFree) {
-                // Récupérer le montant forfaitaire paramétré
-                const advRes = await pool.query(
-                    `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount 
-                     FROM lottery_settings WHERE owner_id = $1`,
-                    [ownerId]
-                );
-                let freeWinAmount = 2500;
-                if (advRes.rows[0] && advRes.rows[0].win_amount) {
-                    freeWinAmount = parseFloat(advRes.rows[0].win_amount);
-                }
-                gain = freeWinAmount;
-                console.log(`🎁 Mariage gratuit gagnant pour ticket ${ticket.id} : ${first}&${second} -> ${gain} G`);
-            } else {
-                gain = amount * multipliers.mariage;
-            }
-            
-            if (gain > 0) {
-                win_details.push({
-                    game,
-                    gameAbbr: getGameAbbreviationForWin(game, bet),
-                    number: `${first}&${second}`,
-                    gain,
-                    reason: isFree ? 'free_marriage' : 'mariage'
-                });
-                totalWin += gain;
-            }
-        }
-    }
-}
+                            if (clean.length === 4) {
+                                const first = clean.slice(0,2), second = clean.slice(2,4);
+                                const pairs = [lot1, lot2, lot3_num];
+                                let win = false;
+                                for (let i=0; i<3; i++) {
+                                    for (let j=0; j<3; j++) {
+                                        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+                                    }
+                                    if (win) break;
+                                }
+                                if (win) {
+                                    let freeWinAmount = 2500;
+                                    if (bet.free && bet.freeType === 'special_marriage') {
+                                        const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
+                                        if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                                        gain = freeWinAmount;
+                                    } else {
+                                        gain = amount * multipliers.mariage;
+                                    }
+                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
+                                    totalWin += gain;
+                                }
+                            }
+                        }
                         else if (game === 'lotto4' || game === 'auto_lotto4') {
                             if (clean.length === 4 && bet.option) {
                                 let expected = '';
