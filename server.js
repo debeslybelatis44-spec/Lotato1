@@ -238,19 +238,28 @@ cron.schedule('* * * * *', async () => {
     }
 });
 
-// Tâche exécutée à minuit (00:00) heure d'Haïti pour réactiver tous les tirages
-cron.schedule('0 0 * * *', async () => {
-    try {
-        const result = await pool.query(
-            `UPDATE draws
-             SET active = true
-             WHERE active = false`
-        );
-        console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée`);
-    } catch (err) {
-        console.error('❌ Erreur lors de la réactivation des tirages :', err);
-    }
-}, { timezone: 'America/Port-au-Prince' });
+// ==================== Réactivation quotidienne fiable à minuit (heure Haïti) ====================
+function scheduleMidnightReactivation() {
+    const now = moment.tz('America/Port-au-Prince');
+    const midnight = moment.tz('America/Port-au-Prince').endOf('day').add(1, 'millisecond');
+    const delay = midnight.diff(now);
+    
+    setTimeout(async () => {
+        try {
+            const result = await pool.query(
+                `UPDATE draws SET active = true WHERE active = false`
+            );
+            console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée (minuit HT)`);
+        } catch (err) {
+            console.error('❌ Erreur lors de la réactivation des tirages :', err);
+        } finally {
+            // Programmer la prochaine exécution
+            scheduleMidnightReactivation();
+        }
+    }, delay);
+    
+    console.log(`⏰ Prochaine réactivation programmée dans ${Math.round(delay / 1000 / 60)} minutes (à ${midnight.format('HH:mm')} HT)`);
+}
 // ==================== Middleware ====================
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -2727,6 +2736,15 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
 
 console.log('✅ Patch win_details appliqué (routes owner et superadmin surchargées)');
 // ============================================================
+checkDatabaseConnection().then(() => {
+  scheduleMidnightReactivation();   // <--- AJOUTER CETTE LIGNE
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${port}`);
+  });
+}).catch(err => {
+  console.error('❌ Impossible de démarrer le serveur:', err);
+  process.exit(1);
+});
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
