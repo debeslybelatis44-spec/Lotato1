@@ -84,10 +84,10 @@
             <div class="tab" onclick="switchTab('reports')">📊 Rapports consolidés</div>
             <div class="tab" onclick="switchTab('publish')">📢 Publier résultats (multi)</div>
             <div class="tab" onclick="switchTab('results')">📋 Résultats du jour</div>
-            <div class="tab" onclick="switchTab('drawsActivation')">🎲 Activer tirages</div>
+            <div class="tab" onclick="switchTab('drawAccess')">🔒 Accès tirages spéciaux</div>
         </div>
 
-        <!-- Onglet Propriétaires (inchangé) -->
+        <!-- Onglet Propriétaires -->
         <div id="tab-owners" class="tab-content active">
             <div class="section-title"><i class="fas fa-plus-circle"></i> Créer un propriétaire</div>
             <div id="owner-create-message" class="alert"></div>
@@ -99,30 +99,33 @@
                 <div class="form-group"><label>Quota (agents + superviseurs)</label><input type="number" id="owner-quota" value="10" min="1" step="1"></div>
                 <div><button class="btn-primary" onclick="createOwner()">Créer</button></div>
             </div>
+
             <div class="section-title"><i class="fas fa-list"></i> Liste des propriétaires (abonnement mensuel)</div>
             <div id="owners-list" class="list-container"></div>
         </div>
 
-        <!-- Onglet Agents & Superviseurs (inchangé) -->
+        <!-- Onglet Agents & Superviseurs -->
         <div id="tab-agents" class="tab-content">
             <div class="section-title"><i class="fas fa-users"></i> Liste des agents</div>
             <div id="agents-list-container" class="list-container">
                 <table style="width:100%">
                     <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
-                    <tbody id="agents-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
+                    <tbody id="agents-table-body"><tr><td colspan="6">Chargement...</td></tr>
+                </tbody>
                 </table>
             </div>
             <div class="section-title" style="margin-top:30px;"><i class="fas fa-user-tie"></i> Liste des superviseurs</div>
             <div id="supervisors-list-container" class="list-container">
                 <table style="width:100%">
                     <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Propriétaire</th><th>Action</th></tr></thead>
-                    <tbody id="supervisors-table-body"><tr><td colspan="6">Chargement...</td></tr></tbody>
+                    <tbody id="supervisors-table-body"><tr><td colspan="6">Chargement...</td></tr>
+                </tbody>
                 </table>
             </div>
             <div id="delete-message" class="alert"></div>
         </div>
 
-        <!-- Onglet Messages (inchangé) -->
+        <!-- Onglet Messages -->
         <div id="tab-messages" class="tab-content">
             <div class="section-title"><i class="fas fa-bell"></i> Envoyer un message</div>
             <div class="form-grid">
@@ -143,13 +146,13 @@
             <div id="message-result" class="alert"></div>
         </div>
 
-        <!-- Onglet Rapports (inchangé) -->
+        <!-- Onglet Rapports -->
         <div id="tab-reports" class="tab-content">
             <div class="section-title"><i class="fas fa-chart-pie"></i> Rapports du jour par propriétaire</div>
             <div id="owners-reports" class="list-container"></div>
         </div>
 
-        <!-- Onglet Publier résultats (inchangé) -->
+        <!-- Onglet Publier résultats (multi propriétaires) -->
         <div id="tab-publish" class="tab-content">
             <div class="section-title"><i class="fas fa-chart-line"></i> Publier les résultats pour plusieurs propriétaires</div>
             <div class="form-grid">
@@ -188,7 +191,7 @@
             <div id="publish-result-message" class="alert"></div>
         </div>
 
-        <!-- Onglet Résultats du jour (inchangé) -->
+        <!-- Onglet Résultats du jour -->
         <div id="tab-results" class="tab-content">
             <div class="section-title"><i class="fas fa-calendar-day"></i> Résultats publiés aujourd'hui</div>
             <div id="today-results-container" class="list-container">
@@ -196,42 +199,22 @@
             </div>
         </div>
 
-        <!-- NOUVEL ONGLET : Activer tirages -->
-        <div id="tab-drawsActivation" class="tab-content">
-            <div class="section-title"><i class="fas fa-toggle-on"></i> Activer / Désactiver un tirage pour un propriétaire</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Propriétaire</label>
-                    <select id="activation-owner-id"></select>
-                </div>
-                <div class="form-group">
-                    <label>Tirage</label>
-                    <select id="activation-draw-id"></select>
-                </div>
-                <div style="display: flex; gap: 10px; align-items: flex-end;">
-                    <button class="btn-primary" onclick="setDrawForOwner(true)">✅ Activer</button>
-                    <button class="btn-danger" onclick="setDrawForOwner(false)">❌ Désactiver</button>
-                </div>
+        <!-- NOUVEAU : Onglet Accès tirages spéciaux -->
+        <div id="tab-drawAccess" class="tab-content">
+            <div class="section-title"><i class="fas fa-unlock-alt"></i> Activer/Désactiver les tirages spéciaux par propriétaire</div>
+            <div class="form-group">
+                <label>Sélectionner un tirage spécial</label>
+                <select id="special-draw-select" class="form-control" onchange="loadDrawAccessStatus()">
+                    <option value="">-- Choisir un tirage --</option>
+                </select>
             </div>
-            <div id="activation-message" class="alert"></div>
-
-            <div class="section-title"><i class="fas fa-list"></i> État des tirages par propriétaire</div>
-            <div class="form-grid" style="grid-template-columns:1fr auto;">
-                <div class="form-group">
-                    <label>Sélectionner un propriétaire</label>
-                    <select id="state-owner-id"></select>
-                </div>
-                <div style="display: flex; align-items: flex-end;">
-                    <button class="btn-primary" onclick="loadDrawsStateForOwner()">Voir l'état</button>
-                </div>
-            </div>
-            <div id="draws-state-container" class="list-container">
-                <p>Sélectionnez un propriétaire pour voir quels tirages lui sont activés.</p>
+            <div id="draw-access-list" class="list-container">
+                <p>Sélectionnez un tirage pour gérer les accès.</p>
             </div>
         </div>
     </div>
 
-    <!-- Modals (inchangés) -->
+    <!-- Modals existantes -->
     <div id="edit-owner-modal" class="modal" onclick="if(event.target===this) closeEditOwnerModal()">
         <div class="modal-content"><h3>Modifier le propriétaire</h3><input type="hidden" id="edit-owner-id"><div class="form-group"><label>Nom</label><input type="text" id="edit-owner-name"></div><div class="form-group"><label>Email</label><input type="email" id="edit-owner-email"></div><div class="form-group"><label>Téléphone</label><input type="text" id="edit-owner-phone"></div><div class="form-group"><label>Mot de passe (laisser vide)</label><input type="password" id="edit-owner-password"></div><div style="display:flex; gap:10px; justify-content:flex-end;"><button class="btn-primary" onclick="saveOwnerEdit()">Enregistrer</button><button class="btn-danger" onclick="closeEditOwnerModal()">Annuler</button></div></div>
     </div>
@@ -259,8 +242,7 @@
             loadPublishOwnersCheckbox();
             loadDrawsForPublish();
             loadTodayResults();
-            loadOwnersForActivation();
-            loadDrawsForActivation();
+            loadSpecialDrawsSelect(); // Charger la liste des tirages spéciaux
         }
 
         // ========== AUTHENTIFICATION ==========
@@ -296,8 +278,7 @@
                     loadPublishOwnersCheckbox();
                     loadDrawsForPublish();
                     loadTodayResults();
-                    loadOwnersForActivation();
-                    loadDrawsForActivation();
+                    loadSpecialDrawsSelect();
                 } else {
                     errorDiv.style.display = 'block';
                     errorDiv.innerText = data.error || 'Identifiants incorrects';
@@ -325,10 +306,7 @@
             if (tabId === 'reports') loadReports();
             if (tabId === 'publish') { loadPublishOwnersCheckbox(); loadDrawsForPublish(); }
             if (tabId === 'results') loadTodayResults();
-            if (tabId === 'drawsActivation') { 
-                loadOwnersForActivation(); 
-                loadDrawsForActivation(); 
-            }
+            if (tabId === 'drawAccess') { loadSpecialDrawsSelect(); if(document.getElementById('special-draw-select').value) loadDrawAccessStatus(); }
         }
 
         async function fetchWithToken(url, options = {}) {
@@ -351,7 +329,7 @@
             setTimeout(() => el.style.display = 'none', 4000);
         }
 
-        // ========== GESTION PROPRIÉTAIRES (inchangée) ==========
+        // ========== GESTION PROPRIÉTAIRES ==========
         async function loadOwners() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
@@ -382,7 +360,7 @@
                         <button class="btn-primary" style="padding:4px 8px;" onclick="markAsPaid(${o.id})">💰 Marquer payé</button>
                         <button class="btn-danger" style="padding:4px 8px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Bloquer' : 'Débloquer'}</button>
                         <button class="btn-danger" style="padding:4px 8px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
-                     </td>
+                    </td>
                 </tr>`;
             });
             html += '</tbody></table>';
@@ -422,7 +400,6 @@
                 loadOwners();
                 loadOwnerSelect();
                 loadPublishOwnersCheckbox();
-                loadOwnersForActivation();
                 document.getElementById('owner-name').value = '';
                 document.getElementById('owner-email').value = '';
                 document.getElementById('owner-phone').value = '';
@@ -445,7 +422,7 @@
         async function deleteOwner(id) {
             if (!confirm('Supprimer définitivement ce propriétaire ?')) return;
             const res = await fetchWithToken(`/superadmin/owners/${id}`, { method: 'DELETE' });
-            if (res && res.ok) { loadOwners(); loadOwnerSelect(); loadPublishOwnersCheckbox(); loadOwnersForActivation(); }
+            if (res && res.ok) { loadOwners(); loadOwnerSelect(); loadPublishOwnersCheckbox(); }
         }
 
         async function updateQuota(ownerId) {
@@ -491,7 +468,6 @@
                 loadOwners();
                 loadOwnerSelect();
                 loadPublishOwnersCheckbox();
-                loadOwnersForActivation();
             } else alert('Erreur modification');
         }
 
@@ -511,7 +487,7 @@
                     <td>
                         <button class="btn-primary" style="padding:4px 10px; margin-right:5px;" onclick="openEditAgentModal(${a.id}, '${escapeHtml(a.name)}', '${a.email}', '${a.phone || ''}', ${a.owner_id})">Modifier</button>
                         <button class="btn-danger" style="padding:4px 10px;" onclick="deleteAgent(${a.id})"><i class="fas fa-trash"></i></button>
-                     </td>
+                    </td>
                 </tr>`;
             });
             document.getElementById('agents-table-body').innerHTML = html || '<tr><td colspan="6">Aucun agent</td></tr>';
@@ -569,7 +545,7 @@
                     <td>
                         <button class="btn-primary" style="padding:4px 10px;" onclick="openEditSupervisorModal(${s.id}, '${escapeHtml(s.name)}', '${s.email}', '${s.phone || ''}', ${s.owner_id})">Modifier</button>
                         <button class="btn-danger" style="padding:4px 10px;" onclick="deleteSupervisor(${s.id})"><i class="fas fa-trash"></i></button>
-                     </td>
+                    </td>
                 </tr>`;
             });
             document.getElementById('supervisors-table-body').innerHTML = html || '<tr><td colspan="6">Aucun superviseur</td></tr>';
@@ -690,7 +666,7 @@
             document.getElementById('owners-reports').innerHTML = html || '<p>Aucune donnée</p>';
         }
 
-        // ========== PUBLICATION MULTI ==========
+        // ========== PUBLICATION MULTI-PROPRIÉTAIRES ==========
         async function loadPublishOwnersCheckbox() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
@@ -731,10 +707,24 @@
             const lot2 = document.getElementById('publish-lot2').value.trim();
             const lot3 = document.getElementById('publish-lot3').value.trim();
             const lotto3 = document.getElementById('publish-lotto3').value.trim();
-            if (selectedOwners.length === 0) { showMessage('publish-result-message', 'Sélectionnez au moins un propriétaire', false); return; }
-            if (!drawId || !lot1 || !lot2 || !lot3 || !lotto3) { showMessage('publish-result-message', 'Veuillez remplir tous les champs', false); return; }
-            if (!/^\d{2}$/.test(lot1) || !/^\d{2}$/.test(lot2) || !/^\d{2}$/.test(lot3)) { showMessage('publish-result-message', 'Les trois numéros doivent être sur 2 chiffres', false); return; }
-            if (!/^\d{3}$/.test(lotto3)) { showMessage('publish-result-message', 'Le numéro Lotto3 doit être sur 3 chiffres', false); return; }
+
+            if (selectedOwners.length === 0) {
+                showMessage('publish-result-message', 'Sélectionnez au moins un propriétaire', false);
+                return;
+            }
+            if (!drawId || !lot1 || !lot2 || !lot3 || !lotto3) {
+                showMessage('publish-result-message', 'Veuillez remplir tous les champs (tirage et 4 numéros)', false);
+                return;
+            }
+            if (!/^\d{2}$/.test(lot1) || !/^\d{2}$/.test(lot2) || !/^\d{2}$/.test(lot3)) {
+                showMessage('publish-result-message', 'Les trois numéros doivent être sur 2 chiffres (ex: 05, 12)', false);
+                return;
+            }
+            if (!/^\d{3}$/.test(lotto3)) {
+                showMessage('publish-result-message', 'Le numéro Lotto3 doit être sur 3 chiffres', false);
+                return;
+            }
+
             const numbers = [lot1, lot2, lot3];
             const res = await fetchWithToken('/superadmin/publish-results-bulk', {
                 method: 'POST',
@@ -764,10 +754,16 @@
             const container = document.getElementById('today-results-container');
             container.innerHTML = '<p>Chargement des résultats...</p>';
             const res = await fetchWithToken('/superadmin/results-today');
-            if (!res) { container.innerHTML = '<p class="alert-danger">Erreur de chargement</p>'; return; }
+            if (!res) {
+                container.innerHTML = '<p class="alert-danger">Erreur de chargement</p>';
+                return;
+            }
             const data = await res.json();
             const results = data.results || [];
-            if (results.length === 0) { container.innerHTML = '<p>Aucun résultat publié aujourd’hui.</p>'; return; }
+            if (results.length === 0) {
+                container.innerHTML = '<p>Aucun résultat publié aujourd’hui.</p>';
+                return;
+            }
             let html = '<table style="width:100%"><thead><tr><th>Propriétaire</th><th>Tirage</th><th>Numéros gagnants</th><th>Lotto3</th><th>Publié à</th></tr></thead><tbody>';
             results.forEach(r => {
                 const numbersStr = Array.isArray(r.numbers) ? r.numbers.join(' - ') : r.numbers;
@@ -784,82 +780,64 @@
             container.innerHTML = html;
         }
 
-        // ========== NOUVELLES FONCTIONS POUR ACTIVATION TIRAGES ==========
-        async function loadOwnersForActivation() {
-            const res = await fetchWithToken('/superadmin/owners');
+        // ========== NOUVEAU : GESTION ACCÈS TIRAGES SPÉCIAUX ==========
+        async function loadSpecialDrawsSelect() {
+            const res = await fetchWithToken('/superadmin/special-draws');
+            if (!res) return;
+            const data = await res.json();
+            const select = document.getElementById('special-draw-select');
+            let html = '<option value="">-- Choisir un tirage --</option>';
+            (data.draws || []).forEach(d => {
+                html += `<option value="${d.id}">${escapeHtml(d.name)} (${d.time})</option>`;
+            });
+            select.innerHTML = html;
+            // Réinitialiser l'affichage
+            document.getElementById('draw-access-list').innerHTML = '<p>Sélectionnez un tirage pour gérer les accès.</p>';
+        }
+
+        async function loadDrawAccessStatus() {
+            const drawId = document.getElementById('special-draw-select').value;
+            const container = document.getElementById('draw-access-list');
+            if (!drawId) {
+                container.innerHTML = '<p>Sélectionnez un tirage pour voir les propriétaires.</p>';
+                return;
+            }
+            container.innerHTML = '<p>Chargement...</p>';
+            const res = await fetchWithToken(`/superadmin/draw-access/${drawId}`);
             if (!res) return;
             const owners = await res.json();
-            let opts = '<option value="">-- Choisir un propriétaire --</option>';
+            let html = '<table style="width:100%"><thead><tr><th>Propriétaire</th><th>Accès</th><th>Action</th></tr></thead><tbody>';
             owners.forEach(o => {
-                opts += `<option value="${o.id}">${escapeHtml(o.name)}</option>`;
-            });
-            document.getElementById('activation-owner-id').innerHTML = opts;
-            document.getElementById('state-owner-id').innerHTML = opts;
-        }
-
-        async function loadDrawsForActivation() {
-            const res = await fetchWithToken('/draws');
-            if (!res) return;
-            const data = await res.json();
-            const draws = data.draws || [];
-            let opts = '<option value="">-- Choisir un tirage --</option>';
-            draws.forEach(d => {
-                opts += `<option value="${d.id}">${escapeHtml(d.name)} (${d.time})</option>`;
-            });
-            document.getElementById('activation-draw-id').innerHTML = opts;
-        }
-
-        async function setDrawForOwner(enabled) {
-            const ownerId = document.getElementById('activation-owner-id').value;
-            const drawId = document.getElementById('activation-draw-id').value;
-            if (!ownerId || !drawId) {
-                showMessage('activation-message', 'Veuillez sélectionner un propriétaire et un tirage', false);
-                return;
-            }
-            const res = await fetchWithToken(`/superadmin/owners/${ownerId}/draws/${drawId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled })
-            });
-            if (res && res.ok) {
-                showMessage('activation-message', enabled ? '✅ Tirage activé pour ce propriétaire' : '❌ Tirage désactivé', true);
-            } else {
-                showMessage('activation-message', '❌ Erreur lors de l\'opération', false);
-            }
-        }
-
-        async function loadDrawsStateForOwner() {
-            const ownerId = document.getElementById('state-owner-id').value;
-            if (!ownerId) {
-                alert('Veuillez sélectionner un propriétaire');
-                return;
-            }
-            const container = document.getElementById('draws-state-container');
-            container.innerHTML = '<p>Chargement...</p>';
-            const res = await fetchWithToken(`/superadmin/owners/${ownerId}/draws`);
-            if (!res) {
-                container.innerHTML = '<p class="loss">Erreur de chargement</p>';
-                return;
-            }
-            const data = await res.json();
-            const draws = data.draws || [];
-            if (draws.length === 0) {
-                container.innerHTML = '<p>Aucun tirage trouvé.</p>';
-                return;
-            }
-            let html = '<div class="table-responsive"><table style="width:100%"><thead><tr><th>Nom du tirage</th><th>Heure</th><th>Activé pour ce propriétaire</th></tr></thead><tbody>';
-            draws.forEach(d => {
-                const enabled = d.enabled_for_owner ? '✅ Oui' : '❌ Non';
                 html += `<tr>
-                    <td>${escapeHtml(d.name)}</td>
-                    <td>${d.time}</td>
-                    <td>${enabled}</td>
+                    <td>${escapeHtml(o.owner_name)}</td>
+                    <td>${o.enabled ? '<span class="badge-success">✅ Activé</span>' : '<span class="badge-danger">❌ Désactivé</span>'}</td>
+                    <td>
+                        <button class="btn-primary" onclick="toggleDrawAccess(${drawId}, ${o.owner_id}, ${!o.enabled})">
+                            ${o.enabled ? 'Désactiver' : 'Activer'}
+                        </button>
+                    </td>
                 </tr>`;
             });
-            html += '</tbody></table></div>';
+            html += '</tbody></table>';
             container.innerHTML = html;
         }
 
+        async function toggleDrawAccess(drawId, ownerId, enable) {
+            if (!confirm(enable ? `Activer ce tirage pour le propriétaire ?` : `Désactiver ce tirage pour le propriétaire ?`)) return;
+            const res = await fetchWithToken(`/superadmin/draw-access/${drawId}/${ownerId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enable })
+            });
+            if (res && res.ok) {
+                alert('✅ Accès modifié');
+                loadDrawAccessStatus(); // recharger le tableau
+            } else {
+                alert('❌ Erreur');
+            }
+        }
+
+        // ========== UTILITAIRES ==========
         function escapeHtml(text) {
             if (!text) return '';
             return text.replace(/[&<>]/g, function(m) {
@@ -896,8 +874,9 @@
         window.deselectAllPublishOwners = deselectAllPublishOwners;
         window.publishResultsMulti = publishResultsMulti;
         window.markAsPaid = markAsPaid;
-        window.setDrawForOwner = setDrawForOwner;
-        window.loadDrawsStateForOwner = loadDrawsStateForOwner;
+        window.loadSpecialDrawsSelect = loadSpecialDrawsSelect;
+        window.loadDrawAccessStatus = loadDrawAccessStatus;
+        window.toggleDrawAccess = toggleDrawAccess;
     </script>
 </body>
 </html>
