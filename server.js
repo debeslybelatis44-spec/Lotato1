@@ -175,14 +175,6 @@ async function ensureTables() {
     )
   `);
   await pool.query(`
-  CREATE TABLE IF NOT EXISTS owner_draws (
-      owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
-      enabled BOOLEAN DEFAULT true,
-      PRIMARY KEY (owner_id, draw_id)
-  )
-`);
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
@@ -520,25 +512,10 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 app.get('/api/draws', authenticate, async (req, res) => {
-  const ownerId = req.user.ownerId;
-  if (!ownerId) {
-    // Superadmin ou utilisateur sans propriétaire → voit tous les tirages
-    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
-    return res.json({ draws: result.rows });
-  }
   try {
-    const result = await pool.query(`
-      SELECT d.id, d.name, d.time, d.color, d.active
-      FROM draws d
-      INNER JOIN owner_draws od ON d.id = od.draw_id
-      WHERE od.owner_id = $1 AND od.enabled = true
-      ORDER BY d.time
-    `, [ownerId]);
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
     res.json({ draws: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 app.get('/api/blocked-numbers/global', authenticate, async (req, res) => {
@@ -1199,19 +1176,10 @@ app.put('/api/owner/change-supervisor', authenticate, requireRole('owner'), asyn
 });
 
 app.get('/api/owner/draws', authenticate, requireRole('owner'), async (req, res) => {
-  const ownerId = req.user.id;
   try {
-    const result = await pool.query(`
-      SELECT d.id, d.name, d.time, d.color, d.active
-      FROM draws d
-      INNER JOIN owner_draws od ON d.id = od.draw_id
-      WHERE od.owner_id = $1 AND od.enabled = true
-      ORDER BY d.time
-    `, [ownerId]);
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
     res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
 app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async (req, res) => {
@@ -1996,102 +1964,6 @@ app.post('/api/superadmin/owners/:id/pay', authenticate, requireSuperAdmin, asyn
     res.json({ success: true });
   } catch (err) {
     console.error('❌ Erreur paiement propriétaire:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-// ==================== Gestion des tirages par Super Admin ====================
-
-// Lister tous les tirages (pour Super Admin)
-app.get('/api/superadmin/draws', authenticate, requireSuperAdmin, async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM draws ORDER BY time');
-    res.json({ draws: result.rows });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Créer un nouveau tirage
-app.post('/api/superadmin/draws', authenticate, requireSuperAdmin, async (req, res) => {
-  const { name, time, color } = req.body;
-  if (!name || !time) return res.status(400).json({ error: 'Nom et heure requis' });
-  try {
-    const result = await pool.query(
-      'INSERT INTO draws (name, time, color, active) VALUES ($1, $2, $3, true) RETURNING *',
-      [name, time, color || null]
-    );
-    res.json({ success: true, draw: result.rows[0] });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur création tirage' });
-  }
-});
-
-// Supprimer un tirage
-app.delete('/api/superadmin/draws/:id', authenticate, requireSuperAdmin, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await pool.query('DELETE FROM draws WHERE id = $1', [id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur suppression' });
-  }
-});
-
-// État des tirages pour un propriétaire donné
-app.get('/api/superadmin/owners/:ownerId/draws', authenticate, requireSuperAdmin, async (req, res) => {
-  const { ownerId } = req.params;
-  try {
-    const result = await pool.query(`
-      SELECT d.*, COALESCE(od.enabled, false) AS enabled_for_owner
-      FROM draws d
-      LEFT JOIN owner_draws od ON d.id = od.draw_id AND od.owner_id = $1
-      ORDER BY d.time
-    `, [ownerId]);
-    res.json({ draws: result.rows });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Activer / désactiver un tirage pour un propriétaire
-app.put('/api/superadmin/owners/:ownerId/draws/:drawId', authenticate, requireSuperAdmin, async (req, res) => {
-  const { ownerId, drawId } = req.params;
-  const { enabled } = req.body;
-  try {
-    if (enabled) {
-      await pool.query(
-        `INSERT INTO owner_draws (owner_id, draw_id, enabled)
-         VALUES ($1, $2, true)
-         ON CONFLICT (owner_id, draw_id) DO UPDATE SET enabled = true`,
-        [ownerId, drawId]
-      );
-    } else {
-      await pool.query(
-        `DELETE FROM owner_draws WHERE owner_id = $1 AND draw_id = $2`,
-        [ownerId, drawId]
-      );
-    }
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur mise à jour' });
-  }
-});
-
-// Résultats publiés aujourd'hui (pour l'onglet "Résultats du jour")
-app.get('/api/superadmin/results-today', authenticate, requireSuperAdmin, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT wr.*, u.name as owner_name, d.name as draw_name
-      FROM winning_results wr
-      JOIN users u ON wr.owner_id = u.id
-      JOIN draws d ON wr.draw_id = d.id
-      WHERE DATE(wr.date) = CURRENT_DATE
-      ORDER BY wr.date DESC
-    `);
-    res.json({ results: result.rows });
-  } catch (err) {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
