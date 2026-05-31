@@ -175,16 +175,6 @@ async function ensureTables() {
     )
   `);
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS owner_draw_access (
-        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
-        enabled BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        PRIMARY KEY (owner_id, draw_id)
-    )
-`);
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
@@ -522,38 +512,12 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 app.get('/api/draws', authenticate, async (req, res) => {
-    const user = req.user;
-    try {
-        // Superadmin : voit tous les tirages
-        if (user.role === 'superadmin') {
-            const result = await pool.query('SELECT id, name, time, color, active, is_special, day_of_week FROM draws ORDER BY time');
-            return res.json({ draws: result.rows });
-        }
-
-        const ownerId = user.ownerId;
-        const currentDay = new Date().getDay(); // 0 = dimanche
-        const isSunday = (currentDay === 0);
-
-        const result = await pool.query(`
-            SELECT d.id, d.name, d.time, d.color, d.active, d.is_special, d.day_of_week
-            FROM draws d
-            WHERE (
-                (d.is_special = false)
-                OR EXISTS (
-                    SELECT 1 FROM owner_draw_access oda
-                    WHERE oda.draw_id = d.id AND oda.owner_id = $1 AND oda.enabled = true
-                )
-            )
-            AND (d.day_of_week IS NULL OR d.day_of_week = $2)
-            ORDER BY d.time
-        `, [ownerId, isSunday ? 6 : -1]);
-
-        res.json({ draws: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
+  try {
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
+    res.json({ draws: result.rows });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
+
 app.get('/api/blocked-numbers/global', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
@@ -592,31 +556,11 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
 
   try {
-    const drawCheck = await pool.query('SELECT active, time, is_special, day_of_week FROM draws WHERE id = $1', [drawId]);
+    const drawCheck = await pool.query('SELECT active, time FROM draws WHERE id = $1', [drawId]);
     if (drawCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Tirage introuvable' });
     }
     const draw = drawCheck.rows[0];
-    
-    // Vérification accès tirage spécial et jour (sauf superadmin)
-    if (req.user.role !== 'superadmin') {
-        if (draw.is_special) {
-            const access = await pool.query(
-                `SELECT 1 FROM owner_draw_access WHERE owner_id = $1 AND draw_id = $2 AND enabled = true`,
-                [ownerId, drawId]
-            );
-            if (access.rows.length === 0) {
-                return res.status(403).json({ error: 'Ce tirage spécial ne vous est pas accessible' });
-            }
-        }
-        if (draw.day_of_week !== null) {
-            const currentDay = new Date().getDay();
-            if (currentDay !== draw.day_of_week) {
-                return res.status(403).json({ error: 'Ce tirage n’est pas disponible aujourd’hui' });
-            }
-        }
-    }
-    
     if (!draw.active) {
       return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
     }
@@ -988,21 +932,9 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
 app.get('/api/winners', authenticate, async (req, res) => {
   const user = req.user;
   const ownerId = user.ownerId;
-  const { period, search, drawId, page = 0, limit = 50 } = req.query;
-  const offset = parseInt(page) * parseInt(limit);
-
-  let query = 'SELECT * FROM tickets WHERE win_amount > 0';
-  const params = [];
-  let idx = 1;
-
-  // --- Logique originale (inchangée pour les rôles) ---
-  if (user.role !== 'superadmin') {
-    // Pour agent, supervisor, owner : on filtre par owner_id
-    query += ` AND owner_id = $${idx++}`;
-    params.push(ownerId);
-  }
-  // Si c'est superadmin, on ne filtre PAS par owner_id (il voit tous les tickets)
-
+  let query = 'SELECT * FROM tickets WHERE owner_id = $1 AND win_amount > 0';
+  const params = [ownerId];
+  let idx = 2;
   if (user.role === 'agent') {
     query += ` AND agent_id = $${idx++}`;
     params.push(user.id);
@@ -1024,66 +956,31 @@ app.get('/api/winners', authenticate, async (req, res) => {
       params.push(agentId);
     }
   }
-
-  // --- Ajout des filtres (sans casser la structure) ---
-  if (drawId && drawId !== 'all') {
-    query += ` AND draw_id = $${idx++}`;
-    params.push(drawId);
-  }
-
-  // Filtre période (date)
-  if (period && period !== 'all') {
-    const now = moment().tz('America/Port-au-Prince');
-    let startDate, endDate;
-    switch (period) {
-      case 'today':
-        startDate = now.clone().startOf('day');
-        endDate = now.clone().endOf('day');
-        break;
-      case 'yesterday':
-        startDate = now.clone().subtract(1, 'day').startOf('day');
-        endDate = now.clone().subtract(1, 'day').endOf('day');
-        break;
-      case 'week':
-        startDate = now.clone().startOf('week');
-        endDate = now.clone().endOf('week');
-        break;
-      case 'month':
-        startDate = now.clone().startOf('month');
-        endDate = now.clone().endOf('month');
-        break;
-      default:
-        startDate = null;
-    }
-    if (startDate) {
-      query += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= $${idx++} AND date AT TIME ZONE 'America/Port-au-Prince' <= $${idx++}`;
-      params.push(startDate.toDate(), endDate.toDate());
-    }
-  }
-
-  // Recherche textuelle (ticket_id ou draw_name)
-  if (search && search.trim() !== '') {
-    const term = `%${search.trim()}%`;
-    query += ` AND (ticket_id ILIKE $${idx++} OR draw_name ILIKE $${idx++})`;
-    params.push(term, term);
-  }
-
-  // --- Compter le total (pour la pagination) ---
-  const countQuery = query.replace('SELECT *', 'SELECT COUNT(*)');
-  const countRes = await pool.query(countQuery, params);
-  const total = parseInt(countRes.rows[0].count);
-
-  // --- Pagination (remplace l'ancien LIMIT 20) ---
-  query += ` ORDER BY date DESC LIMIT $${idx++} OFFSET $${idx++}`;
-  params.push(parseInt(limit), offset);
-
+  query += ' ORDER BY date DESC LIMIT 20';
   try {
     const result = await pool.query(query, params);
-    res.json({ winners: result.rows, total, page: parseInt(page), limit: parseInt(limit) });
-  } catch (err) {
-    console.error('Erreur route winners:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
+    res.json({ winners: result.rows });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+app.get('/api/winners/results', authenticate, async (req, res) => {
+  const ownerId = req.user.ownerId;
+  try {
+    const result = await pool.query(
+      `SELECT wr.*, d.name as draw_name, wr.date as published_at
+       FROM winning_results wr JOIN draws d ON wr.draw_id = d.id
+       WHERE wr.owner_id = $1 AND wr.date >= NOW() - INTERVAL '7 days'
+       ORDER BY wr.draw_id, wr.date DESC`,
+      [ownerId]
+    );
+    const rows = result.rows.map(row => ({
+      ...row,
+      numbers: typeof row.numbers === 'string' ? JSON.parse(row.numbers) : row.numbers,
+      published_at: row.published_at,
+      name: row.draw_name
+    }));
+    res.json({ results: rows });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 // ==================== Routes superviseur ====================
 app.get('/api/supervisor/reports/overall', authenticate, requireRole('supervisor'), async (req, res) => {
@@ -2838,58 +2735,6 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
 });
 
 console.log('✅ Patch win_details appliqué (routes owner et superadmin surchargées)');
-// ==================== Routes SuperAdmin pour tirages spéciaux ====================
-app.get('/api/superadmin/special-draws', authenticate, requireSuperAdmin, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT id, name, time, color, active FROM draws WHERE is_special = true ORDER BY time');
-        res.json({ draws: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/superadmin/draw-access/:drawId', authenticate, requireSuperAdmin, async (req, res) => {
-    const { drawId } = req.params;
-    try {
-        const result = await pool.query(`
-            SELECT u.id as owner_id, u.name as owner_name,
-                   COALESCE(oda.enabled, false) as enabled
-            FROM users u
-            LEFT JOIN owner_draw_access oda ON oda.owner_id = u.id AND oda.draw_id = $1
-            WHERE u.role = 'owner'
-            ORDER BY u.name
-        `, [drawId]);
-        res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.put('/api/superadmin/draw-access/:drawId/:ownerId', authenticate, requireSuperAdmin, async (req, res) => {
-    const { drawId, ownerId } = req.params;
-    const { enabled } = req.body;
-    try {
-        if (enabled) {
-            await pool.query(`
-                INSERT INTO owner_draw_access (owner_id, draw_id, enabled, updated_at)
-                VALUES ($1, $2, true, NOW())
-                ON CONFLICT (owner_id, draw_id) DO UPDATE SET enabled = true, updated_at = NOW()
-            `, [ownerId, drawId]);
-        } else {
-            await pool.query(`
-                INSERT INTO owner_draw_access (owner_id, draw_id, enabled, updated_at)
-                VALUES ($1, $2, false, NOW())
-                ON CONFLICT (owner_id, draw_id) DO UPDATE SET enabled = false, updated_at = NOW()
-            `, [ownerId, drawId]);
-        }
-        res.json({ success: true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur mise à jour accès' });
-    }
-});
 // ============================================================
 checkDatabaseConnection().then(() => {
   scheduleMidnightReactivation();   // <--- AJOUTER CETTE LIGNE
