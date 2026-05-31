@@ -175,6 +175,16 @@ async function ensureTables() {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS owner_draw_access (
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
+        enabled BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (owner_id, draw_id)
+    )
+`);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
@@ -512,10 +522,37 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 app.get('/api/draws', authenticate, async (req, res) => {
-  try {
-    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
-    res.json({ draws: result.rows });
-  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+    const user = req.user;
+    try {
+        // Superadmin : voit tous les tirages
+        if (user.role === 'superadmin') {
+            const result = await pool.query('SELECT id, name, time, color, active, is_special, day_of_week FROM draws ORDER BY time');
+            return res.json({ draws: result.rows });
+        }
+
+        const ownerId = user.ownerId;
+        const currentDay = new Date().getDay(); // 0 = dimanche
+        const isSunday = (currentDay === 0);
+
+        const result = await pool.query(`
+            SELECT d.id, d.name, d.time, d.color, d.active, d.is_special, d.day_of_week
+            FROM draws d
+            WHERE (
+                (d.is_special = false)
+                OR EXISTS (
+                    SELECT 1 FROM owner_draw_access oda
+                    WHERE oda.draw_id = d.id AND oda.owner_id = $1 AND oda.enabled = true
+                )
+            )
+            AND (d.day_of_week IS NULL OR d.day_of_week = $2)
+            ORDER BY d.time
+        `, [ownerId, isSunday ? 6 : -1]);
+
+        res.json({ draws: result.rows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.get('/api/blocked-numbers/global', authenticate, async (req, res) => {
@@ -556,14 +593,34 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
 
   try {
-    const drawCheck = await pool.query('SELECT active, time FROM draws WHERE id = $1', [drawId]);
-    if (drawCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Tirage introuvable' });
+    const drawCheck = await pool.query('SELECT active, time, is_special, day_of_week FROM draws WHERE id = $1', [drawId]);
+if (drawCheck.rows.length === 0) {
+  return res.status(404).json({ error: 'Tirage introuvable' });
+}
+const draw = drawCheck.rows[0];
+
+// Vérification accès tirage spécial et jour (sauf superadmin)
+if (req.user.role !== 'superadmin') {
+    if (draw.is_special) {
+        const access = await pool.query(
+            `SELECT 1 FROM owner_draw_access WHERE owner_id = $1 AND draw_id = $2 AND enabled = true`,
+            [ownerId, drawId]
+        );
+        if (access.rows.length === 0) {
+            return res.status(403).json({ error: 'Ce tirage spécial ne vous est pas accessible' });
+        }
     }
-    const draw = drawCheck.rows[0];
-    if (!draw.active) {
-      return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
+    if (draw.day_of_week !== null) {
+        const currentDay = new Date().getDay();
+        if (currentDay !== draw.day_of_week) {
+            return res.status(403).json({ error: 'Ce tirage n’est pas disponible aujourd’hui' });
+        }
     }
+}
+
+if (!draw.active) {
+  return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
+}
 
     // Récupération unique des heures/minutes
     const [hours, minutes] = draw.time.split(':');
@@ -1966,6 +2023,58 @@ app.post('/api/superadmin/owners/:id/pay', authenticate, requireSuperAdmin, asyn
     console.error('❌ Erreur paiement propriétaire:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
+});
+// ==================== Routes SuperAdmin pour tirages spéciaux ====================
+app.get('/api/superadmin/special-draws', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, name, time, color, active FROM draws WHERE is_special = true ORDER BY time');
+        res.json({ draws: result.rows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/superadmin/draw-access/:drawId', authenticate, requireSuperAdmin, async (req, res) => {
+    const { drawId } = req.params;
+    try {
+        const result = await pool.query(`
+            SELECT u.id as owner_id, u.name as owner_name,
+                   COALESCE(oda.enabled, false) as enabled
+            FROM users u
+            LEFT JOIN owner_draw_access oda ON oda.owner_id = u.id AND oda.draw_id = $1
+            WHERE u.role = 'owner'
+            ORDER BY u.name
+        `, [drawId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.put('/api/superadmin/draw-access/:drawId/:ownerId', authenticate, requireSuperAdmin, async (req, res) => {
+    const { drawId, ownerId } = req.params;
+    const { enabled } = req.body;
+    try {
+        if (enabled) {
+            await pool.query(`
+                INSERT INTO owner_draw_access (owner_id, draw_id, enabled, updated_at)
+                VALUES ($1, $2, true, NOW())
+                ON CONFLICT (owner_id, draw_id) DO UPDATE SET enabled = true, updated_at = NOW()
+            `, [ownerId, drawId]);
+        } else {
+            await pool.query(`
+                INSERT INTO owner_draw_access (owner_id, draw_id, enabled, updated_at)
+                VALUES ($1, $2, false, NOW())
+                ON CONFLICT (owner_id, draw_id) DO UPDATE SET enabled = false, updated_at = NOW()
+            `, [ownerId, drawId]);
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erreur mise à jour accès' });
+    }
 });
 
 // ==================== Routes joueurs protégées ====================
