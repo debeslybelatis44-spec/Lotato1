@@ -988,14 +988,21 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
 app.get('/api/winners', authenticate, async (req, res) => {
   const user = req.user;
   const ownerId = user.ownerId;
-  const { period, search, page = 0, limit = 50, fromDate, toDate, drawId } = req.query;
+  const { period, search, drawId, page = 0, limit = 50 } = req.query;
   const offset = parseInt(page) * parseInt(limit);
 
-  let query = 'SELECT * FROM tickets WHERE owner_id = $1 AND win_amount > 0';
-  const params = [ownerId];
-  let idx = 2;
+  let query = 'SELECT * FROM tickets WHERE win_amount > 0';
+  const params = [];
+  let idx = 1;
 
-  // Filtre par rôle (agent, superviseur, propriétaire)
+  // --- Logique originale (inchangée pour les rôles) ---
+  if (user.role !== 'superadmin') {
+    // Pour agent, supervisor, owner : on filtre par owner_id
+    query += ` AND owner_id = $${idx++}`;
+    params.push(ownerId);
+  }
+  // Si c'est superadmin, on ne filtre PAS par owner_id (il voit tous les tickets)
+
   if (user.role === 'agent') {
     query += ` AND agent_id = $${idx++}`;
     params.push(user.id);
@@ -1018,47 +1025,55 @@ app.get('/api/winners', authenticate, async (req, res) => {
     }
   }
 
-  // Filtre par tirage
+  // --- Ajout des filtres (sans casser la structure) ---
   if (drawId && drawId !== 'all') {
     query += ` AND draw_id = $${idx++}`;
     params.push(drawId);
   }
 
-  // Filtre par période (date)
-  const now = moment().tz('America/Port-au-Prince');
-  let dateCondition = '';
-  if (period === 'today') {
-    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') = '${now.format('YYYY-MM-DD')}'`;
-  } else if (period === 'yesterday') {
-    const yesterday = now.clone().subtract(1, 'day');
-    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') = '${yesterday.format('YYYY-MM-DD')}'`;
-  } else if (period === 'week') {
-    const startOfWeek = now.clone().startOf('week');
-    dateCondition = `date AT TIME ZONE 'America/Port-au-Prince' >= '${startOfWeek.format('YYYY-MM-DD HH:mm:ss')}'`;
-  } else if (period === 'month') {
-    const startOfMonth = now.clone().startOf('month');
-    dateCondition = `date AT TIME ZONE 'America/Port-au-Prince' >= '${startOfMonth.format('YYYY-MM-DD HH:mm:ss')}'`;
-  } else if (period === 'custom' && fromDate && toDate) {
-    dateCondition = `DATE(date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
-    params.push(fromDate, toDate);
-  }
-  if (dateCondition) {
-    query += ` AND ${dateCondition}`;
+  // Filtre période (date)
+  if (period && period !== 'all') {
+    const now = moment().tz('America/Port-au-Prince');
+    let startDate, endDate;
+    switch (period) {
+      case 'today':
+        startDate = now.clone().startOf('day');
+        endDate = now.clone().endOf('day');
+        break;
+      case 'yesterday':
+        startDate = now.clone().subtract(1, 'day').startOf('day');
+        endDate = now.clone().subtract(1, 'day').endOf('day');
+        break;
+      case 'week':
+        startDate = now.clone().startOf('week');
+        endDate = now.clone().endOf('week');
+        break;
+      case 'month':
+        startDate = now.clone().startOf('month');
+        endDate = now.clone().endOf('month');
+        break;
+      default:
+        startDate = null;
+    }
+    if (startDate) {
+      query += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= $${idx++} AND date AT TIME ZONE 'America/Port-au-Prince' <= $${idx++}`;
+      params.push(startDate.toDate(), endDate.toDate());
+    }
   }
 
-  // Recherche textuelle
+  // Recherche textuelle (ticket_id ou draw_name)
   if (search && search.trim() !== '') {
-    const searchTerm = `%${search.trim()}%`;
-    query += ` AND (ticket_id ILIKE $${idx++} OR draw_name ILIKE $${idx++} OR EXISTS (SELECT 1 FROM jsonb_array_elements(bets) bet WHERE bet->>'cleanNumber' ILIKE $${idx-2} OR bet->>'number' ILIKE $${idx-2}))`;
-    params.push(searchTerm, searchTerm, searchTerm);
+    const term = `%${search.trim()}%`;
+    query += ` AND (ticket_id ILIKE $${idx++} OR draw_name ILIKE $${idx++})`;
+    params.push(term, term);
   }
 
-  // Compter le total
+  // --- Compter le total (pour la pagination) ---
   const countQuery = query.replace('SELECT *', 'SELECT COUNT(*)');
   const countRes = await pool.query(countQuery, params);
   const total = parseInt(countRes.rows[0].count);
 
-  // Pagination
+  // --- Pagination (remplace l'ancien LIMIT 20) ---
   query += ` ORDER BY date DESC LIMIT $${idx++} OFFSET $${idx++}`;
   params.push(parseInt(limit), offset);
 
