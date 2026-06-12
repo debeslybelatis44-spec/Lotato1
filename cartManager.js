@@ -91,8 +91,8 @@ function generateRandomMarriageBet(amount) {
     const num2 = Math.floor(Math.random() * 100).toString().padStart(2, '0');
     return {
         game: 'auto_marriage',
-        number: `${num1}&${num2}`,
-        cleanNumber: `${num1}&${num2}`,
+        number: `${num1}&${num2}`,         // Affichage
+        cleanNumber: `${num1}${num2}`,     // Calcul (4 chiffres)
         amount: amount
     };
 }

@@ -1270,33 +1270,39 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
             }
           } else if (game === 'lotto3') {
             if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
-} else if (game === 'mariage' || game === 'auto_marriage') {
-  if (clean.length === 4) {
-    const first = clean.slice(0,2), second = clean.slice(2,4);
-    const pairs = [lot1, lot2, lot3_num];
-    let win = false;
-    for (let i=0; i<3; i++) {
-      for (let j=0; j<3; j++) {
-        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-      }
-      if (win) break;
-    }
-    if (win) {
-      let freeWinAmount = 2500;
-      if (bet.free && bet.freeType === 'special_marriage') {
-        const advRes = await pool.query(
-          `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`,
-          [ownerId]
-        );
-        if (advRes.rows[0] && advRes.rows[0].win_amount) {
-          freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+} 
+else if (game === 'mariage' || game === 'auto_marriage') {
+    if (clean.length === 4) {
+        const first = clean.slice(0,2), second = clean.slice(2,4);
+        const pairs = [lot1, lot2, lot3_num];
+        let win = false;
+        for (let i=0; i<3; i++) {
+            for (let j=0; j<3; j++) {
+                if (i !== j && first === pairs[i] && second === pairs[j]) {
+                    win = true;
+                    break;
+                }
+            }
+            if (win) break;
         }
-        gain = freeWinAmount;
-      } else {
-        gain = amount * multipliers.mariage;
-      }
+        if (win) {
+            if (bet.free && bet.freeType === 'special_marriage') {
+                gain = 2500;
+            } else {
+                gain = amount * multipliers.mariage;
+            }
+            // IMPORTANT : ajouter au total et aux détails
+            win_details.push({
+                game,
+                gameAbbr: getGameAbbreviationForWin(game, bet),
+                number: `${first}&${second}`,
+                gain,
+                reason: 'mariage'
+            });
+            totalWin += gain;
+        }
     }
-  }
+}
           } else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (clean.length === 4 && bet.option) {
               let expected = '';
@@ -2540,30 +2546,37 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
                     }
                     // Mariage
                     else if (game === 'mariage' || game === 'auto_marriage') {
-                        if (clean.length === 4) {
-                            const first = clean.slice(0,2), second = clean.slice(2,4);
-                            const pairs = [lot1, lot2, lot3_num];
-                            let win = false;
-                            for (let i=0; i<3; i++) {
-                                for (let j=0; j<3; j++) {
-                                    if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-                                }
-                                if (win) break;
-                            }
-                            if (win) {
-                                let freeWinAmount = 2500;
-                                if (bet.free && bet.freeType === 'special_marriage') {
-                                    const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
-                                    if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
-                                    gain = freeWinAmount;
-                                } else {
-                                    gain = amount * multipliers.mariage;
-                                }
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
-                                totalWin += gain;
-                            }
-                        }
-                    }
+    if (clean.length === 4) {
+        const first = clean.slice(0,2), second = clean.slice(2,4);
+        const pairs = [lot1, lot2, lot3_num];
+        let win = false;
+        for (let i=0; i<3; i++) {
+            for (let j=0; j<3; j++) {
+                if (i !== j && first === pairs[i] && second === pairs[j]) {
+                    win = true;
+                    break;
+                }
+            }
+            if (win) break;
+        }
+        if (win) {
+            if (bet.free && bet.freeType === 'special_marriage') {
+                gain = 2500;
+            } else {
+                gain = amount * multipliers.mariage;
+            }
+            // IMPORTANT : ajouter au total et aux détails
+            win_details.push({
+                game,
+                gameAbbr: getGameAbbreviationForWin(game, bet),
+                number: `${first}&${second}`,
+                gain,
+                reason: 'mariage'
+            });
+            totalWin += gain;
+        }
+    }
+}
                     // Lotto4
                     else if (game === 'lotto4' || game === 'auto_lotto4') {
                         if (clean.length === 4 && bet.option) {
@@ -2655,30 +2668,37 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
                         }
                     }
                     else if (game === 'mariage' || game === 'auto_marriage') {
-                        if (clean.length === 4) {
-                            const first = clean.slice(0,2), second = clean.slice(2,4);
-                            const pairs = [lot1, lot2, lot3_num];
-                            let win = false;
-                            for (let i=0; i<3; i++) {
-                                for (let j=0; j<3; j++) {
-                                    if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-                                }
-                                if (win) break;
-                            }
-                            if (win) {
-                                let freeWinAmount = 2500;
-                                if (bet.free && bet.freeType === 'special_marriage') {
-                                    const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
-                                    if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
-                                    gain = freeWinAmount;
-                                } else {
-                                    gain = amount * multipliers.mariage;
-                                }
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
-                                totalWin += gain;
-                            }
-                        }
-                    }
+    if (clean.length === 4) {
+        const first = clean.slice(0,2), second = clean.slice(2,4);
+        const pairs = [lot1, lot2, lot3_num];
+        let win = false;
+        for (let i=0; i<3; i++) {
+            for (let j=0; j<3; j++) {
+                if (i !== j && first === pairs[i] && second === pairs[j]) {
+                    win = true;
+                    break;
+                }
+            }
+            if (win) break;
+        }
+        if (win) {
+            if (bet.free && bet.freeType === 'special_marriage') {
+                gain = 2500;
+            } else {
+                gain = amount * multipliers.mariage;
+            }
+            // IMPORTANT : ajouter au total et aux détails
+            win_details.push({
+                game,
+                gameAbbr: getGameAbbreviationForWin(game, bet),
+                number: `${first}&${second}`,
+                gain,
+                reason: 'mariage'
+            });
+            totalWin += gain;
+        }
+    }
+}
                     else if (game === 'lotto4' || game === 'auto_lotto4') {
                         if (clean.length === 4 && bet.option) {
                             let expected = '';
@@ -2776,30 +2796,27 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
                             }
                         }
                         else if (game === 'mariage' || game === 'auto_marriage') {
-                            if (clean.length === 4) {
-                                const first = clean.slice(0,2), second = clean.slice(2,4);
-                                const pairs = [lot1, lot2, lot3_num];
-                                let win = false;
-                                for (let i=0; i<3; i++) {
-                                    for (let j=0; j<3; j++) {
-                                        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-                                    }
-                                    if (win) break;
-                                }
-                                if (win) {
-                                    let freeWinAmount = 2500;
-                                    if (bet.free && bet.freeType === 'special_marriage') {
-                                        const advRes = await pool.query(`SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`, [ownerId]);
-                                        if (advRes.rows[0] && advRes.rows[0].win_amount) freeWinAmount = parseFloat(advRes.rows[0].win_amount);
-                                        gain = freeWinAmount;
-                                    } else {
-                                        gain = amount * multipliers.mariage;
-                                    }
-                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
-                                    totalWin += gain;
-                                }
-                            }
-                        }
+    if (clean.length === 4) {
+        const first = clean.slice(0,2), second = clean.slice(2,4);
+        const pairs = [lot1, lot2, lot3_num];
+        let win = false;
+        for (let i=0; i<3; i++) {
+            for (let j=0; j<3; j++) {
+                if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+            }
+            if (win) break;
+        }
+        if (win) {
+            if (bet.free && bet.freeType === 'special_marriage') {
+                gain = 2500;   // montant fixe, sans appel BDD
+            } else {
+                gain = amount * multipliers.mariage;
+            }
+            win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
+            totalWin += gain;
+        }
+    }
+}
                         else if (game === 'lotto4' || game === 'auto_lotto4') {
                             if (clean.length === 4 && bet.option) {
                                 let expected = '';
