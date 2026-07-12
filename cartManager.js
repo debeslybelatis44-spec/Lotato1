@@ -153,68 +153,244 @@ var CartManager = {
     },
 
     addBet() {
-        if (APP_STATE.isDrawBlocked) {
-            alert("Tiraj sa a ap rantre nan 3 minit.");
+    if (APP_STATE.isDrawBlocked) {
+        alert("Tiraj sa a ap rantre nan 3 minit.");
+        return;
+    }
+
+    const numInput = document.getElementById('num-input');
+    const amtInput = document.getElementById('amt-input');
+    const amt = parseFloat(amtInput.value);
+    if (isNaN(amt) || amt <= 0) {
+        alert("Montan pa valid");
+        return;
+    }
+
+    const game = APP_STATE.selectedGame;
+
+    // --- Jeux automatiques (auto_marriage, bo, grap, etc.) ---
+    if (['auto_marriage', 'bo', 'grap', 'auto_lotto4', 'auto_lotto5'].includes(game)) {
+        let autoBets = [];
+        switch (game) {
+            case 'auto_marriage': autoBets = GameEngine.generateAutoMarriageBets(amt); break;
+            case 'bo': autoBets = SpecialGames.generateBOBets(amt); break;
+            case 'grap': autoBets = SpecialGames.generateGRAPBets(amt); break;
+            case 'auto_lotto4': autoBets = GameEngine.generateAutoLotto4Bets(amt); break;
+            case 'auto_lotto5': autoBets = GameEngine.generateAutoLotto5Bets(amt); break;
+        }
+        if (autoBets.length === 0) {
+            alert("Pa gen ase nimevo nan panye pou jenere " + game);
             return;
         }
 
-        const numInput = document.getElementById('num-input');
-        const amtInput = document.getElementById('amt-input');
-        const amt = parseFloat(amtInput.value);
-        if (isNaN(amt) || amt <= 0) {
-            alert("Montan pa valid");
-            return;
+        const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
+        const errors = [];
+        for (const drawId of draws) {
+            for (const bet of autoBets) {
+                const number = bet.cleanNumber || bet.number;
+                const check = checkNumberLimit(number, drawId, amt);
+                if (!check.success) errors.push(check.message);
+            }
+        }
+        if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+
+        for (const drawId of draws) {
+            for (const bet of autoBets) {
+                const number = bet.cleanNumber || bet.number;
+                if (isNumberBlocked(number, drawId)) {
+                    alert(`❌ Nimewo ${number} bloke pou tiraj ${drawId}`);
+                    return;
+                }
+            }
         }
 
-        const game = APP_STATE.selectedGame;
+        draws.forEach(drawId => {
+            const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
+            autoBets.forEach(bet => {
+                APP_STATE.currentCart.push({ ...bet, id: Date.now() + Math.random(), drawId, drawName });
+            });
+        });
+        this.updateFreeMarriages();
+        amtInput.value = '';
+        numInput.focus();
+        return;
+    }
 
-        if (game === 'auto_marriage' || game === 'bo' || game === 'grap' || game === 'auto_lotto4' || game === 'auto_lotto5') {
-            let autoBets = [];
-            switch (game) {
-                case 'auto_marriage': autoBets = GameEngine.generateAutoMarriageBets(amt); break;
-                case 'bo': autoBets = SpecialGames.generateBOBets(amt); break;
-                case 'grap': autoBets = SpecialGames.generateGRAPBets(amt); break;
-                case 'auto_lotto4': autoBets = GameEngine.generateAutoLotto4Bets(amt); break;
-                case 'auto_lotto5': autoBets = GameEngine.generateAutoLotto5Bets(amt); break;
-            }
-            if (autoBets.length === 0) {
-                alert("Pa gen ase nimevo nan panye pou jenere " + game);
-                return;
-            }
+    // --- Jeux n0 à n9 ---
+    if (/^n[0-9]$/.test(game)) {
+        const lastDigit = parseInt(game.substring(1), 10);
+        const numbers = [];
+        for (let tens = 0; tens <= 9; tens++) {
+            numbers.push(tens.toString() + lastDigit.toString());
+        }
 
-            const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
-            const errors = [];
-            for (const drawId of draws) {
-                for (const bet of autoBets) {
-                    const number = bet.cleanNumber || bet.number;
-                    const check = checkNumberLimit(number, drawId, amt);
-                    if (!check.success) errors.push(check.message);
+        const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
+        const errors = [];
+        for (const drawId of draws) {
+            for (const num of numbers) {
+                const check = checkNumberLimit(num, drawId, amt);
+                if (!check.success) errors.push(check.message);
+            }
+        }
+        if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+
+        for (const drawId of draws) {
+            for (const num of numbers) {
+                if (isNumberBlocked(num, drawId)) {
+                    alert(`❌ Nimewo ${num} bloke pou tiraj ${drawId}`);
+                    return;
                 }
             }
-            if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+        }
 
-            for (const drawId of draws) {
-                for (const bet of autoBets) {
-                    const number = bet.cleanNumber || bet.number;
-                    if (isNumberBlocked(number, drawId)) {
-                        alert(`❌ Nimewo ${number} bloke pou tiraj ${drawId}`);
-                        return;
-                    }
-                }
-            }
-
-            draws.forEach(drawId => {
-                const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
-                autoBets.forEach(bet => {
-                    APP_STATE.currentCart.push({ ...bet, id: Date.now() + Math.random(), drawId, drawName });
+        draws.forEach(drawId => {
+            const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
+            numbers.forEach(num => {
+                APP_STATE.currentCart.push({
+                    id: Date.now() + Math.random(),
+                    game, number: num, cleanNumber: num,
+                    amount: amt, drawId, drawName,
+                    timestamp: new Date().toISOString()
                 });
             });
-            this.updateFreeMarriages();
-            amtInput.value = '';
-            numInput.focus();
+        });
+        this.updateFreeMarriages();
+        numInput.value = '';
+        amtInput.value = '';
+        numInput.focus();
+        return;
+    }
+
+    // --- Jeux normaux (borlette, lotto3, lotto4, lotto5, mariage, etc.) ---
+    let num = numInput.value.trim();
+    let cleanNum = num; // pour les jeux autres que lotto4
+
+    // --- Validation spéciale pour lotto4 (accepte "54 76" ou "5476") ---
+    if (game === 'lotto4') {
+        let parts;
+        if (num.includes(' ')) {
+            parts = num.split(/\s+/);
+        } else if (num.length === 4 && /^\d{4}$/.test(num)) {
+            parts = [num.substr(0, 2), num.substr(2, 2)];
+        } else {
+            alert("Nimewo lotto4 pa valid. Antre 2 chif espas 2 chif (eg: 54 76) oubyen 4 chif (5476)");
+            return;
+        }
+        if (parts.length !== 2 || parts[0].length !== 2 || parts[1].length !== 2 ||
+            !/^\d{2}$/.test(parts[0]) || !/^\d{2}$/.test(parts[1])) {
+            alert("Chak nimewo dwe gen 2 chif.");
+            return;
+        }
+        // On conserve les deux nombres séparés pour générer les combinaisons plus tard
+        // On stocke dans une variable spéciale
+        var lotto4Parts = parts;
+    } else {
+        // Validation standard pour les autres jeux
+        if (!GameEngine.validateEntry(game, num)) {
+            alert("Nimewo pa valid");
+            return;
+        }
+        cleanNum = GameEngine.getCleanNumber(num);
+    }
+
+    const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
+
+    // --- Ajout des paris pour chaque tirage ---
+    draws.forEach(drawId => {
+        const drawName = APP_STATE.draws?.find(d => d.id == drawId)?.name || drawId;
+
+        // --- lotto4 : générer les deux combinaisons (ordre normal et inversé) ---
+        if (game === 'lotto4') {
+            const n1 = lotto4Parts[0];
+            const n2 = lotto4Parts[1];
+            // Construire les deux combinaisons (uniquement si différentes)
+            const combos = [];
+            const combo1 = { display: n1 + ' ' + n2, clean: n1 + n2 };
+            combos.push(combo1);
+            if (n1 !== n2) {
+                const combo2 = { display: n2 + ' ' + n1, clean: n2 + n1 };
+                combos.push(combo2);
+            }
+
+            for (const combo of combos) {
+                // Vérifier limite et blocage pour chaque combinaison
+                if (isNumberBlocked(combo.clean, drawId)) {
+                    alert(`❌ Nimewo ${combo.display} bloke pou tiraj ${drawId}`);
+                    return;
+                }
+                const check = checkNumberLimit(combo.clean, drawId, amt);
+                if (!check.success) {
+                    alert(check.message);
+                    return;
+                }
+                // Ajouter le pari
+                APP_STATE.currentCart.push({
+                    id: Date.now() + Math.random(),
+                    game: game,
+                    number: combo.display,      // affichage avec espace
+                    cleanNumber: combo.clean,   // 4 chiffres pour le calcul
+                    amount: amt,
+                    drawId,
+                    drawName,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            return; // on sort du forEach après avoir traité lotto4 pour ce tirage
+        }
+
+        // --- lotto5 : utiliser la fonction existante (génère plusieurs options) ---
+        if (game === 'lotto5') {
+            const optionBets = GameEngine.generateLottoBetsWithOptions(game, cleanNum, amt);
+            // On vérifie chaque pari généré
+            for (const bet of optionBets) {
+                const number = bet.cleanNumber || bet.number;
+                if (isNumberBlocked(number, drawId)) {
+                    alert(`❌ Nimewo ${number} bloke pou tiraj ${drawId}`);
+                    return;
+                }
+                const check = checkNumberLimit(number, drawId, amt);
+                if (!check.success) {
+                    alert(check.message);
+                    return;
+                }
+                APP_STATE.currentCart.push({
+                    ...bet,
+                    drawId,
+                    drawName,
+                    timestamp: new Date().toISOString()
+                });
+            }
             return;
         }
 
+        // --- Autres jeux (borlette, lotto3, mariage, etc.) : ajout direct ---
+        if (isNumberBlocked(cleanNum, drawId)) {
+            alert(`❌ Nimewo ${cleanNum} bloke pou tiraj ${drawId}`);
+            return;
+        }
+        const check = checkNumberLimit(cleanNum, drawId, amt);
+        if (!check.success) {
+            alert(check.message);
+            return;
+        }
+        APP_STATE.currentCart.push({
+            id: Date.now() + Math.random(),
+            game,
+            number: num,           // garde l'affichage original (sans modification)
+            cleanNumber: cleanNum,
+            amount: amt,
+            drawId,
+            drawName,
+            timestamp: new Date().toISOString()
+        });
+    });
+
+    // --- Mise à jour des mariages gratuits, nettoyage et focus ---
+    this.updateFreeMarriages();
+    numInput.value = '';
+    amtInput.value = '';
+    numInput.focus();
+}
         if (/^n[0-9]$/.test(game)) {
             const lastDigit = parseInt(game.substring(1), 10);
             const numbers = [];
