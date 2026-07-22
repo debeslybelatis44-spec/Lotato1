@@ -1704,6 +1704,7 @@ app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, r
   try {
     const result = await pool.query(`
       SELECT u.id, u.name, u.username as email, u.blocked as active, u.quota, u.phone, u.created_at,
+             u.subscription_status, u.last_payment_date,
              (SELECT COUNT(*) FROM users WHERE owner_id = u.id AND role IN ('agent', 'supervisor')) as current_count
       FROM users u WHERE u.role = 'owner' ORDER BY u.created_at DESC
     `);
