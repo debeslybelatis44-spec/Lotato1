@@ -62,6 +62,11 @@ async function ensureTables() {
         created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  // Colonnes ajoutées après coup (nécessaires pour "Marquer payé" côté super admin) —
+  // ADD COLUMN IF NOT EXISTS pour ne rien casser si la table existe déjà sans elles.
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) DEFAULT 'pending'`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_payment_date TIMESTAMP`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expiry_date TIMESTAMP`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS draws (
         id SERIAL PRIMARY KEY,
@@ -81,6 +86,12 @@ async function ensureTables() {
         limits JSONB
     )
   `);
+  // Colonnes ajoutées après coup (nécessaires pour les réglages propriétaire et
+  // les réglages avancés / mariage gratuit) — sans ça, l'enregistrement des
+  // réglages échouait car ces colonnes n'existaient pas encore en base.
+  await pool.query(`ALTER TABLE lottery_settings ADD COLUMN IF NOT EXISTS address TEXT`);
+  await pool.query(`ALTER TABLE lottery_settings ADD COLUMN IF NOT EXISTS phone_numbers TEXT`);
+  await pool.query(`ALTER TABLE lottery_settings ADD COLUMN IF NOT EXISTS advanced_settings JSONB`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS winning_results (
         id SERIAL PRIMARY KEY,
