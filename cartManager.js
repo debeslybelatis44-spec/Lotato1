@@ -103,6 +103,23 @@ var CartManager = {
     updateFreeMarriages() {
         APP_STATE.currentCart = APP_STATE.currentCart.filter(b => !(b.free && b.freeType === 'special_marriage'));
 
+        const cfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.freeMarriage) || {
+            enabled: true,
+            tiers: [
+                { min: 100, max: 500, count: 4 },
+                { min: 501, max: 1500, count: 4 },
+                { min: 1501, max: null, count: 4 }
+            ],
+            winAmount: 2500
+        };
+
+        // Le propriétaire peut désactiver complètement les mariages
+        // gratuits depuis ses réglages — dans ce cas on ne génère rien.
+        if (cfg.enabled === false) {
+            this.renderCart();
+            return;
+        }
+
         const payantsByDraw = {};
         APP_STATE.currentCart.forEach(bet => {
             if (bet.amount > 0) {
@@ -111,14 +128,6 @@ var CartManager = {
             }
         });
 
-        const cfg = (APP_STATE.advancedSettings && APP_STATE.advancedSettings.freeMarriage) || {
-            tiers: [
-                { min: 100, max: 500, count: 4 },
-                { min: 501, max: 1500, count: 4 },
-                { min: 1501, max: null, count: 4 }
-            ],
-            winAmount: 2500
-        };
         const tiers = cfg.tiers;
 
         Object.keys(payantsByDraw).forEach(drawId => {

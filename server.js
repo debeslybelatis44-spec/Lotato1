@@ -175,16 +175,6 @@ async function ensureTables() {
     )
   `);
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS owner_draw_access (
-        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        draw_id INTEGER REFERENCES draws(id) ON DELETE CASCADE,
-        enabled BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        PRIMARY KEY (owner_id, draw_id)
-    )
-`);
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
@@ -233,43 +223,46 @@ const cron = require('node-cron');
 // Tâche exécutée toutes les minutes pour fermer les tirages 3 minutes avant l'heure
 cron.schedule('* * * * *', async () => {
     try {
+        // Heure actuelle du serveur fuseau Haïti
+        const now = moment().tz('America/Port-au-Prince');
+        const currentTime = now.format('HH:mm:ss');
+
+        // Fermeture : time <= (current_time + 3 minutes) ? 
+        // On veut fermer si l'heure du tirage - 3 min <= heure actuelle
+        // Calculer l'heure limite = time - 3 minutes
+        // Comparaison en SQL : TIME(now) >= (draw_time - interval '3 minutes')
         const result = await pool.query(
             `UPDATE draws
              SET active = false
              WHERE active = true
-               AND (CURRENT_DATE + time - INTERVAL '3 minutes') <= NOW() AT TIME ZONE 'America/Port-au-Prince'
-               AND (CURRENT_DATE + time) > NOW() AT TIME ZONE 'America/Port-au-Prince' - INTERVAL '1 day'`
+               AND (time - INTERVAL '3 minutes') <= (NOW() AT TIME ZONE 'America/Port-au-Prince')::time
+               -- On ne ferme pas les tirages déjà passés (éviter de fermer plusieurs fois)
+               AND time > (NOW() AT TIME ZONE 'America/Port-au-Prince')::time - INTERVAL '1 day'  -- garde les tirages du jour
+            `
         );
+
         if (result.rowCount > 0) {
-            console.log(`🔒 ${result.rowCount} tirage(s) fermé(s) automatiquement`);
+            console.log(`🔒 ${result.rowCount} tirage(s) fermé(s) automatiquement à ${currentTime}`);
         }
     } catch (err) {
         console.error('❌ Erreur lors de la fermeture automatique :', err);
     }
 });
 
-// ==================== Réactivation quotidienne fiable à minuit (heure Haïti) ====================
-function scheduleMidnightReactivation() {
-    const now = moment.tz('America/Port-au-Prince');
-    const midnight = moment.tz('America/Port-au-Prince').endOf('day').add(1, 'millisecond');
-    const delay = midnight.diff(now);
-    
-    setTimeout(async () => {
-        try {
-            const result = await pool.query(
-                `UPDATE draws SET active = true WHERE active = false`
-            );
-            console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée (minuit HT)`);
-        } catch (err) {
-            console.error('❌ Erreur lors de la réactivation des tirages :', err);
-        } finally {
-            // Programmer la prochaine exécution
-            scheduleMidnightReactivation();
-        }
-    }, delay);
-    
-    console.log(`⏰ Prochaine réactivation programmée dans ${Math.round(delay / 1000 / 60)} minutes (à ${midnight.format('HH:mm')} HT)`);
-}
+// Tâche exécutée à minuit (00:00) pour réactiver tous les tirages
+cron.schedule('0 0 * * *', async () => {
+    try {
+        const result = await pool.query(
+            `UPDATE draws
+             SET active = true
+             WHERE active = false`
+        );
+        console.log(`✅ ${result.rowCount} tirage(s) réactivé(s) pour la nouvelle journée`);
+    } catch (err) {
+        console.error('❌ Erreur lors de la réactivation des tirages :', err);
+    }
+});
+
 // ==================== Middleware ====================
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -522,37 +515,10 @@ app.get('/api/lottery-settings', authenticate, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 app.get('/api/draws', authenticate, async (req, res) => {
-    const user = req.user;
-    try {
-        // Superadmin : voit tous les tirages
-        if (user.role === 'superadmin') {
-            const result = await pool.query('SELECT id, name, time, color, active, is_special, day_of_week FROM draws ORDER BY time');
-            return res.json({ draws: result.rows });
-        }
-
-        const ownerId = user.ownerId;
-        const currentDay = new Date().getDay(); // 0 = dimanche
-        const isSunday = (currentDay === 0);
-
-        const result = await pool.query(`
-            SELECT d.id, d.name, d.time, d.color, d.active, d.is_special, d.day_of_week
-            FROM draws d
-            WHERE (
-                (d.is_special = false)
-                OR EXISTS (
-                    SELECT 1 FROM owner_draw_access oda
-                    WHERE oda.draw_id = d.id AND oda.owner_id = $1 AND oda.enabled = true
-                )
-            )
-            AND (d.day_of_week IS NULL OR d.day_of_week = $2)
-            ORDER BY d.time
-        `, [ownerId, isSunday ? 6 : -1]);
-
-        res.json({ draws: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
+  try {
+    const result = await pool.query('SELECT id, name, time, color, active FROM draws ORDER BY time');
+    res.json({ draws: result.rows });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 app.get('/api/blocked-numbers/global', authenticate, async (req, res) => {
@@ -593,56 +559,36 @@ app.post('/api/tickets/save', authenticate, async (req, res) => {
   const ticketId = 'T' + Date.now() + Math.floor(Math.random() * 1000);
 
   try {
-    const drawCheck = await pool.query('SELECT active, time, is_special, day_of_week FROM draws WHERE id = $1', [drawId]);
+    const drawCheck = await pool.query('SELECT active, time FROM draws WHERE id = $1', [drawId]);
 if (drawCheck.rows.length === 0) {
   return res.status(404).json({ error: 'Tirage introuvable' });
 }
 const draw = drawCheck.rows[0];
-
-// Vérification accès tirage spécial et jour (sauf superadmin)
-if (req.user.role !== 'superadmin') {
-    if (draw.is_special) {
-        const access = await pool.query(
-            `SELECT 1 FROM owner_draw_access WHERE owner_id = $1 AND draw_id = $2 AND enabled = true`,
-            [ownerId, drawId]
-        );
-        if (access.rows.length === 0) {
-            return res.status(403).json({ error: 'Ce tirage spécial ne vous est pas accessible' });
-        }
-    }
-    if (draw.day_of_week !== null) {
-        const currentDay = new Date().getDay();
-        if (currentDay !== draw.day_of_week) {
-            return res.status(403).json({ error: 'Ce tirage n’est pas disponible aujourd’hui' });
-        }
-    }
-}
-
 if (!draw.active) {
   return res.status(403).json({ error: 'Tirage bloqué par administrateur' });
 }
 
-    // Récupération unique des heures/minutes
-    const [hours, minutes] = draw.time.split(':');
-    const now = moment().tz('America/Port-au-Prince');
+// Vérification horaire (empêcher les mises 3 minutes avant ET après l'heure)
+const [hours, minutes] = draw.time.split(':');
+const now = moment().tz('America/Port-au-Prince');
+const drawTime = moment().tz('America/Port-au-Prince').set({
+  hour: parseInt(hours),
+  minute: parseInt(minutes),
+  second: 0
+});
 
-    // Vérifier si l'heure du tirage est déjà passée
-    const drawTimeFull = moment().tz('America/Port-au-Prince').set({
-        hour: parseInt(hours),
-        minute: parseInt(minutes),
-        second: 0
-    });
-    if (now.isAfter(drawTimeFull)) {
-        return res.status(403).json({ error: `Tirage déjà terminé. Impossible d'enregistrer des mises.` });
-    }
+// 1. Si l'heure du tirage est déjà passée
+if (now.isAfter(drawTime)) {
+  return res.status(403).json({ error: `Tirage déjà terminé. Aucune mise possible.` });
+}
 
-    // Vérification 3 minutes avant
-    const blockFrom = drawTimeFull.clone().subtract(3, 'minutes');
-    if (now.isSameOrAfter(blockFrom)) {
-      return res.status(403).json({
-        error: `Tirage fermé. Aucune mise possible depuis ${blockFrom.format('HH:mm')} (3 minutes avant l'heure du tirage).`
-      });
-    }
+// 2. Si on est dans les 3 minutes avant le tirage
+const blockFrom = drawTime.clone().subtract(3, 'minutes');
+if (now.isSameOrAfter(blockFrom)) {
+  return res.status(403).json({
+    error: `Tirage fermé. Aucune mise possible depuis ${blockFrom.format('HH:mm')} (3 minutes avant l'heure du tirage).`
+  });
+}
 
     const globalBlocked = await pool.query('SELECT number FROM global_blocked_numbers WHERE owner_id = $1', [ownerId]);
     const globalBlockedSet = new Set(globalBlocked.rows.map(r => r.number));
@@ -1026,7 +972,7 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
     const result = await pool.query(
       `SELECT wr.*, d.name as draw_name, wr.date as published_at
        FROM winning_results wr JOIN draws d ON wr.draw_id = d.id
-       WHERE wr.owner_id = $1 AND wr.date >= NOW() - INTERVAL '7 days'
+       WHERE wr.owner_id = $1 AND wr.date >= CURRENT_DATE
        ORDER BY wr.draw_id, wr.date DESC`,
       [ownerId]
     );
@@ -1039,6 +985,7 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
     res.json({ results: rows });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
+
 // ==================== Routes superviseur ====================
 app.get('/api/supervisor/reports/overall', authenticate, requireRole('supervisor'), async (req, res) => {
   const supervisorId = req.user.id;
@@ -1239,6 +1186,89 @@ app.get('/api/owner/draws', authenticate, requireRole('owner'), async (req, res)
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
+app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { drawId, numbers, lotto3 } = req.body;
+  if (!drawId || !numbers || numbers.length !== 3) return res.status(400).json({ error: 'Données invalides' });
+  try {
+    await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
+    const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
+    let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
+    if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
+      const raw = settingsRes.rows[0].multipliers;
+      multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    }
+    const [lot1, lot2, lot3_num] = numbers;
+    const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
+    for (const ticket of ticketsRes.rows) {
+      let totalWin = 0;
+      const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
+      if (Array.isArray(bets)) {
+        for (const bet of bets) {
+          const game = bet.game || bet.specialType;
+          const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+          const amount = parseFloat(bet.amount) || 0;
+          let gain = 0;
+          if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+            if (clean.length === 2) {
+              if (clean === lot1) gain += amount * multipliers.lot1;
+              if (clean === lot2) gain += amount * multipliers.lot2;
+              if (clean === lot3_num) gain += amount * multipliers.lot3;
+            }
+          } else if (game === 'lotto3') {
+            if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
+} else if (game === 'mariage' || game === 'auto_marriage') {
+  if (clean.length === 4) {
+    const first = clean.slice(0,2), second = clean.slice(2,4);
+    const pairs = [lot1, lot2, lot3_num];
+    let win = false;
+    for (let i=0; i<3; i++) {
+      for (let j=0; j<3; j++) {
+        if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+      }
+      if (win) break;
+    }
+    if (win) {
+      let freeWinAmount = 2500;
+      if (bet.free && bet.freeType === 'special_marriage') {
+        const advRes = await pool.query(
+          `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`,
+          [ownerId]
+        );
+        if (advRes.rows[0] && advRes.rows[0].win_amount) {
+          freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+        }
+        gain = freeWinAmount;
+      } else {
+        gain = amount * multipliers.mariage;
+      }
+    }
+  }
+          } else if (game === 'lotto4' || game === 'auto_lotto4') {
+            if (clean.length === 4 && bet.option) {
+              let expected = '';
+              if (bet.option == 1) expected = lot1 + lot2;
+              else if (bet.option == 2) expected = lot2 + lot3_num;
+              else if (bet.option == 3) expected = lot1 + lot3_num;
+              if (clean === expected) gain = amount * multipliers.lotto4;
+            }
+          } else if (game === 'lotto5' || game === 'auto_lotto5') {
+            if (clean.length === 5 && bet.option) {
+              let expected = '';
+              if (bet.option == 1) expected = lotto3 + lot2;
+              else if (bet.option == 2) expected = lotto3 + lot3_num;
+              if (clean === expected) gain = amount * multipliers.lotto5;
+            }
+          }
+          totalWin += gain;
+        }
+      }
+      await pool.query('UPDATE tickets SET win_amount = $1, checked = true WHERE id = $2', [totalWin, ticket.id]);
+    }
+    await pool.query('INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)', [ownerId, 'owner', 'publish_results', `Tirage ${drawId}`, req.ip]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur publication' }); }
+});
 
 app.post('/api/owner/block-draw', authenticate, requireRole('owner'), async (req, res) => {
   const { drawId, block } = req.body;
@@ -1424,18 +1454,11 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
   if (supervisorId && supervisorId !== 'all') { baseQuery += ` AND agent_id IN (SELECT id FROM users WHERE supervisor_id = $${idx++})`; params.push(supervisorId); }
   if (agentId && agentId !== 'all') { baseQuery += ` AND agent_id = $${idx++}`; params.push(agentId); }
   if (drawId && drawId !== 'all') { baseQuery += ` AND draw_id = $${idx++}`; params.push(drawId); }
- if (period === 'today') {
-    baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = (NOW() AT TIME ZONE 'America/Port-au-Prince')::DATE`;
-} else if (period === 'yesterday') {
-    baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') = (NOW() AT TIME ZONE 'America/Port-au-Prince')::DATE - INTERVAL '1 day'`;
-} else if (period === 'week') {
-    baseQuery += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/Port-au-Prince')`;
-} else if (period === 'month') {
-    baseQuery += ` AND date AT TIME ZONE 'America/Port-au-Prince' >= DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Port-au-Prince')`;
-} else if (period === 'custom' && fromDate && toDate) {
-    baseQuery += ` AND DATE(date AT TIME ZONE 'America/Port-au-Prince') BETWEEN $${idx++} AND $${idx++}`;
-    params.push(fromDate, toDate);
-}
+  if (period === 'today') baseQuery += ` AND date >= CURRENT_DATE`;
+  else if (period === 'yesterday') baseQuery += ` AND date >= CURRENT_DATE - INTERVAL '1 day' AND date < CURRENT_DATE`;
+  else if (period === 'week') baseQuery += ` AND date >= DATE_TRUNC('week', CURRENT_DATE)`;
+  else if (period === 'month') baseQuery += ` AND date >= DATE_TRUNC('month', CURRENT_DATE)`;
+  else if (period === 'custom' && fromDate && toDate) { baseQuery += ` AND date >= $${idx++} AND date <= $${idx++}`; params.push(fromDate, toDate); }
   if (gainLoss === 'gain') baseQuery += ` AND win_amount > 0`;
   else if (gainLoss === 'loss') baseQuery += ` AND (win_amount = 0 OR win_amount IS NULL)`;
   const summaryRes = await pool.query(baseQuery, params);
@@ -1587,6 +1610,7 @@ app.get('/api/owner/advanced-settings', authenticate, requireRole('owner'), asyn
       // Valeurs par défaut
       const defaults = {
         freeMarriage: {
+          enabled: true,
           tiers: [
             { min: 0, max: 50, count: 1 },
             { min: 51, max: 150, count: 2 },
@@ -1639,6 +1663,7 @@ app.get('/api/agent/advanced-settings', authenticate, requireStaff, async (req, 
       // Valeurs par défaut
       const defaults = {
         freeMarriage: {
+          enabled: true,
           tiers: [
             { min: 0, max: 50, count: 1 },
             { min: 51, max: 150, count: 2 },
@@ -1941,58 +1966,6 @@ app.post('/api/superadmin/owners/:id/pay', authenticate, requireSuperAdmin, asyn
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-// ==================== Routes SuperAdmin pour tirages spéciaux ====================
-app.get('/api/superadmin/special-draws', authenticate, requireSuperAdmin, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT id, name, time, color, active FROM draws WHERE is_special = true ORDER BY time');
-        res.json({ draws: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/superadmin/draw-access/:drawId', authenticate, requireSuperAdmin, async (req, res) => {
-    const { drawId } = req.params;
-    try {
-        const result = await pool.query(`
-            SELECT u.id as owner_id, u.name as owner_name,
-                   COALESCE(oda.enabled, false) as enabled
-            FROM users u
-            LEFT JOIN owner_draw_access oda ON oda.owner_id = u.id AND oda.draw_id = $1
-            WHERE u.role = 'owner'
-            ORDER BY u.name
-        `, [drawId]);
-        res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.put('/api/superadmin/draw-access/:drawId/:ownerId', authenticate, requireSuperAdmin, async (req, res) => {
-    const { drawId, ownerId } = req.params;
-    const { enabled } = req.body;
-    try {
-        if (enabled) {
-            await pool.query(`
-                INSERT INTO owner_draw_access (owner_id, draw_id, enabled, updated_at)
-                VALUES ($1, $2, true, NOW())
-                ON CONFLICT (owner_id, draw_id) DO UPDATE SET enabled = true, updated_at = NOW()
-            `, [ownerId, drawId]);
-        } else {
-            await pool.query(`
-                INSERT INTO owner_draw_access (owner_id, draw_id, enabled, updated_at)
-                VALUES ($1, $2, false, NOW())
-                ON CONFLICT (owner_id, draw_id) DO UPDATE SET enabled = false, updated_at = NOW()
-            `, [ownerId, drawId]);
-        }
-        res.json({ success: true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur mise à jour accès' });
-    }
-});
 
 // ==================== Routes joueurs protégées ====================
 app.get('/api/player/balance', authenticate, requirePlayer, async (req, res) => {
@@ -2222,7 +2195,21 @@ app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, asy
                 }
                 if (win) break;
               }
-              if (win) gain = amount * multipliers.mariage;
+              if (win) {
+                if (bet.free && bet.freeType === 'special_marriage') {
+                  let freeWinAmount = 2500;
+                  const advRes = await pool.query(
+                    `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`,
+                    [ownerId]
+                  );
+                  if (advRes.rows[0] && advRes.rows[0].win_amount) {
+                    freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                  }
+                  gain = freeWinAmount;
+                } else {
+                  gain = amount * multipliers.mariage;
+                }
+              }
             }
           } else if (game === 'lotto4' || game === 'auto_lotto4') {
             if (clean.length === 4 && bet.option) {
@@ -2340,7 +2327,21 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
                   }
                   if (win) break;
                 }
-                if (win) gain = amount * multipliers.mariage;
+                if (win) {
+                  if (bet.free && bet.freeType === 'special_marriage') {
+                    let freeWinAmount = 2500;
+                    const advRes = await pool.query(
+                      `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`,
+                      [ownerId]
+                    );
+                    if (advRes.rows[0] && advRes.rows[0].win_amount) {
+                      freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                    }
+                    gain = freeWinAmount;
+                  } else {
+                    gain = amount * multipliers.mariage;
+                  }
+                }
               }
             } else if (game === 'lotto4' || game === 'auto_lotto4') {
               if (clean.length === 4 && bet.option) {
@@ -2390,391 +2391,9 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
     results
   });
 });
-// ============================================================
-// PATCH : Ajout du support win_details pour winnersDetails.js
-// (À placer à la fin de server.js, avant le démarrage)
-// ============================================================
 
-// Fonction utilitaire pour l'abréviation des jeux
-function getGameAbbreviationForWin(gameName, bet) {
-    if (bet && bet.free && bet.freeType === 'special_marriage') return 'marg';
-    const map = {
-        'borlette': 'bor', 'lotto3': 'lo3', 'lotto4': 'lo4', 'lotto5': 'lo5',
-        'auto_marriage': 'mara', 'auto_lotto4': 'loa4', 'auto_lotto5': 'loa5',
-        'mariage': 'mar', 'bo': 'bo', 'grap': 'grap'
-    };
-    const key = (gameName || '').trim().toLowerCase();
-    return map[key] || gameName;
-}
-
-// Patch : route owner publish-results
-app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async (req, res) => {
-    const ownerId = req.user.id;
-    const { drawId, numbers, lotto3 } = req.body;
-    if (!drawId || !numbers || numbers.length !== 3) return res.status(400).json({ error: 'Données invalides' });
-    try {
-        await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
-        const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
-        let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
-        if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
-            const raw = settingsRes.rows[0].multipliers;
-            multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        }
-        const [lot1, lot2, lot3_num] = numbers;
-        const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
-        
-        for (const ticket of ticketsRes.rows) {
-            let totalWin = 0;
-            const win_details = [];
-            const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
-            if (Array.isArray(bets)) {
-                for (const bet of bets) {
-                    const game = bet.game || bet.specialType;
-                    const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
-                    const amount = parseFloat(bet.amount) || 0;
-                    let gain = 0;
-                    let reason = '';
-
-                    // Borlette
-                    if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
-                        if (clean.length === 2) {
-                            if (clean === lot1) { gain = amount * multipliers.lot1; reason = 'lot1'; }
-                            else if (clean === lot2) { gain = amount * multipliers.lot2; reason = 'lot2'; }
-                            else if (clean === lot3_num) { gain = amount * multipliers.lot3; reason = 'lot3'; }
-                            if (gain > 0) {
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason });
-                                totalWin += gain;
-                            }
-                        }
-                    }
-                    // Lotto3
-                    else if (game === 'lotto3' || game === 'auto_lotto3') {
-                        if (clean.length === 3 && clean === lotto3) {
-                            gain = amount * multipliers.lotto3;
-                            win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: 'lotto3' });
-                            totalWin += gain;
-                        }
-                    }
-                    // Mariage
-                    else if (game === 'mariage' || game === 'auto_marriage') {
-    if (clean.length === 4) {
-        const first = clean.slice(0,2), second = clean.slice(2,4);
-        const pairs = [lot1, lot2, lot3_num];
-        let win = false;
-        for (let i=0; i<3; i++) {
-            for (let j=0; j<3; j++) {
-                if (i !== j && first === pairs[i] && second === pairs[j]) {
-                    win = true;
-                    break;
-                }
-            }
-            if (win) break;
-        }
-        if (win) {
-            if (bet.free && bet.freeType === 'special_marriage') {
-                gain = 2500;
-            } else {
-                gain = amount * multipliers.mariage;
-            }
-            // IMPORTANT : ajouter au total et aux détails
-            win_details.push({
-                game,
-                gameAbbr: getGameAbbreviationForWin(game, bet),
-                number: `${first}&${second}`,
-                gain,
-                reason: 'mariage'
-            });
-            totalWin += gain;
-        }
-    }
-}
-                    // Lotto4
-                    else if (game === 'lotto4' || game === 'auto_lotto4') {
-                        if (clean.length === 4 && bet.option) {
-                            let expected = '';
-                            if (bet.option == 1) expected = lot1 + lot2;
-                            else if (bet.option == 2) expected = lot2 + lot3_num;
-                            else if (bet.option == 3) expected = lot1 + lot3_num;
-                            if (clean === expected) {
-                                gain = amount * multipliers.lotto4;
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto4_option${bet.option}` });
-                                totalWin += gain;
-                            }
-                        }
-                    }
-                    // Lotto5
-                    else if (game === 'lotto5' || game === 'auto_lotto5') {
-                        if (clean.length === 5 && bet.option) {
-                            let expected = '';
-                            if (bet.option == 1) expected = lotto3 + lot2;
-                            else if (bet.option == 2) expected = lotto3 + lot3_num;
-                            if (clean === expected) {
-                                gain = amount * multipliers.lotto5;
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto5_option${bet.option}` });
-                                totalWin += gain;
-                            }
-                        }
-                    }
-                }
-            }
-            await pool.query('UPDATE tickets SET win_amount = $1, checked = true, win_details = $2 WHERE id = $3', [totalWin, JSON.stringify(win_details), ticket.id]);
-        }
-        await pool.query('INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)', [ownerId, 'owner', 'publish_results', `Tirage ${drawId}`, req.ip]);
-        res.json({ success: true });
-    } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur publication' }); }
-});
-
-// Patch : route superadmin publish-results
-app.post('/api/superadmin/publish-results', authenticate, requireSuperAdmin, async (req, res) => {
-    const { ownerId, drawId, numbers, lotto3 } = req.body;
-    if (!ownerId || !drawId || !numbers || !Array.isArray(numbers) || numbers.length !== 3 || !lotto3) {
-        return res.status(400).json({ error: 'Données invalides' });
-    }
-    for (let n of numbers) if (!/^\d{2}$/.test(n)) return res.status(400).json({ error: `Numéro invalide` });
-    if (!/^\d{3}$/.test(lotto3)) return res.status(400).json({ error: 'Lotto3 invalide' });
-
-    try {
-        const ownerCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
-        if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Propriétaire introuvable' });
-
-        await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
-
-        const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
-        let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
-        if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
-            const raw = settingsRes.rows[0].multipliers;
-            multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        }
-
-        const [lot1, lot2, lot3_num] = numbers;
-        const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
-
-        for (const ticket of ticketsRes.rows) {
-            let totalWin = 0;
-            const win_details = [];
-            const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
-            if (Array.isArray(bets)) {
-                for (const bet of bets) {
-                    const game = bet.game || bet.specialType;
-                    const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
-                    const amount = parseFloat(bet.amount) || 0;
-                    let gain = 0, reason = '';
-
-                    if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
-                        if (clean.length === 2) {
-                            if (clean === lot1) { gain = amount * multipliers.lot1; reason = 'lot1'; }
-                            else if (clean === lot2) { gain = amount * multipliers.lot2; reason = 'lot2'; }
-                            else if (clean === lot3_num) { gain = amount * multipliers.lot3; reason = 'lot3'; }
-                            if (gain > 0) {
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason });
-                                totalWin += gain;
-                            }
-                        }
-                    }
-                    else if (game === 'lotto3' || game === 'auto_lotto3') {
-                        if (clean.length === 3 && clean === lotto3) {
-                            gain = amount * multipliers.lotto3;
-                            win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: 'lotto3' });
-                            totalWin += gain;
-                        }
-                    }
-                    else if (game === 'mariage' || game === 'auto_marriage') {
-    if (clean.length === 4) {
-        const first = clean.slice(0,2), second = clean.slice(2,4);
-        const pairs = [lot1, lot2, lot3_num];
-        let win = false;
-        for (let i=0; i<3; i++) {
-            for (let j=0; j<3; j++) {
-                if (i !== j && first === pairs[i] && second === pairs[j]) {
-                    win = true;
-                    break;
-                }
-            }
-            if (win) break;
-        }
-        if (win) {
-            if (bet.free && bet.freeType === 'special_marriage') {
-                gain = 2500;
-            } else {
-                gain = amount * multipliers.mariage;
-            }
-            // IMPORTANT : ajouter au total et aux détails
-            win_details.push({
-                game,
-                gameAbbr: getGameAbbreviationForWin(game, bet),
-                number: `${first}&${second}`,
-                gain,
-                reason: 'mariage'
-            });
-            totalWin += gain;
-        }
-    }
-}
-                    else if (game === 'lotto4' || game === 'auto_lotto4') {
-                        if (clean.length === 4 && bet.option) {
-                            let expected = '';
-                            if (bet.option == 1) expected = lot1 + lot2;
-                            else if (bet.option == 2) expected = lot2 + lot3_num;
-                            else if (bet.option == 3) expected = lot1 + lot3_num;
-                            if (clean === expected) {
-                                gain = amount * multipliers.lotto4;
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto4_option${bet.option}` });
-                                totalWin += gain;
-                            }
-                        }
-                    }
-                    else if (game === 'lotto5' || game === 'auto_lotto5') {
-                        if (clean.length === 5 && bet.option) {
-                            let expected = '';
-                            if (bet.option == 1) expected = lotto3 + lot2;
-                            else if (bet.option == 2) expected = lotto3 + lot3_num;
-                            if (clean === expected) {
-                                gain = amount * multipliers.lotto5;
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto5_option${bet.option}` });
-                                totalWin += gain;
-                            }
-                        }
-                    }
-                }
-            }
-            await pool.query('UPDATE tickets SET win_amount = $1, checked = true, win_details = $2 WHERE id = $3', [totalWin, JSON.stringify(win_details), ticket.id]);
-        }
-
-        await pool.query(`INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)`, [req.user.id, 'superadmin', 'publish_results', `Owner ${ownerId}, Draw ${drawId}`, req.ip]);
-        res.json({ success: true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// Patch : route superadmin publish-results-bulk
-app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin, async (req, res) => {
-    const { ownerIds, drawId, numbers, lotto3 } = req.body;
-    if (!ownerIds || !Array.isArray(ownerIds) || ownerIds.length === 0) {
-        return res.status(400).json({ error: 'Liste ownerIds requise' });
-    }
-    if (!drawId || !numbers || numbers.length !== 3 || !lotto3) {
-        return res.status(400).json({ error: 'drawId, numbers, lotto3 requis' });
-    }
-    for (let n of numbers) if (!/^\d{2}$/.test(n)) return res.status(400).json({ error: `Numéro invalide` });
-    if (!/^\d{3}$/.test(lotto3)) return res.status(400).json({ error: 'Lotto3 invalide' });
-
-    async function publishForOneOwner(ownerId) {
-        try {
-            const ownerCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [ownerId, 'owner']);
-            if (ownerCheck.rows.length === 0) return { success: false, ownerId, error: 'Propriétaire introuvable' };
-
-            await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
-
-            const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
-            let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
-            if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
-                const raw = settingsRes.rows[0].multipliers;
-                multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            }
-
-            const [lot1, lot2, lot3_num] = numbers;
-            const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
-
-            for (const ticket of ticketsRes.rows) {
-                let totalWin = 0;
-                const win_details = [];
-                const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
-                if (Array.isArray(bets)) {
-                    for (const bet of bets) {
-                        const game = bet.game || bet.specialType;
-                        const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
-                        const amount = parseFloat(bet.amount) || 0;
-                        let gain = 0, reason = '';
-
-                        if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
-                            if (clean.length === 2) {
-                                if (clean === lot1) { gain = amount * multipliers.lot1; reason = 'lot1'; }
-                                else if (clean === lot2) { gain = amount * multipliers.lot2; reason = 'lot2'; }
-                                else if (clean === lot3_num) { gain = amount * multipliers.lot3; reason = 'lot3'; }
-                                if (gain > 0) {
-                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason });
-                                    totalWin += gain;
-                                }
-                            }
-                        }
-                        else if (game === 'lotto3' || game === 'auto_lotto3') {
-                            if (clean.length === 3 && clean === lotto3) {
-                                gain = amount * multipliers.lotto3;
-                                win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: 'lotto3' });
-                                totalWin += gain;
-                            }
-                        }
-                        else if (game === 'mariage' || game === 'auto_marriage') {
-    if (clean.length === 4) {
-        const first = clean.slice(0,2), second = clean.slice(2,4);
-        const pairs = [lot1, lot2, lot3_num];
-        let win = false;
-        for (let i=0; i<3; i++) {
-            for (let j=0; j<3; j++) {
-                if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
-            }
-            if (win) break;
-        }
-        if (win) {
-            if (bet.free && bet.freeType === 'special_marriage') {
-                gain = 2500;   // montant fixe, sans appel BDD
-            } else {
-                gain = amount * multipliers.mariage;
-            }
-            win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: `${first}&${second}`, gain, reason: 'mariage' });
-            totalWin += gain;
-        }
-    }
-}
-                        else if (game === 'lotto4' || game === 'auto_lotto4') {
-                            if (clean.length === 4 && bet.option) {
-                                let expected = '';
-                                if (bet.option == 1) expected = lot1 + lot2;
-                                else if (bet.option == 2) expected = lot2 + lot3_num;
-                                else if (bet.option == 3) expected = lot1 + lot3_num;
-                                if (clean === expected) {
-                                    gain = amount * multipliers.lotto4;
-                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto4_option${bet.option}` });
-                                    totalWin += gain;
-                                }
-                            }
-                        }
-                        else if (game === 'lotto5' || game === 'auto_lotto5') {
-                            if (clean.length === 5 && bet.option) {
-                                let expected = '';
-                                if (bet.option == 1) expected = lotto3 + lot2;
-                                else if (bet.option == 2) expected = lotto3 + lot3_num;
-                                if (clean === expected) {
-                                    gain = amount * multipliers.lotto5;
-                                    win_details.push({ game, gameAbbr: getGameAbbreviationForWin(game, bet), number: clean, gain, reason: `lotto5_option${bet.option}` });
-                                    totalWin += gain;
-                                }
-                            }
-                        }
-                    }
-                }
-                await pool.query('UPDATE tickets SET win_amount = $1, checked = true, win_details = $2 WHERE id = $3', [totalWin, JSON.stringify(win_details), ticket.id]);
-            }
-
-            await pool.query(`INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)`, [req.user.id, 'superadmin', 'publish_results_bulk', `Owner ${ownerId}, Draw ${drawId}`, req.ip]);
-            return { success: true, ownerId };
-        } catch (err) {
-            console.error(`Erreur pour owner ${ownerId}:`, err);
-            return { success: false, ownerId, error: err.message };
-        }
-    }
-
-    const results = await Promise.all(ownerIds.map(id => publishForOneOwner(id)));
-    const successCount = results.filter(r => r.success).length;
-    res.json({ success: true, summary: { total: results.length, success: successCount, failed: results.length - successCount }, results });
-});
-
-console.log('✅ Patch win_details appliqué (routes owner et superadmin surchargées)');
-// ============================================================
+// ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
-  scheduleMidnightReactivation();   // <--- AJOUTER CETTE LIGNE
   app.listen(port, '0.0.0.0', () => {
     console.log(`🚀 Serveur LOTATO démarré sur http://0.0.0.0:${port}`);
   });
@@ -2782,4 +2401,3 @@ checkDatabaseConnection().then(() => {
   console.error('❌ Impossible de démarrer le serveur:', err);
   process.exit(1);
 });
-
