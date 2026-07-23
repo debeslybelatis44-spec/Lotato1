@@ -322,6 +322,7 @@
                         <button class="btn-primary" style="padding:4px 8px;" onclick="openEditOwnerModal(${o.id}, '${escapeHtml(o.name)}', '${o.email}', '${o.phone || ''}')">Modifier</button>
                         <button class="btn-primary" style="padding:4px 8px;" onclick="markAsPaid(${o.id})">💰 Marquer payé</button>
                         <button class="btn-danger" style="padding:4px 8px;" onclick="toggleBlockOwner(${o.id}, ${o.active})">${o.active ? 'Débloquer' : 'Bloquer'}</button>
+                        <button class="btn-secondary" style="padding:4px 8px;" onclick="resetOwnerDevice(${o.id})" title="Permet à ce propriétaire de se reconnecter depuis un nouvel appareil">📱 Réinitialiser appareil</button>
                         <button class="btn-danger" style="padding:4px 8px;" onclick="deleteOwner(${o.id})"><i class="fas fa-trash"></i></button>
                       </td>
                 </tr>`;
@@ -380,6 +381,20 @@
                 body: JSON.stringify({ block: !currentlyBlocked })
             });
             if (res && res.ok) loadOwners();
+        }
+
+        async function resetOwnerDevice(ownerId) {
+            if (!confirm('Réinitialiser l\'appareil de ce propriétaire ? Il pourra se reconnecter depuis un nouveau téléphone.')) return;
+            const res = await fetchWithToken('/superadmin/reset-device', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: ownerId })
+            });
+            if (res && res.ok) {
+                alert('Appareil réinitialisé avec succès.');
+            } else {
+                alert('Erreur lors de la réinitialisation.');
+            }
         }
 
         async function deleteOwner(id) {
@@ -727,6 +742,7 @@
         window.logout = logout;
         window.createOwner = createOwner;
         window.toggleBlockOwner = toggleBlockOwner;
+        window.resetOwnerDevice = resetOwnerDevice;
         window.deleteOwner = deleteOwner;
         window.updateQuota = updateQuota;
         window.openEditOwnerModal = openEditOwnerModal;

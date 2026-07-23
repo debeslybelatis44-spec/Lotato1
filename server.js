@@ -67,6 +67,9 @@ async function ensureTables() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) DEFAULT 'pending'`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_payment_date TIMESTAMP`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expiry_date TIMESTAMP`);
+  // Verrouillage par appareil : un compte ne peut être connecté que sur un
+  // seul appareil à la fois (device_id envoyé par l'app native au login).
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id VARCHAR(255)`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS draws (
         id SERIAL PRIMARY KEY,
@@ -198,6 +201,7 @@ async function ensureTables() {
         updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS device_id VARCHAR(255)`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
@@ -314,16 +318,29 @@ const requireStaff = (req, res, next) => {
 
 // ==================== Routes d'authentification ====================
 app.post('/api/auth/login', async (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, deviceId } = req.body;
   try {
     const result = await pool.query(
-      'SELECT id, name, username, password, role, owner_id, commission_percentage FROM users WHERE username = $1 AND role = $2',
+      'SELECT id, name, username, password, role, owner_id, commission_percentage, device_id FROM users WHERE username = $1 AND role = $2',
       [username, role]
     );
     if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+
+    // Verrouillage par appareil : un compte ne peut être utilisé que sur un
+    // seul appareil. Le premier appareil qui se connecte "réserve" le
+    // compte ; toute tentative depuis un autre appareil est refusée tant
+    // que le propriétaire/super admin n'a pas réinitialisé l'appareil.
+    if (deviceId) {
+      if (user.device_id && user.device_id !== deviceId) {
+        return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre responsable pour le réinitialiser.' });
+      }
+      if (!user.device_id) {
+        await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [deviceId, user.id]);
+      }
+    }
 
     const payload = {
       id: user.id,
@@ -361,16 +378,26 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/superadmin-login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, deviceId } = req.body;
   try {
     const result = await pool.query(
-      'SELECT id, name, username, password, role FROM users WHERE username = $1 AND role = $2',
+      'SELECT id, name, username, password, role, device_id FROM users WHERE username = $1 AND role = $2',
       [username, 'superadmin']
     );
     if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+
+    if (deviceId) {
+      if (user.device_id && user.device_id !== deviceId) {
+        return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil.' });
+      }
+      if (!user.device_id) {
+        await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [deviceId, user.id]);
+      }
+    }
+
     const payload = { id: user.id, username: user.username, role: user.role, name: user.name };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
     await pool.query(
@@ -450,7 +477,7 @@ app.post('/api/auth/player/register', async (req, res) => {
 });
 // Connexion joueur
 app.post('/api/auth/player/login', async (req, res) => {
-  const { phone, password } = req.body;
+  const { phone, password, deviceId } = req.body;
   console.log("🔐 Login joueur:", { phone });
 
   if (!phone || !password) {
@@ -459,7 +486,7 @@ app.post('/api/auth/player/login', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, name, phone, password, balance, owner_id FROM players WHERE phone = $1',
+      'SELECT id, name, phone, password, balance, owner_id, device_id FROM players WHERE phone = $1',
       [phone]
     );
     if (result.rows.length === 0) {
@@ -470,6 +497,15 @@ app.post('/api/auth/player/login', async (req, res) => {
     const valid = await bcrypt.compare(password, player.password);
     if (!valid) {
       return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
+    }
+
+    if (deviceId) {
+      if (player.device_id && player.device_id !== deviceId) {
+        return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre borlette pour le réinitialiser.' });
+      }
+      if (!player.device_id) {
+        await pool.query('UPDATE players SET device_id = $1 WHERE id = $2', [deviceId, player.id]);
+      }
     }
 
     const token = jwt.sign(
@@ -1181,6 +1217,35 @@ app.post('/api/owner/block-user', authenticate, requireRole('owner'), async (req
   } catch (err) { res.status(500).json({ error: 'Erreur' }); }
 });
 
+// Réinitialise l'appareil d'un agent/superviseur (ex. changement de téléphone)
+// pour lui permettre de se reconnecter sur un nouvel appareil.
+app.post('/api/owner/reset-device', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { userId } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE users SET device_id = NULL WHERE id = $1 AND owner_id = $2 RETURNING id',
+      [userId, ownerId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur' }); }
+});
+
+// Réinitialise l'appareil d'un joueur de sa borlette
+app.post('/api/owner/reset-device-player', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { playerId } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE players SET device_id = NULL WHERE id = $1 AND owner_id = $2 RETURNING id',
+      [playerId, ownerId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur' }); }
+});
+
 app.put('/api/owner/change-supervisor', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { agentId, supervisorId } = req.body;
@@ -1779,6 +1844,28 @@ app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, asy
   } catch (err) { 
     res.status(500).json({ error: 'Erreur mise à jour' }); 
   }
+});
+
+// Réinitialise l'appareil de n'importe quel compte (owner, agent,
+// superviseur, super admin) — utile en support quand un utilisateur change
+// de téléphone et ne peut plus se connecter.
+app.post('/api/superadmin/reset-device', authenticate, requireSuperAdmin, async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const result = await pool.query('UPDATE users SET device_id = NULL WHERE id = $1 RETURNING id', [userId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur mise à jour' }); }
+});
+
+// Réinitialise l'appareil d'un joueur, quel que soit son propriétaire
+app.post('/api/superadmin/reset-device-player', authenticate, requireSuperAdmin, async (req, res) => {
+  const { playerId } = req.body;
+  try {
+    const result = await pool.query('UPDATE players SET device_id = NULL WHERE id = $1 RETURNING id', [playerId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Joueur introuvable' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur mise à jour' }); }
 });
 
 app.put('/api/superadmin/owners/:id/quota', authenticate, requireSuperAdmin, async (req, res) => {

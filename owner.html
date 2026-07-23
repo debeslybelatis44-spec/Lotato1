@@ -558,14 +558,14 @@
             const supervisors = await supRes.json();
             let supHtml = '';
             supervisors.forEach(s => {
-                supHtml += `<div class="item-row"><span><strong>${s.name}</strong> (${s.email})</span><span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
+                supHtml += `<div class="item-row"><span><strong>${s.name}</strong> (${s.email})</span><span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button><button class="btn-secondary" style="padding:4px 10px;" onclick="resetUserDevice('${s.id}')" title="Permet une reconnexion depuis un nouvel appareil">📱 Réinitialiser appareil</button></div>`;
             });
             document.getElementById('supervisors-list').innerHTML = supHtml || '<p>Aucun superviseur</p>';
             const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
             const agents = await agentRes.json();
             let agentHtml = '';
             agents.forEach(a => {
-                agentHtml += `<div class="item-row"><span><strong>${a.name}</strong> (${a.email})</span><span>Superviseur: ${a.supervisor_name || 'libre'}</span><span>Commission: ${a.commission_percentage || 0}%</span><span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
+                agentHtml += `<div class="item-row"><span><strong>${a.name}</strong> (${a.email})</span><span>Superviseur: ${a.supervisor_name || 'libre'}</span><span>Commission: ${a.commission_percentage || 0}%</span><span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button><button class="btn-secondary" style="padding:4px 10px;" onclick="resetUserDevice('${a.id}')" title="Permet une reconnexion depuis un nouvel appareil">📱 Réinitialiser appareil</button></div>`;
             });
             document.getElementById('agents-list').innerHTML = agentHtml || '<p>Aucun agent</p>';
             let supOpts = '<option value="">Aucun (libre)</option>';
@@ -623,6 +623,23 @@
         const token = localStorage.getItem('auth_token');
         await fetch(`${API_URL}/api/owner/block-user`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, type }) });
         loadUsersLists();
+    }
+
+    async function resetUserDevice(userId) {
+        if (!confirm('Réinitialiser l\'appareil de cet utilisateur ? Il pourra se reconnecter depuis un nouveau téléphone.')) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/reset-device`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
+            const result = await res.json();
+            if (result.success) {
+                alert('Appareil réinitialisé avec succès.');
+            } else {
+                alert('Erreur : ' + (result.error || ''));
+            }
+        } catch (e) {
+            handleFetchError(e, 'resetUserDevice');
+            alert('Erreur réseau');
+        }
     }
 
     async function changeSupervisor() {
