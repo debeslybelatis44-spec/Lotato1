@@ -1019,7 +1019,7 @@ app.get('/api/winners/results', authenticate, async (req, res) => {
     const result = await pool.query(
       `SELECT wr.*, d.name as draw_name, wr.date as published_at
        FROM winning_results wr JOIN draws d ON wr.draw_id = d.id
-       WHERE wr.owner_id = $1 AND wr.date >= CURRENT_DATE
+       WHERE wr.owner_id = $1 AND wr.date >= CURRENT_DATE - INTERVAL '7 days'
        ORDER BY wr.draw_id, wr.date DESC`,
       [ownerId]
     );
@@ -1790,6 +1790,55 @@ app.get('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, r
   }
 });
 
+// Statut de publication des résultats pour une journée donnée (aujourd'hui
+// par défaut) : pour chaque tirage, combien de propriétaires actifs ont
+// déjà publié un résultat, sur le total de propriétaires actifs — pour
+// repérer d'un coup d'œil s'il manque des publications.
+app.get('/api/superadmin/results-status', authenticate, requireSuperAdmin, async (req, res) => {
+  const date = req.query.date || null; // format attendu: YYYY-MM-DD, sinon aujourd'hui
+  try {
+    const ownersResult = await pool.query(
+      `SELECT COUNT(*) as total FROM users WHERE role = 'owner' AND blocked = false`
+    );
+    const totalOwners = parseInt(ownersResult.rows[0].total, 10);
+
+    const perDraw = await pool.query(
+      `SELECT d.id as draw_id, d.name as draw_name,
+              COUNT(DISTINCT wr.owner_id) as published_count
+       FROM draws d
+       LEFT JOIN winning_results wr
+         ON wr.draw_id = d.id
+         AND wr.date::date = COALESCE($1::date, CURRENT_DATE)
+         AND wr.owner_id IN (SELECT id FROM users WHERE role = 'owner' AND blocked = false)
+       WHERE d.active = true
+       GROUP BY d.id, d.name, d.time
+       ORDER BY d.time`,
+      [date]
+    );
+
+    const totalEventsResult = await pool.query(
+      `SELECT COUNT(*) as total FROM winning_results WHERE date::date = COALESCE($1::date, CURRENT_DATE)`,
+      [date]
+    );
+
+    res.json({
+      date: date || new Date().toISOString().slice(0, 10),
+      totalOwners,
+      totalPublishedEvents: parseInt(totalEventsResult.rows[0].total, 10),
+      draws: perDraw.rows.map(r => ({
+        drawId: r.draw_id,
+        drawName: r.draw_name,
+        publishedCount: parseInt(r.published_count, 10),
+        totalOwners,
+        complete: parseInt(r.published_count, 10) >= totalOwners && totalOwners > 0
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
   const { name, email, password, phone, quota } = req.body;
   if (!name || !email || !password) {
@@ -2490,6 +2539,121 @@ app.post('/api/superadmin/publish-results-bulk', authenticate, requireSuperAdmin
     results
   });
 });
+
+// ==================== Publication automatique des résultats (New York, gratuit) ====================
+// Source officielle et gratuite : portail Open Data de l'État de New York
+// (data.ny.gov), dataset "Lottery Daily Numbers/Win-4 Winning Numbers".
+// Documentation : https://dev.socrata.com/foundry/data.ny.gov/hsys-3def
+//
+// Conversion vers le format borlette (règle donnée par le client) :
+//   lotto3 = Pick 3 (Numbers) tel quel, ex: 402
+//   lot1   = 2 derniers chiffres du Pick 3, ex: 02
+//   Pick 4 (Win 4), ex: 7891
+//   lot2   = 2 premiers chiffres du Pick 4, ex: 78
+//   lot3   = 2 derniers chiffres du Pick 4, ex: 91
+//
+// Correspondance avec les tirages internes (adapter si les noms diffèrent
+// dans votre table "draws") :
+const NY_DRAW_CONFIG = {
+  'New York Matin': 'midday',
+  'New York Soir': 'evening'
+};
+
+const NY_DATASET_URL = 'https://data.ny.gov/resource/hsys-3def.json';
+
+async function fetchNYResult(period, dateStr) {
+  const field3 = period === 'midday' ? 'midday_daily' : 'evening_daily';
+  const field4 = period === 'midday' ? 'midday_win_4' : 'evening_win_4';
+  const where = encodeURIComponent(`draw_date between '${dateStr}T00:00:00' and '${dateStr}T23:59:59'`);
+  const url = `${NY_DATASET_URL}?$where=${where}&$limit=1`;
+
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  const rows = await resp.json();
+  if (!rows || rows.length === 0) return null;
+
+  const row = rows[0];
+  const pick3 = row[field3];
+  const pick4 = row[field4];
+  if (!pick3 || !pick4) return null; // pas encore publié côté NY pour cette période
+
+  return {
+    pick3: String(pick3).padStart(3, '0'),
+    pick4: String(pick4).padStart(4, '0')
+  };
+}
+
+function deriveBorletteFromPick(pick3, pick4) {
+  return {
+    lotto3: pick3,
+    lot1: pick3.slice(1),   // 2 derniers chiffres du Pick 3
+    lot2: pick4.slice(0, 2), // 2 premiers chiffres du Pick 4
+    lot3: pick4.slice(2)     // 2 derniers chiffres du Pick 4
+  };
+}
+
+async function autoPublishNYDraw(drawName, period) {
+  try {
+    const drawRes = await pool.query(`SELECT id FROM draws WHERE name = $1 AND active = true LIMIT 1`, [drawName]);
+    if (drawRes.rows.length === 0) return; // tirage introuvable/inactif dans cette base
+    const drawId = drawRes.rows[0].id;
+
+    // Déjà publié aujourd'hui pour ce tirage ? On ne refait rien.
+    const alreadyRes = await pool.query(
+      `SELECT 1 FROM winning_results WHERE draw_id = $1 AND date::date = CURRENT_DATE LIMIT 1`,
+      [drawId]
+    );
+    if (alreadyRes.rows.length > 0) return;
+
+    const todayStr = moment().tz('America/New_York').format('YYYY-MM-DD');
+    const result = await fetchNYResult(period, todayStr);
+    if (!result) return; // pas encore disponible côté NY, on retentera au prochain passage
+
+    const { lot1, lot2, lot3, lotto3 } = deriveBorletteFromPick(result.pick3, result.pick4);
+
+    const ownersRes = await pool.query(`SELECT id FROM users WHERE role = 'owner' AND blocked = false`);
+    const ownerIds = ownersRes.rows.map(r => r.id);
+    if (ownerIds.length === 0) return;
+
+    // On réutilise la route /api/superadmin/publish-results-bulk déjà en
+    // place et testée, via un jeton interne signé pour le compte super
+    // admin — évite de dupliquer toute la logique de calcul des gains.
+    const saRes = await pool.query(`SELECT id, username, name FROM users WHERE role = 'superadmin' LIMIT 1`);
+    if (saRes.rows.length === 0) {
+      console.error('⚠️  Publication auto NY impossible : aucun compte superadmin trouvé');
+      return;
+    }
+    const sa = saRes.rows[0];
+    const internalToken = jwt.sign(
+      { id: sa.id, username: sa.username, role: 'superadmin', name: sa.name },
+      JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+
+    const resp = await fetch(`http://localhost:${port}/api/superadmin/publish-results-bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${internalToken}` },
+      body: JSON.stringify({ ownerIds, drawId, numbers: [lot1, lot2, lot3], lotto3 })
+    });
+
+    if (resp.ok) {
+      console.log(`✅ [Auto NY] Résultats publiés pour "${drawName}" : ${lot1}-${lot2}-${lot3} / lotto3 ${lotto3} (${ownerIds.length} propriétaire(s))`);
+    } else {
+      console.error(`❌ [Auto NY] Échec de publication pour "${drawName}" :`, await resp.text());
+    }
+  } catch (err) {
+    console.error(`❌ [Auto NY] Erreur pour "${drawName}":`, err.message);
+  }
+}
+
+// Vérifie toutes les 15 minutes si un résultat NY est disponible et pas
+// encore publié. Sans danger d'appeler ça souvent : la fonction elle-même
+// ne fait rien si c'est déjà publié ou si la donnée n'est pas encore là.
+cron.schedule('*/15 * * * *', () => {
+  Object.entries(NY_DRAW_CONFIG).forEach(([drawName, period]) => {
+    autoPublishNYDraw(drawName, period);
+  });
+}, { timezone: 'America/New_York' });
 
 // ==================== Démarrage du serveur ====================
 checkDatabaseConnection().then(() => {
