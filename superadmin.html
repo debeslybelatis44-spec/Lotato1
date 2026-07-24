@@ -146,6 +146,11 @@
 
         <!-- Onglet Publier résultats (multi propriétaires) -->
         <div id="tab-publish" class="tab-content">
+
+            <div class="section-title"><i class="fas fa-check-double"></i> Statut des publications du jour</div>
+            <div id="results-status-summary" style="margin-bottom:10px; font-weight:bold;">Chargement...</div>
+            <div id="results-status-table" style="margin-bottom:24px;">Chargement...</div>
+
             <div class="section-title"><i class="fas fa-chart-line"></i> Publier les résultats pour plusieurs propriétaires</div>
             <div class="form-grid">
                 <div class="form-group">
@@ -270,7 +275,7 @@
             if (tabId === 'agents') { loadAgents(); loadSupervisors(); }
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
-            if (tabId === 'publish') { loadPublishOwnersCheckbox(); loadDrawsForPublish(); }
+            if (tabId === 'publish') { loadPublishOwnersCheckbox(); loadDrawsForPublish(); loadResultsStatus(); }
         }
 
         async function fetchWithToken(url, options = {}) {
@@ -645,6 +650,36 @@
         }
 
         // ========== PUBLICATION MULTI-PROPRIÉTAIRES ==========
+        async function loadResultsStatus() {
+            const summaryEl = document.getElementById('results-status-summary');
+            const tableEl = document.getElementById('results-status-table');
+            try {
+                const res = await fetchWithToken('/superadmin/results-status');
+                if (!res || !res.ok) throw new Error('Erreur chargement');
+                const data = await res.json();
+
+                summaryEl.innerHTML = `📅 ${data.date} — ${data.totalPublishedEvents} publication(s) au total aujourd'hui, sur ${data.totalOwners} propriétaire(s) actif(s).`;
+
+                if (!data.draws || data.draws.length === 0) {
+                    tableEl.innerHTML = '<p>Aucun tirage actif.</p>';
+                    return;
+                }
+
+                let html = '<table><thead><tr><th>Tirage</th><th>Publié</th><th>Statut</th></tr></thead><tbody>';
+                data.draws.forEach(d => {
+                    const badge = d.complete
+                        ? '<span class="badge-success">✅ Complet</span>'
+                        : '<span class="badge-danger">⏳ Incomplet</span>';
+                    html += `<tr><td>${escapeHtml(d.drawName)}</td><td>${d.publishedCount} / ${d.totalOwners}</td><td>${badge}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                tableEl.innerHTML = html;
+            } catch (e) {
+                summaryEl.innerHTML = '';
+                tableEl.innerHTML = '<p class="loss">Erreur de chargement du statut des résultats</p>';
+            }
+        }
+
         async function loadPublishOwnersCheckbox() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
@@ -720,6 +755,7 @@
                 document.getElementById('publish-lot3').value = '';
                 document.getElementById('publish-lotto3').value = '';
                 deselectAllPublishOwners();
+                loadResultsStatus();
                 if (document.getElementById('tab-reports').classList.contains('active')) loadReports();
             } else {
                 showMessage('publish-result-message', '❌ Erreur lors de la publication', false);
