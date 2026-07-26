@@ -195,8 +195,11 @@
             <div class="form-group"><label>Lotto 3 (3 chiffres) <small>→ le 1er lot correspond aux 2 derniers chiffres</small></label><input type="text" id="draw-lotto3" maxlength="3" placeholder="456"></div>
             <div class="form-group"><label>2e lot (2 chiffres)</label><input type="text" id="draw-lot2" maxlength="2" placeholder="23"></div>
             <div class="form-group"><label>3e lot (2 chiffres)</label><input type="text" id="draw-lot3" maxlength="2" placeholder="11"></div>
-            <div style="display:flex; gap:10px; align-items:end;"><button class="btn-primary" onclick="publishManual()">Publier</button></div>
+            <div style="display:flex; gap:10px; align-items:end;"><button class="btn-primary" onclick="publishManual()">Publier</button><button class="btn-primary" onclick="fetchNyResult()" title="Récupère automatiquement le résultat officiel New York pour le tirage sélectionné"><i class="fas fa-cloud-download-alt"></i> Charger auto (NY)</button></div>
         </div>
+        <div class="section-title"><i class="fas fa-sync"></i> Résultats publiés</div>
+        <div style="margin-bottom:10px;"><button class="btn-primary" onclick="loadResults()"><i class="fas fa-download"></i> Charger les résultats</button></div>
+        <div id="results-list"></div>
         <div class="section-title"><i class="fas fa-ban"></i> Bloquer / Débloquer un tirage</div>
         <div class="form-grid"><select id="draw-block-select"></select><button class="btn-danger" onclick="toggleDrawBlock(true)">Bloquer</button><button class="btn-primary" onclick="toggleDrawBlock(false)">Débloquer</button></div>
     </div>
@@ -679,6 +682,45 @@
             if (result.success) { showMessage('publish-message', '✅ Résultats publiés - Nouveau bilan disponible', true); if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard(); }
             else { showMessage('publish-message', '❌ Erreur', false); }
         } catch (e) { handleFetchError(e, 'publishManual'); showMessage('publish-message', '❌ Erreur', false); }
+    }
+
+    async function fetchNyResult() {
+        const token = localStorage.getItem('auth_token');
+        const drawId = document.getElementById('draw-select').value;
+        if (!drawId) { showMessage('publish-message', 'Veuillez sélectionner un tirage', false); return; }
+        try {
+            const res = await fetch(`${API_URL}/api/owner/fetch-ny-result`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ drawId }) });
+            const result = await res.json();
+            if (result.success) {
+                showMessage('publish-message', `✅ Résultat chargé et publié automatiquement : ${result.numbers.join('-')} / Lotto3 ${result.lotto3}`, true);
+                if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
+            } else {
+                showMessage('publish-message', '⏳ ' + (result.message || result.error || 'Résultat pas encore disponible'), false);
+            }
+        } catch (e) { handleFetchError(e, 'fetchNyResult'); showMessage('publish-message', '❌ Erreur lors du chargement automatique', false); }
+    }
+
+    async function loadResults() {
+        const token = localStorage.getItem('auth_token');
+        const container = document.getElementById('results-list');
+        container.innerHTML = '<p>Chargement...</p>';
+        try {
+            const res = await fetch(`${API_URL}/api/winners/results`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            const results = data.results || [];
+            if (results.length === 0) {
+                container.innerHTML = '<p>Aucun résultat publié pour le moment.</p>';
+                return;
+            }
+            let html = '<div class="table-responsive"><table><thead><tr><th>Tirage</th><th>Lot 1</th><th>Lot 2</th><th>Lot 3</th><th>Lotto 3</th><th>Date</th></tr></thead><tbody>';
+            results.forEach(r => {
+                const nums = Array.isArray(r.numbers) ? r.numbers : [];
+                const dateStr = r.published_at ? new Date(r.published_at).toLocaleString('fr-FR') : '';
+                html += `<tr><td>${r.name || ''}</td><td>${nums[0] || ''}</td><td>${nums[1] || ''}</td><td>${nums[2] || ''}</td><td>${r.lotto3 || ''}</td><td>${dateStr}</td></tr>`;
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        } catch (e) { handleFetchError(e, 'loadResults'); container.innerHTML = '<p>❌ Erreur de chargement</p>'; }
     }
 
     async function toggleDrawBlock(block) {
