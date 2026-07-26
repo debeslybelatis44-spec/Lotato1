@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const moment = require('moment-timezone');
 const multer = require('multer');
+const crypto = require('crypto');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -317,6 +318,24 @@ const requireStaff = (req, res, next) => {
 };
 
 // ==================== Routes d'authentification ====================
+
+/**
+ * Identifiant d'appareil "effectif" pour le verrouillage par appareil.
+ * - Si l'app (nouvelle version) envoie un vrai deviceId : on l'utilise tel quel (fiable).
+ * - Sinon (ancienne version de l'app, qui n'envoie rien) : on fabrique une
+ *   empreinte de secours à partir de l'IP + du User-Agent, préfixée "legacy:"
+ *   pour la distinguer. Moins fiable (peut changer si l'IP change), mais
+ *   permet quand même de bloquer une utilisation évidente sur un autre
+ *   appareil, sans exiger de mise à jour immédiate de l'app.
+ */
+function getEffectiveDeviceId(req, deviceId) {
+  if (deviceId) return deviceId;
+  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const ua = req.headers['user-agent'] || '';
+  const hash = crypto.createHash('sha256').update(ip + '|' + ua).digest('hex').slice(0, 32);
+  return 'legacy:' + hash;
+}
+
 app.post('/api/auth/login', async (req, res) => {
   const { username, password, role, deviceId } = req.body;
   try {
@@ -330,16 +349,14 @@ app.post('/api/auth/login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
 
     // Verrouillage par appareil : un compte ne peut être utilisé que sur un
-    // seul appareil. Le premier appareil qui se connecte "réserve" le
-    // compte ; toute tentative depuis un autre appareil est refusée tant
-    // que le propriétaire/super admin n'a pas réinitialisé l'appareil.
-    if (deviceId) {
-      if (user.device_id && user.device_id !== deviceId) {
-        return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre responsable pour le réinitialiser.' });
-      }
-      if (!user.device_id) {
-        await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [deviceId, user.id]);
-      }
+    // seul appareil (identifiant réel pour la nouvelle app, empreinte
+    // IP+User-Agent de secours pour une ancienne version).
+    const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);
+    if (user.device_id && user.device_id !== effectiveDeviceId) {
+      return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre responsable pour le réinitialiser.' });
+    }
+    if (!user.device_id) {
+      await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [effectiveDeviceId, user.id]);
     }
 
     const payload = {
@@ -389,13 +406,12 @@ app.post('/api/auth/superadmin-login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
 
-    if (deviceId) {
-      if (user.device_id && user.device_id !== deviceId) {
-        return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil.' });
-      }
-      if (!user.device_id) {
-        await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [deviceId, user.id]);
-      }
+    const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);
+    if (user.device_id && user.device_id !== effectiveDeviceId) {
+      return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil.' });
+    }
+    if (!user.device_id) {
+      await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [effectiveDeviceId, user.id]);
     }
 
     const payload = { id: user.id, username: user.username, role: user.role, name: user.name };
@@ -499,13 +515,12 @@ app.post('/api/auth/player/login', async (req, res) => {
       return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
     }
 
-    if (deviceId) {
-      if (player.device_id && player.device_id !== deviceId) {
-        return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre borlette pour le réinitialiser.' });
-      }
-      if (!player.device_id) {
-        await pool.query('UPDATE players SET device_id = $1 WHERE id = $2', [deviceId, player.id]);
-      }
+    const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);
+    if (player.device_id && player.device_id !== effectiveDeviceId) {
+      return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre borlette pour le réinitialiser.' });
+    }
+    if (!player.device_id) {
+      await pool.query('UPDATE players SET device_id = $1 WHERE id = $2', [effectiveDeviceId, player.id]);
     }
 
     const token = jwt.sign(
@@ -2564,18 +2579,29 @@ const NY_DATASET_URL = 'https://data.ny.gov/resource/hsys-3def.json';
 async function fetchNYResult(period, dateStr) {
   const field3 = period === 'midday' ? 'midday_daily' : 'evening_daily';
   const field4 = period === 'midday' ? 'midday_win_4' : 'evening_win_4';
-  const where = encodeURIComponent(`draw_date between '${dateStr}T00:00:00' and '${dateStr}T23:59:59'`);
+  // Syntaxe SoQL standard pour une colonne calendar_date : égalité exacte à
+  // minuit (T00:00:00.000), plus fiable qu'un "between" pour ce type de colonne.
+  const where = encodeURIComponent(`draw_date='${dateStr}T00:00:00.000'`);
   const url = `${NY_DATASET_URL}?$where=${where}&$limit=1`;
 
+  console.log(`🔎 [Auto NY] Requête API : ${url}`);
   const resp = await fetch(url);
-  if (!resp.ok) return null;
+  if (!resp.ok) {
+    const bodyText = await resp.text().catch(() => '');
+    console.error(`❌ [Auto NY] L'API data.ny.gov a répondu ${resp.status} : ${bodyText}`);
+    return null;
+  }
   const rows = await resp.json();
+  console.log(`🔎 [Auto NY] Réponse reçue (${rows.length} ligne(s)) pour ${dateStr} / ${period}`);
   if (!rows || rows.length === 0) return null;
 
   const row = rows[0];
   const pick3 = row[field3];
   const pick4 = row[field4];
-  if (!pick3 || !pick4) return null; // pas encore publié côté NY pour cette période
+  if (!pick3 || !pick4) {
+    console.log(`⏳ [Auto NY] Pas encore de valeur pour ${field3}/${field4} à cette date côté NY`);
+    return null; // pas encore publié côté NY pour cette période
+  }
 
   return {
     pick3: String(pick3).padStart(3, '0'),
@@ -2592,28 +2618,79 @@ function deriveBorletteFromPick(pick3, pick4) {
   };
 }
 
+// Cache en mémoire des infos de tirage (id + heure), pour éviter de
+// re-interroger la base à chaque passage du cron (toutes les 15 min).
+// Rafraîchi une fois par heure seulement.
+let nyDrawCache = {}; // { drawName: { id, time: 'HH:MM:SS', cachedAt } }
+const NY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 heure
+
+async function getNYDrawInfo(drawName) {
+  const cached = nyDrawCache[drawName];
+  if (cached && (Date.now() - cached.cachedAt) < NY_CACHE_TTL_MS) {
+    return cached;
+  }
+  const drawRes = await pool.query(`SELECT id, time FROM draws WHERE name = $1 AND active = true LIMIT 1`, [drawName]);
+  if (drawRes.rows.length === 0) return null;
+  const info = { id: drawRes.rows[0].id, time: drawRes.rows[0].time, cachedAt: Date.now() };
+  nyDrawCache[drawName] = info;
+  return info;
+}
+
+/**
+ * Vrai seulement si l'heure actuelle (heure de New York) est comprise entre
+ * l'heure du tirage et 3h après — en dehors de cette fenêtre, on ne fait
+ * AUCUNE requête à la base, pour ne pas consommer de requêtes inutilement
+ * les 21h restantes de la journée où il ne peut de toute façon rien se
+ * passer.
+ */
+function isWithinDrawWindow(drawTime) {
+  const now = moment().tz('America/New_York');
+  const [h, m, s] = String(drawTime).split(':').map(Number);
+  const drawMoment = now.clone().set({ hour: h, minute: m, second: s || 0 });
+  const diffMinutes = now.diff(drawMoment, 'minutes');
+  return diffMinutes >= 0 && diffMinutes <= 180; // fenêtre de 3h après le tirage
+}
+
 async function autoPublishNYDraw(drawName, period) {
   try {
-    const drawRes = await pool.query(`SELECT id FROM draws WHERE name = $1 AND active = true LIMIT 1`, [drawName]);
-    if (drawRes.rows.length === 0) return; // tirage introuvable/inactif dans cette base
-    const drawId = drawRes.rows[0].id;
+    const drawInfo = await getNYDrawInfo(drawName);
+    if (!drawInfo) {
+      console.log(`⚠️ [Auto NY] Tirage "${drawName}" introuvable ou inactif dans la table draws (vérifiez le nom exact et que active=true)`);
+      return;
+    }
+
+    if (!isWithinDrawWindow(drawInfo.time)) {
+      return; // hors de la fenêtre utile : aucune requête supplémentaire, pas de log (sinon ça spamme)
+    }
+
+    console.log(`🕒 [Auto NY] "${drawName}" est dans sa fenêtre de vérification (heure du tirage : ${drawInfo.time})`);
+
+    const drawId = drawInfo.id;
 
     // Déjà publié aujourd'hui pour ce tirage ? On ne refait rien.
     const alreadyRes = await pool.query(
       `SELECT 1 FROM winning_results WHERE draw_id = $1 AND date::date = CURRENT_DATE LIMIT 1`,
       [drawId]
     );
-    if (alreadyRes.rows.length > 0) return;
+    if (alreadyRes.rows.length > 0) {
+      console.log(`ℹ️ [Auto NY] "${drawName}" déjà publié aujourd'hui, rien à faire`);
+      return;
+    }
 
     const todayStr = moment().tz('America/New_York').format('YYYY-MM-DD');
     const result = await fetchNYResult(period, todayStr);
     if (!result) return; // pas encore disponible côté NY, on retentera au prochain passage
 
+    console.log(`✅ [Auto NY] Résultat NY trouvé pour "${drawName}" : Pick3=${result.pick3} Pick4=${result.pick4}`);
+
     const { lot1, lot2, lot3, lotto3 } = deriveBorletteFromPick(result.pick3, result.pick4);
 
     const ownersRes = await pool.query(`SELECT id FROM users WHERE role = 'owner' AND blocked = false`);
     const ownerIds = ownersRes.rows.map(r => r.id);
-    if (ownerIds.length === 0) return;
+    if (ownerIds.length === 0) {
+      console.log(`⚠️ [Auto NY] Aucun propriétaire actif trouvé, publication annulée`);
+      return;
+    }
 
     // On réutilise la route /api/superadmin/publish-results-bulk déjà en
     // place et testée, via un jeton interne signé pour le compte super
@@ -2645,6 +2722,29 @@ async function autoPublishNYDraw(drawName, period) {
     console.error(`❌ [Auto NY] Erreur pour "${drawName}":`, err.message);
   }
 }
+
+// Route de test manuel : force une vérification immédiate (ignore la
+// fenêtre horaire), pour diagnostiquer sans attendre l'heure du tirage.
+// Regardez les logs Render juste après l'appel pour voir ce qui se passe.
+app.post('/api/superadmin/test-auto-ny', authenticate, requireSuperAdmin, async (req, res) => {
+  const { drawName } = req.body; // ex: "New York Matin" ou "New York Soir"
+  const period = NY_DRAW_CONFIG[drawName];
+  if (!period) {
+    return res.status(400).json({ error: `Tirage inconnu. Valeurs possibles : ${Object.keys(NY_DRAW_CONFIG).join(', ')}` });
+  }
+  console.log(`🧪 [Auto NY] Test manuel déclenché pour "${drawName}"`);
+  const drawInfo = await getNYDrawInfo(drawName);
+  if (!drawInfo) {
+    return res.json({ ok: false, step: 'draw_lookup', message: `Tirage "${drawName}" introuvable ou inactif (active=false) dans la table draws.` });
+  }
+  const todayStr = moment().tz('America/New_York').format('YYYY-MM-DD');
+  const result = await fetchNYResult(period, todayStr);
+  if (!result) {
+    return res.json({ ok: false, step: 'fetch_result', message: `Pas encore de résultat disponible côté data.ny.gov pour aujourd'hui (${todayStr}), ou erreur API — voir logs Render.`, drawInfo });
+  }
+  const derived = deriveBorletteFromPick(result.pick3, result.pick4);
+  res.json({ ok: true, step: 'ready_to_publish', drawInfo, pick3: result.pick3, pick4: result.pick4, derived });
+});
 
 // Vérifie toutes les 15 minutes si un résultat NY est disponible et pas
 // encore publié. Sans danger d'appeler ça souvent : la fonction elle-même

@@ -326,6 +326,13 @@
         <div class="section-title"><i class="fas fa-gift"></i> Configuration des mariages gratuits</div>
         <div class="form-grid">
             <div class="form-group" style="grid-column: span 2;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="free-marriage-enabled" checked style="width:18px; height:18px;">
+                    Activer les mariages gratuits
+                </label>
+                <small>Si désactivé, aucun mariage gratuit ne sera ajouté aux paniers des joueurs/agents, même si des paliers sont configurés ci-dessous.</small>
+            </div>
+            <div class="form-group" style="grid-column: span 2;">
                 <label>Structure des paliers (montant total payé → nombre de mariages offerts)</label>
                 <div id="free-marriage-tiers-container"></div>
                 <button type="button" class="btn-primary" style="margin-top:10px;" id="add-tier-btn">+ Ajouter un palier</button>
@@ -360,8 +367,8 @@
 </div>
 
 <script>
-// ---------- CONFIGURATION ----------
-    const API_URL = 'https://lotato2.onrender.com';
+    // ---------- CONFIGURATION ----------
+    const API_URL = '';
     let chartInstance = null;
     let lastDetailedReportHTML = '';
 
@@ -551,14 +558,14 @@
             const supervisors = await supRes.json();
             let supHtml = '';
             supervisors.forEach(s => {
-                supHtml += `<div class="item-row"><span><strong>${s.name}</strong> (${s.email})</span><span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
+                supHtml += `<div class="item-row"><span><strong>${s.name}</strong> (${s.email})</span><span class="${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${s.id}','supervisor')">${s.blocked ? 'Débloquer' : 'Bloquer'}</button><button class="btn-secondary" style="padding:4px 10px;" onclick="resetUserDevice('${s.id}')" title="Permet une reconnexion depuis un nouvel appareil">📱 Réinitialiser appareil</button></div>`;
             });
             document.getElementById('supervisors-list').innerHTML = supHtml || '<p>Aucun superviseur</p>';
             const agentRes = await fetch(`${API_URL}/api/owner/agents`, { headers: { 'Authorization': `Bearer ${token}` } });
             const agents = await agentRes.json();
             let agentHtml = '';
             agents.forEach(a => {
-                agentHtml += `<div class="item-row"><span><strong>${a.name}</strong> (${a.email})</span><span>Superviseur: ${a.supervisor_name || 'libre'}</span><span>Commission: ${a.commission_percentage || 0}%</span><span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button></div>`;
+                agentHtml += `<div class="item-row"><span><strong>${a.name}</strong> (${a.email})</span><span>Superviseur: ${a.supervisor_name || 'libre'}</span><span>Commission: ${a.commission_percentage || 0}%</span><span class="${a.blocked ? 'badge-danger' : 'badge-success'}">${a.blocked ? 'Bloqué' : 'Actif'}</span><button class="btn-danger" style="padding:4px 10px;" onclick="toggleUserBlock('${a.id}','agent')">${a.blocked ? 'Débloquer' : 'Bloquer'}</button><button class="btn-secondary" style="padding:4px 10px;" onclick="resetUserDevice('${a.id}')" title="Permet une reconnexion depuis un nouvel appareil">📱 Réinitialiser appareil</button></div>`;
             });
             document.getElementById('agents-list').innerHTML = agentHtml || '<p>Aucun agent</p>';
             let supOpts = '<option value="">Aucun (libre)</option>';
@@ -616,6 +623,23 @@
         const token = localStorage.getItem('auth_token');
         await fetch(`${API_URL}/api/owner/block-user`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, type }) });
         loadUsersLists();
+    }
+
+    async function resetUserDevice(userId) {
+        if (!confirm('Réinitialiser l\'appareil de cet utilisateur ? Il pourra se reconnecter depuis un nouveau téléphone.')) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_URL}/api/owner/reset-device`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
+            const result = await res.json();
+            if (result.success) {
+                alert('Appareil réinitialisé avec succès.');
+            } else {
+                alert('Erreur : ' + (result.error || ''));
+            }
+        } catch (e) {
+            handleFetchError(e, 'resetUserDevice');
+            alert('Erreur réseau');
+        }
     }
 
     async function changeSupervisor() {
@@ -734,17 +758,23 @@
     }
 
     // === FONCTIONS POUR LIMITES GLOBALES ===
+    // Une "limite globale" est une limite par numéro (2 chiffres) qui
+    // s'applique à tous les tirages, distincte des limites par tirage. Le
+    // serveur gère déjà ça via /api/owner/number-limit(s) avec
+    // drawId = 'global' — on réutilise ces routes existantes plutôt qu'un
+    // endpoint dédié qui n'existe pas.
     async function loadGlobalLimits() {
         const token = localStorage.getItem('auth_token');
         const container = document.getElementById('global-limits-list');
         if (!container) return;
         container.innerHTML = '<p>Chargement des limites globales...</p>';
         try {
-            const res = await fetch(`${API_URL}/api/owner/global-limits`, {
+            const res = await fetch(`${API_URL}/api/owner/number-limits`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Erreur chargement');
-            const limits = await res.json();
+            const allLimits = await res.json();
+            const limits = allLimits.filter(l => l.draw_id === null || l.draw_id === undefined);
             if (limits.length === 0) {
                 container.innerHTML = '<p>Aucune limite globale définie.</p>';
                 return;
@@ -777,10 +807,10 @@
         }
         const normalized = number.padStart(2, '0');
         try {
-            const res = await fetch(`${API_URL}/api/owner/global-limits`, {
+            const res = await fetch(`${API_URL}/api/owner/number-limit`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ number: normalized, limitAmount: amount })
+                body: JSON.stringify({ drawId: 'global', number: normalized, limitAmount: amount })
             });
             const result = await res.json();
             if (result.success) {
@@ -800,9 +830,10 @@
         const token = localStorage.getItem('auth_token');
         if (!confirm(`Supprimer la limite globale pour le numéro ${number} ?`)) return;
         try {
-            const res = await fetch(`${API_URL}/api/owner/global-limits/${number}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await fetch(`${API_URL}/api/owner/remove-number-limit`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drawId: 'global', number })
             });
             const result = await res.json();
             if (result.success) {
@@ -1439,6 +1470,7 @@
             if (!res.ok) throw new Error('Erreur chargement');
             const data = await res.json();
             if (data.freeMarriage) {
+                document.getElementById('free-marriage-enabled').checked = data.freeMarriage.enabled !== false;
                 currentTiers = data.freeMarriage.tiers || [
                     { min: 0, max: 50, count: 1 },
                     { min: 51, max: 150, count: 2 },
@@ -1474,6 +1506,7 @@
         }
         const payload = {
             freeMarriage: {
+                enabled: document.getElementById('free-marriage-enabled').checked,
                 tiers: newTiers,
                 winAmount: parseFloat(document.getElementById('free-marriage-win').value)
             },
