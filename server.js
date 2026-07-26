@@ -1030,13 +1030,23 @@ app.get('/api/winners', authenticate, async (req, res) => {
 
 app.get('/api/winners/results', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
+  const { startDate, endDate } = req.query;
   try {
+    // Par défaut (aucun paramètre) : comportement inchangé, utilisé par les
+    // agents/superviseurs — 7 derniers jours. Si startDate/endDate sont
+    // fournis (ex: depuis owner.html), on filtre sur cette période précise.
+    let dateFilter = `wr.date >= CURRENT_DATE - INTERVAL '7 days'`;
+    const params = [ownerId];
+    if (startDate && endDate) {
+      dateFilter = `wr.date::date >= $2::date AND wr.date::date <= $3::date`;
+      params.push(startDate, endDate);
+    }
     const result = await pool.query(
       `SELECT wr.*, d.name as draw_name, wr.date as published_at
        FROM winning_results wr JOIN draws d ON wr.draw_id = d.id
-       WHERE wr.owner_id = $1 AND wr.date >= CURRENT_DATE - INTERVAL '7 days'
+       WHERE wr.owner_id = $1 AND ${dateFilter}
        ORDER BY wr.draw_id, wr.date DESC`,
-      [ownerId]
+      params
     );
     const rows = result.rows.map(row => ({
       ...row,
@@ -1359,6 +1369,126 @@ app.post('/api/owner/publish-results', authenticate, requireRole('owner'), async
     await pool.query('INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)', [ownerId, 'owner', 'publish_results', `Tirage ${drawId}`, req.ip]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Erreur publication' }); }
+});
+
+// Chargement automatique du résultat officiel New York (data.ny.gov) pour un
+// propriétaire, sans attendre le passage du cron toutes les 15 min. Utilise
+// les mêmes fonctions (fetchNYResult / deriveBorletteFromPick / NY_DRAW_CONFIG)
+// que le job automatique défini plus bas dans ce fichier, et applique le même
+// calcul des gains que /api/owner/publish-results ci-dessus. N'affecte que le
+// propriétaire connecté — aucune route agent/superviseur/superadmin modifiée.
+app.post('/api/owner/fetch-ny-result', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { drawId } = req.body;
+  if (!drawId) return res.status(400).json({ error: 'Tirage requis' });
+  try {
+    const drawRes = await pool.query('SELECT id, name, time FROM draws WHERE id = $1', [drawId]);
+    if (drawRes.rows.length === 0) return res.status(404).json({ error: 'Tirage introuvable' });
+    const draw = drawRes.rows[0];
+
+    const period = NY_DRAW_CONFIG[draw.name];
+    if (!period) {
+      return res.status(400).json({ error: `Le chargement automatique n'est disponible que pour les tirages : ${Object.keys(NY_DRAW_CONFIG).join(', ')}` });
+    }
+
+    const alreadyRes = await pool.query(
+      `SELECT 1 FROM winning_results WHERE owner_id = $1 AND draw_id = $2 AND date::date = CURRENT_DATE LIMIT 1`,
+      [ownerId, drawId]
+    );
+    if (alreadyRes.rows.length > 0) {
+      return res.status(400).json({ error: "Un résultat a déjà été publié aujourd'hui pour ce tirage" });
+    }
+
+    const todayStr = moment().tz('America/New_York').format('YYYY-MM-DD');
+    const nyResult = await fetchNYResult(period, todayStr);
+    if (!nyResult) {
+      return res.json({ success: false, message: "Le résultat n'est pas encore disponible côté New York. Réessayez dans quelques minutes." });
+    }
+
+    const { lot1, lot2, lot3, lotto3 } = deriveBorletteFromPick(nyResult.pick3, nyResult.pick4);
+    const numbers = [lot1, lot2, lot3];
+
+    await pool.query(`INSERT INTO winning_results (owner_id, draw_id, numbers, lotto3, date) VALUES ($1, $2, $3, $4, NOW())`, [ownerId, drawId, JSON.stringify(numbers), lotto3]);
+    const settingsRes = await pool.query('SELECT multipliers FROM lottery_settings WHERE owner_id = $1', [ownerId]);
+    let multipliers = { lot1: 60, lot2: 20, lot3: 10, lotto3: 500, lotto4: 5000, lotto5: 25000, mariage: 500 };
+    if (settingsRes.rows.length > 0 && settingsRes.rows[0].multipliers) {
+      const raw = settingsRes.rows[0].multipliers;
+      multipliers = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    }
+    const [lot1n, lot2n, lot3_num] = numbers;
+    const ticketsRes = await pool.query('SELECT id, bets FROM tickets WHERE owner_id = $1 AND draw_id = $2 AND checked = false', [ownerId, drawId]);
+    for (const ticket of ticketsRes.rows) {
+      let totalWin = 0;
+      const bets = typeof ticket.bets === 'string' ? JSON.parse(ticket.bets) : ticket.bets;
+      if (Array.isArray(bets)) {
+        for (const bet of bets) {
+          const game = bet.game || bet.specialType;
+          const clean = bet.cleanNumber || (bet.number ? bet.number.replace(/[^0-9]/g, '') : '');
+          const amount = parseFloat(bet.amount) || 0;
+          let gain = 0;
+          if (game === 'borlette' || game === 'BO' || (game && game.startsWith('n'))) {
+            if (clean.length === 2) {
+              if (clean === lot1n) gain += amount * multipliers.lot1;
+              if (clean === lot2n) gain += amount * multipliers.lot2;
+              if (clean === lot3_num) gain += amount * multipliers.lot3;
+            }
+          } else if (game === 'lotto3') {
+            if (clean.length === 3 && clean === lotto3) gain = amount * multipliers.lotto3;
+          } else if (game === 'mariage' || game === 'auto_marriage') {
+            if (clean.length === 4) {
+              const first = clean.slice(0,2), second = clean.slice(2,4);
+              const pairs = [lot1n, lot2n, lot3_num];
+              let win = false;
+              for (let i=0; i<3; i++) {
+                for (let j=0; j<3; j++) {
+                  if (i !== j && first === pairs[i] && second === pairs[j]) { win = true; break; }
+                }
+                if (win) break;
+              }
+              if (win) {
+                let freeWinAmount = 2500;
+                if (bet.free && bet.freeType === 'special_marriage') {
+                  const advRes = await pool.query(
+                    `SELECT advanced_settings->'freeMarriage'->>'winAmount' as win_amount FROM lottery_settings WHERE owner_id = $1`,
+                    [ownerId]
+                  );
+                  if (advRes.rows[0] && advRes.rows[0].win_amount) {
+                    freeWinAmount = parseFloat(advRes.rows[0].win_amount);
+                  }
+                  gain = freeWinAmount;
+                } else {
+                  gain = amount * multipliers.mariage;
+                }
+              }
+            }
+          } else if (game === 'lotto4' || game === 'auto_lotto4') {
+            if (clean.length === 4 && bet.option) {
+              let expected = '';
+              if (bet.option == 1) expected = lot1n + lot2n;
+              else if (bet.option == 2) expected = lot2n + lot3_num;
+              else if (bet.option == 3) expected = lot1n + lot3_num;
+              if (clean === expected) gain = amount * multipliers.lotto4;
+            }
+          } else if (game === 'lotto5' || game === 'auto_lotto5') {
+            if (clean.length === 5 && bet.option) {
+              let expected = '';
+              if (bet.option == 1) expected = lotto3 + lot2n;
+              else if (bet.option == 2) expected = lotto3 + lot3_num;
+              if (clean === expected) gain = amount * multipliers.lotto5;
+            }
+          }
+          totalWin += gain;
+        }
+      }
+      await pool.query('UPDATE tickets SET win_amount = $1, checked = true WHERE id = $2', [totalWin, ticket.id]);
+    }
+    await pool.query('INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)', [ownerId, 'owner', 'publish_results_auto', `Tirage ${drawId} (auto NY: ${nyResult.pick3}/${nyResult.pick4})`, req.ip]);
+
+    res.json({ success: true, numbers, lotto3 });
+  } catch (err) {
+    console.error('❌ Erreur /api/owner/fetch-ny-result:', err);
+    res.status(500).json({ error: 'Erreur lors du chargement automatique' });
+  }
 });
 
 app.post('/api/owner/block-draw', authenticate, requireRole('owner'), async (req, res) => {

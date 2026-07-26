@@ -198,7 +198,16 @@
             <div style="display:flex; gap:10px; align-items:end;"><button class="btn-primary" onclick="publishManual()">Publier</button><button class="btn-primary" onclick="fetchNyResult()" title="Récupère automatiquement le résultat officiel New York pour le tirage sélectionné"><i class="fas fa-cloud-download-alt"></i> Charger auto (NY)</button></div>
         </div>
         <div class="section-title"><i class="fas fa-sync"></i> Résultats publiés</div>
-        <div style="margin-bottom:10px;"><button class="btn-primary" onclick="loadResults()"><i class="fas fa-download"></i> Charger les résultats</button></div>
+        <div class="form-grid" style="grid-template-columns:auto auto auto auto; align-items:end; gap:10px;">
+            <div class="form-group"><label>Période</label><select id="results-filter" onchange="onResultsFilterChange()">
+                <option value="today">Aujourd'hui</option>
+                <option value="yesterday">Hier</option>
+                <option value="custom">Personnalisé</option>
+            </select></div>
+            <div class="form-group" id="results-custom-start" style="display:none;"><label>Du</label><input type="date" id="results-start"></div>
+            <div class="form-group" id="results-custom-end" style="display:none;"><label>Au</label><input type="date" id="results-end"></div>
+            <div><button class="btn-primary" onclick="loadResults()"><i class="fas fa-download"></i> Charger les résultats</button></div>
+        </div>
         <div id="results-list"></div>
         <div class="section-title"><i class="fas fa-ban"></i> Bloquer / Débloquer un tirage</div>
         <div class="form-grid"><select id="draw-block-select"></select><button class="btn-danger" onclick="toggleDrawBlock(true)">Bloquer</button><button class="btn-primary" onclick="toggleDrawBlock(false)">Débloquer</button></div>
@@ -700,16 +709,39 @@
         } catch (e) { handleFetchError(e, 'fetchNyResult'); showMessage('publish-message', '❌ Erreur lors du chargement automatique', false); }
     }
 
+    function onResultsFilterChange() {
+        const isCustom = document.getElementById('results-filter').value === 'custom';
+        document.getElementById('results-custom-start').style.display = isCustom ? 'block' : 'none';
+        document.getElementById('results-custom-end').style.display = isCustom ? 'block' : 'none';
+    }
+
+    function toDateStr(d) {
+        return d.toISOString().slice(0, 10);
+    }
+
     async function loadResults() {
         const token = localStorage.getItem('auth_token');
         const container = document.getElementById('results-list');
+        const filterVal = document.getElementById('results-filter').value;
+        let startDate, endDate;
+        if (filterVal === 'today') {
+            startDate = endDate = toDateStr(new Date());
+        } else if (filterVal === 'yesterday') {
+            const y = new Date(); y.setDate(y.getDate() - 1);
+            startDate = endDate = toDateStr(y);
+        } else {
+            startDate = document.getElementById('results-start').value;
+            endDate = document.getElementById('results-end').value;
+            if (!startDate || !endDate) { container.innerHTML = '<p>Veuillez choisir une date de début et de fin</p>'; return; }
+        }
         container.innerHTML = '<p>Chargement...</p>';
         try {
-            const res = await fetch(`${API_URL}/api/winners/results`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const params = new URLSearchParams({ startDate, endDate });
+            const res = await fetch(`${API_URL}/api/winners/results?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await res.json();
             const results = data.results || [];
             if (results.length === 0) {
-                container.innerHTML = '<p>Aucun résultat publié pour le moment.</p>';
+                container.innerHTML = '<p>Aucun résultat publié pour cette période.</p>';
                 return;
             }
             let html = '<div class="table-responsive"><table><thead><tr><th>Tirage</th><th>Lot 1</th><th>Lot 2</th><th>Lot 3</th><th>Lotto 3</th><th>Date</th></tr></thead><tbody>';
