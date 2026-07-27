@@ -1984,6 +1984,73 @@ app.get('/api/superadmin/results-status', authenticate, requireSuperAdmin, async
   }
 });
 
+// Liste détaillée des résultats publiés pour une date donnée (par défaut
+// aujourd'hui), avec l'id de chaque résultat — nécessaire pour permettre la
+// suppression ciblée d'un résultat erroné ci-dessous. N'affecte aucune route
+// agent/superviseur.
+app.get('/api/superadmin/results-list', authenticate, requireSuperAdmin, async (req, res) => {
+  const date = req.query.date || null; // format attendu: YYYY-MM-DD, sinon aujourd'hui
+  try {
+    const result = await pool.query(
+      `SELECT wr.id, wr.owner_id, u.name as owner_name, wr.draw_id, d.name as draw_name,
+              wr.numbers, wr.lotto3, wr.date
+       FROM winning_results wr
+       JOIN users u ON wr.owner_id = u.id
+       JOIN draws d ON wr.draw_id = d.id
+       WHERE wr.date::date = COALESCE($1::date, CURRENT_DATE)
+       ORDER BY wr.date DESC`,
+      [date]
+    );
+    const rows = result.rows.map(r => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      ownerName: r.owner_name,
+      drawId: r.draw_id,
+      drawName: r.draw_name,
+      numbers: typeof r.numbers === 'string' ? JSON.parse(r.numbers) : r.numbers,
+      lotto3: r.lotto3,
+      date: r.date
+    }));
+    res.json({ results: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Suppression d'un résultat publié par erreur. Supprime uniquement la ligne
+// concernée dans winning_results et remet à zéro (checked=false, win_amount=0)
+// les tickets de ce propriétaire/tirage pour ce même jour, afin qu'ils
+// puissent être recalculés lors de la republication du bon résultat. Ne
+// touche à rien d'autre (agents, superviseurs, autres résultats).
+app.delete('/api/superadmin/results/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const resultId = req.params.id;
+  try {
+    const found = await pool.query('SELECT owner_id, draw_id, date FROM winning_results WHERE id = $1', [resultId]);
+    if (found.rows.length === 0) return res.status(404).json({ error: 'Résultat introuvable' });
+    const { owner_id, draw_id, date } = found.rows[0];
+
+    await pool.query('DELETE FROM winning_results WHERE id = $1', [resultId]);
+
+    const resetTickets = await pool.query(
+      `UPDATE tickets SET checked = false, win_amount = 0
+       WHERE owner_id = $1 AND draw_id = $2 AND date::date = $3::date
+       RETURNING id`,
+      [owner_id, draw_id, date]
+    );
+
+    await pool.query(
+      'INSERT INTO activity_log (user_id, user_role, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)',
+      [req.user.id, 'superadmin', 'delete_result', `Résultat #${resultId} supprimé (owner ${owner_id}, tirage ${draw_id}) — ${resetTickets.rows.length} ticket(s) remis à zéro`, req.ip]
+    );
+
+    res.json({ success: true, ticketsReset: resetTickets.rows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de la suppression' });
+  }
+});
+
 app.post('/api/superadmin/owners', authenticate, requireSuperAdmin, async (req, res) => {
   const { name, email, password, phone, quota } = req.body;
   if (!name || !email || !password) {

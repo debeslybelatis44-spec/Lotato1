@@ -151,6 +151,13 @@
             <div id="results-status-summary" style="margin-bottom:10px; font-weight:bold;">Chargement...</div>
             <div id="results-status-table" style="margin-bottom:24px;">Chargement...</div>
 
+            <div class="section-title"><i class="fas fa-trash-alt"></i> Résultats publiés — voir / supprimer un résultat erroné</div>
+            <div style="display:flex; gap:10px; align-items:end; margin-bottom:10px;">
+                <div class="form-group"><label>Date</label><input type="date" id="results-list-date"></div>
+                <div><button class="btn-secondary" onclick="loadResultsList()">Charger</button></div>
+            </div>
+            <div id="results-list-table" style="margin-bottom:24px;">—</div>
+
             <div class="section-title"><i class="fas fa-chart-line"></i> Publier les résultats pour plusieurs propriétaires</div>
             <div class="form-grid">
                 <div class="form-group">
@@ -275,7 +282,14 @@
             if (tabId === 'agents') { loadAgents(); loadSupervisors(); }
             if (tabId === 'messages') loadOwnerSelect();
             if (tabId === 'reports') loadReports();
-            if (tabId === 'publish') { loadPublishOwnersCheckbox(); loadDrawsForPublish(); loadResultsStatus(); }
+            if (tabId === 'publish') {
+                loadPublishOwnersCheckbox();
+                loadDrawsForPublish();
+                loadResultsStatus();
+                const dateInput = document.getElementById('results-list-date');
+                if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+                loadResultsList();
+            }
         }
 
         async function fetchWithToken(url, options = {}) {
@@ -680,7 +694,58 @@
             }
         }
 
-        async function loadPublishOwnersCheckbox() {
+        async function loadResultsList() {
+            const tableEl = document.getElementById('results-list-table');
+            const dateInput = document.getElementById('results-list-date');
+            const date = dateInput.value; // vide = aujourd'hui côté serveur
+            tableEl.innerHTML = 'Chargement...';
+            try {
+                const url = date ? `/superadmin/results-list?date=${date}` : '/superadmin/results-list';
+                const res = await fetchWithToken(url);
+                if (!res || !res.ok) throw new Error('Erreur chargement');
+                const data = await res.json();
+                const results = data.results || [];
+                if (results.length === 0) {
+                    tableEl.innerHTML = '<p>Aucun résultat publié pour cette date.</p>';
+                    return;
+                }
+                let html = '<table><thead><tr><th>Propriétaire</th><th>Tirage</th><th>Numéros</th><th>Lotto3</th><th>Date</th><th>Action</th></tr></thead><tbody>';
+                results.forEach(r => {
+                    const nums = Array.isArray(r.numbers) ? r.numbers.join(' - ') : '';
+                    const dateStr = new Date(r.date).toLocaleString('fr-FR');
+                    html += `<tr>
+                        <td>${escapeHtml(r.ownerName)}</td>
+                        <td>${escapeHtml(r.drawName)}</td>
+                        <td>${escapeHtml(nums)}</td>
+                        <td>${escapeHtml(r.lotto3 || '')}</td>
+                        <td>${dateStr}</td>
+                        <td><button class="btn-danger" onclick="deleteResult(${r.id}, '${escapeHtml(r.ownerName)}', '${escapeHtml(r.drawName)}')">🗑 Supprimer</button></td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                tableEl.innerHTML = html;
+            } catch (e) {
+                tableEl.innerHTML = '<p class="loss">Erreur de chargement des résultats</p>';
+            }
+        }
+
+        async function deleteResult(id, ownerName, drawName) {
+            if (!confirm(`Supprimer le résultat de "${drawName}" pour ${ownerName} ?\nLes tickets concernés seront remis en attente pour être recalculés.`)) return;
+            try {
+                const res = await fetchWithToken(`/superadmin/results/${id}`, { method: 'DELETE' });
+                if (!res || !res.ok) {
+                    const err = res ? await res.json().catch(() => ({})) : {};
+                    alert('❌ ' + (err.error || 'Erreur lors de la suppression'));
+                    return;
+                }
+                const data = await res.json();
+                alert(`✅ Résultat supprimé. ${data.ticketsReset} ticket(s) remis en attente.`);
+                loadResultsList();
+                loadResultsStatus();
+            } catch (e) {
+                alert('❌ Erreur lors de la suppression');
+            }
+        }
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
@@ -798,6 +863,8 @@
         window.selectAllPublishOwners = selectAllPublishOwners;
         window.deselectAllPublishOwners = deselectAllPublishOwners;
         window.publishResultsMulti = publishResultsMulti;
+        window.loadResultsList = loadResultsList;
+        window.deleteResult = deleteResult;
         window.markAsPaid = markAsPaid;
     </script>
 </body>
