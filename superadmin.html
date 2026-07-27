@@ -746,6 +746,8 @@
                 alert('❌ Erreur lors de la suppression');
             }
         }
+
+        async function loadPublishOwnersCheckbox() {
             const res = await fetchWithToken('/superadmin/owners');
             if (!res) return;
             const owners = await res.json();
