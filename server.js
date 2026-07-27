@@ -406,13 +406,10 @@ app.post('/api/auth/superadmin-login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
 
-    const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);
-    if (user.device_id && user.device_id !== effectiveDeviceId) {
-      return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil.' });
-    }
-    if (!user.device_id) {
-      await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [effectiveDeviceId, user.id]);
-    }
+    // Le superadmin est le rôle le plus élevé : personne au-dessus ne peut
+    // réinitialiser son appareil s'il se retrouve bloqué. Pas de
+    // verrouillage par appareil pour ce rôle — connexion libre sur
+    // n'importe quel appareil.
 
     const payload = { id: user.id, username: user.username, role: user.role, name: user.name };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
