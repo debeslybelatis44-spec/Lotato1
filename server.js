@@ -874,7 +874,7 @@ app.get('/api/reports', authenticate, async (req, res) => {
       `SELECT COUNT(t.id) as total_tickets, COALESCE(SUM(t.total_amount),0) as total_bets,
               COALESCE(SUM(t.win_amount),0) as total_wins,
               COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as total_commission,
-              COALESCE(SUM(t.win_amount)-SUM(t.total_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as balance
+              COALESCE(SUM(t.total_amount)-SUM(t.win_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as balance
        FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
        WHERE t.owner_id = $1 AND t.agent_id = $2 AND DATE(t.date) = CURRENT_DATE`,
       [ownerId, agentId]
@@ -902,7 +902,7 @@ app.get('/api/reports/draw', authenticate, async (req, res) => {
       `SELECT COUNT(t.id) as total_tickets, COALESCE(SUM(t.total_amount),0) as total_bets,
               COALESCE(SUM(t.win_amount),0) as total_wins,
               COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as total_commission,
-              COALESCE(SUM(t.win_amount)-SUM(t.total_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as balance
+              COALESCE(SUM(t.total_amount)-SUM(t.win_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as balance
        FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
        WHERE t.owner_id = $1 AND t.agent_id = $2 AND t.draw_id = $3 AND DATE(t.date) = CURRENT_DATE`,
       [ownerId, agentId, drawId]
@@ -966,7 +966,7 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
       COALESCE(SUM(t.total_amount), 0) as total_bets,
       COALESCE(SUM(t.win_amount), 0) as total_wins,
       COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as total_commission,
-      COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as net_result
+      COALESCE(SUM(t.total_amount) - SUM(t.win_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as net_result
     FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
     WHERE ${whereClause}
   `;
@@ -991,7 +991,7 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
                COALESCE(SUM(t.total_amount), 0) as bets,
                COALESCE(SUM(t.win_amount), 0) as wins,
                COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as commission,
-               COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as result
+               COALESCE(SUM(t.total_amount) - SUM(t.win_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as result
         FROM tickets t
         JOIN draws d ON t.draw_id = d.id
         LEFT JOIN users u ON t.agent_id = u.id
@@ -1661,7 +1661,7 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
               COALESCE(SUM(t.total_amount),0) as total_bets,
               COALESCE(SUM(t.win_amount),0) as total_wins,
               COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as commission,
-              COALESCE(SUM(t.win_amount)-SUM(t.total_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as net_result
+              COALESCE(SUM(t.total_amount)-SUM(t.win_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as net_result
        FROM users u LEFT JOIN tickets t ON u.id = t.agent_id AND DATE(t.date) = CURRENT_DATE
        WHERE u.owner_id = $1 AND u.role = $2 GROUP BY u.id`,
       [ownerId, 'agent']
@@ -1719,7 +1719,7 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
   let baseQuery = `
     SELECT COUNT(t.id) as tickets, COALESCE(SUM(t.total_amount),0) as bets, COALESCE(SUM(t.win_amount),0) as wins,
            COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as commission,
-           COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as result
+           COALESCE(SUM(t.total_amount) - SUM(t.win_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as result
     FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
     WHERE t.owner_id = $1`;
   const params = [ownerId];
@@ -1737,7 +1737,7 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
   let detailQuery = `
     SELECT d.id as draw_id, d.name as draw_name, COUNT(t.id) as tickets, COALESCE(SUM(t.total_amount),0) as bets, COALESCE(SUM(t.win_amount),0) as wins,
            COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as commission,
-           COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as result
+           COALESCE(SUM(t.total_amount) - SUM(t.win_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as result
     FROM tickets t JOIN draws d ON t.draw_id = d.id LEFT JOIN users u ON t.agent_id = u.id
     WHERE t.owner_id = $1
   `;
@@ -1759,7 +1759,7 @@ app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, re
   const gainLossCount = await pool.query(
     `SELECT COUNT(CASE WHEN net_result > 0 THEN 1 END) as gain_count, COUNT(CASE WHEN net_result < 0 THEN 1 END) as loss_count
      FROM (SELECT u.id,
-                  COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as net_result
+                  COALESCE(SUM(t.total_amount) - SUM(t.win_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as net_result
            FROM users u LEFT JOIN tickets t ON u.id = t.agent_id ${glp.cond}
            WHERE u.owner_id = $1 AND u.role = 'agent' GROUP BY u.id) sub`,
     glParams
