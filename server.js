@@ -871,10 +871,12 @@ app.get('/api/reports', authenticate, async (req, res) => {
   const ownerId = req.user.ownerId;
   try {
     const result = await pool.query(
-      `SELECT COUNT(id) as total_tickets, COALESCE(SUM(total_amount),0) as total_bets,
-              COALESCE(SUM(win_amount),0) as total_wins,
-              COALESCE(SUM(win_amount)-SUM(total_amount),0) as balance
-       FROM tickets WHERE owner_id = $1 AND agent_id = $2 AND date >= CURRENT_DATE`,
+      `SELECT COUNT(t.id) as total_tickets, COALESCE(SUM(t.total_amount),0) as total_bets,
+              COALESCE(SUM(t.win_amount),0) as total_wins,
+              COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as total_commission,
+              COALESCE(SUM(t.win_amount)-SUM(t.total_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as balance
+       FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
+       WHERE t.owner_id = $1 AND t.agent_id = $2 AND DATE(t.date) = CURRENT_DATE`,
       [ownerId, agentId]
     );
     const row = result.rows[0];
@@ -882,6 +884,7 @@ app.get('/api/reports', authenticate, async (req, res) => {
       totalTickets: parseInt(row.total_tickets),
       totalBets: parseFloat(row.total_bets),
       totalWins: parseFloat(row.total_wins),
+      totalCommission: parseFloat(row.total_commission),
       totalLoss: parseFloat(row.total_bets) - parseFloat(row.total_wins),
       balance: parseFloat(row.balance)
     });
@@ -896,10 +899,12 @@ app.get('/api/reports/draw', authenticate, async (req, res) => {
   if (!drawId) return res.status(400).json({ error: 'drawId requis' });
   try {
     const result = await pool.query(
-      `SELECT COUNT(id) as total_tickets, COALESCE(SUM(total_amount),0) as total_bets,
-              COALESCE(SUM(win_amount),0) as total_wins,
-              COALESCE(SUM(win_amount)-SUM(total_amount),0) as balance
-       FROM tickets WHERE owner_id = $1 AND agent_id = $2 AND draw_id = $3 AND date >= CURRENT_DATE`,
+      `SELECT COUNT(t.id) as total_tickets, COALESCE(SUM(t.total_amount),0) as total_bets,
+              COALESCE(SUM(t.win_amount),0) as total_wins,
+              COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as total_commission,
+              COALESCE(SUM(t.win_amount)-SUM(t.total_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as balance
+       FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
+       WHERE t.owner_id = $1 AND t.agent_id = $2 AND t.draw_id = $3 AND DATE(t.date) = CURRENT_DATE`,
       [ownerId, agentId, drawId]
     );
     const row = result.rows[0];
@@ -907,6 +912,7 @@ app.get('/api/reports/draw', authenticate, async (req, res) => {
       totalTickets: parseInt(row.total_tickets),
       totalBets: parseFloat(row.total_bets),
       totalWins: parseFloat(row.total_wins),
+      totalCommission: parseFloat(row.total_commission),
       totalLoss: parseFloat(row.total_bets) - parseFloat(row.total_wins),
       balance: parseFloat(row.balance)
     });
@@ -931,13 +937,15 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
     params.push(drawId);
   }
 
+  // Mêmes définitions de période que /api/owner/reports et que le calcul
+  // client de l'app agent (semaine = 7 derniers jours glissants).
   let dateCondition = '';
   if (period === 'today') {
     dateCondition = 'DATE(t.date) = CURRENT_DATE';
   } else if (period === 'yesterday') {
     dateCondition = 'DATE(t.date) = CURRENT_DATE - INTERVAL \'1 day\'';
   } else if (period === 'week') {
-    dateCondition = 't.date >= DATE_TRUNC(\'week\', CURRENT_DATE)';
+    dateCondition = 't.date >= CURRENT_DATE - INTERVAL \'7 days\'';
   } else if (period === 'month') {
     dateCondition = 't.date >= DATE_TRUNC(\'month\', CURRENT_DATE)';
   } else if (period === 'custom' && fromDate && toDate) {
@@ -950,20 +958,29 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
 
   const whereClause = conditions.join(' AND ');
 
-  // Statistiques globales (summary)
+  // Statistiques globales (summary) — résultat net après commission de l'agent,
+  // comme le solde calculé côté app agent.
   const summaryQuery = `
     SELECT 
       COUNT(*) as total_tickets,
       COALESCE(SUM(t.total_amount), 0) as total_bets,
       COALESCE(SUM(t.win_amount), 0) as total_wins,
-      COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as net_result
-    FROM tickets t
+      COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as total_commission,
+      COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as net_result
+    FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
     WHERE ${whereClause}
   `;
 
   try {
     const summaryResult = await pool.query(summaryQuery, params);
-    const summary = summaryResult.rows[0];
+    const s = summaryResult.rows[0];
+    const summary = {
+      total_tickets: parseInt(s.total_tickets),
+      total_bets: parseFloat(s.total_bets),
+      total_wins: parseFloat(s.total_wins),
+      total_commission: parseFloat(s.total_commission),
+      net_result: parseFloat(s.net_result)
+    };
 
     let detail = [];
     // Si aucun drawId spécifique, détail par tirage
@@ -973,15 +990,25 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
                COUNT(t.id) as tickets,
                COALESCE(SUM(t.total_amount), 0) as bets,
                COALESCE(SUM(t.win_amount), 0) as wins,
-               COALESCE(SUM(t.win_amount) - SUM(t.total_amount), 0) as result
+               COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as commission,
+               COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as result
         FROM tickets t
         JOIN draws d ON t.draw_id = d.id
+        LEFT JOIN users u ON t.agent_id = u.id
         WHERE ${whereClause}
         GROUP BY d.id, d.name
         ORDER BY result DESC
       `;
       const detailResult = await pool.query(detailQuery, params);
-      detail = detailResult.rows;
+      detail = detailResult.rows.map(r => ({
+        draw_id: r.draw_id,
+        draw_name: r.draw_name,
+        tickets: parseInt(r.tickets),
+        bets: parseFloat(r.bets),
+        wins: parseFloat(r.wins),
+        commission: parseFloat(r.commission),
+        result: parseFloat(r.result)
+      }));
     }
 
     res.json({ summary, detail });
@@ -1633,7 +1660,8 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
       `SELECT u.id, u.name,
               COALESCE(SUM(t.total_amount),0) as total_bets,
               COALESCE(SUM(t.win_amount),0) as total_wins,
-              COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as net_result
+              COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as commission,
+              COALESCE(SUM(t.win_amount)-SUM(t.total_amount)-SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as net_result
        FROM users u LEFT JOIN tickets t ON u.id = t.agent_id AND DATE(t.date) = CURRENT_DATE
        WHERE u.owner_id = $1 AND u.role = $2 GROUP BY u.id`,
       [ownerId, 'agent']
@@ -1666,56 +1694,96 @@ app.get('/api/owner/dashboard', authenticate, requireRole('owner'), async (req, 
 app.get('/api/owner/reports', authenticate, requireRole('owner'), async (req, res) => {
   const ownerId = req.user.id;
   const { supervisorId, agentId, drawId, period, fromDate, toDate, gainLoss } = req.query;
-  let baseQuery = 'SELECT COUNT(id) as tickets, COALESCE(SUM(total_amount),0) as bets, COALESCE(SUM(win_amount),0) as wins, COALESCE(SUM(win_amount)-SUM(total_amount),0) as result FROM tickets WHERE owner_id = $1';
+
+  // Construit la condition de période, partagée par toutes les requêtes
+  // ci-dessous pour garantir la même définition partout (et alignée sur ce
+  // que l'app agent calcule déjà côté client) :
+  //  - today / yesterday : jour civil exact (Haïti)
+  //  - week : 7 derniers jours glissants (pas la semaine calendaire)
+  //  - custom : bornes incluses en entier (comme côté agent)
+  function buildPeriodCondition(alias, paramsArr, startIdx) {
+    let idx = startIdx;
+    let cond = '';
+    if (period === 'today') cond = `AND DATE(${alias}.date) = CURRENT_DATE`;
+    else if (period === 'yesterday') cond = `AND DATE(${alias}.date) = CURRENT_DATE - INTERVAL '1 day'`;
+    else if (period === 'week') cond = `AND ${alias}.date >= CURRENT_DATE - INTERVAL '7 days'`;
+    else if (period === 'month') cond = `AND ${alias}.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+    else if (period === 'custom' && fromDate && toDate) {
+      cond = `AND DATE(${alias}.date) BETWEEN $${idx++} AND $${idx++}`;
+      paramsArr.push(fromDate, toDate);
+    }
+    return { cond, nextIdx: idx };
+  }
+
+  // --- Résumé global : mises, gains, résultat NET après commission de l'agent ---
+  let baseQuery = `
+    SELECT COUNT(t.id) as tickets, COALESCE(SUM(t.total_amount),0) as bets, COALESCE(SUM(t.win_amount),0) as wins,
+           COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as commission,
+           COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as result
+    FROM tickets t LEFT JOIN users u ON t.agent_id = u.id
+    WHERE t.owner_id = $1`;
   const params = [ownerId];
   let idx = 2;
-  if (supervisorId && supervisorId !== 'all') { baseQuery += ` AND agent_id IN (SELECT id FROM users WHERE supervisor_id = $${idx++})`; params.push(supervisorId); }
-  if (agentId && agentId !== 'all') { baseQuery += ` AND agent_id = $${idx++}`; params.push(agentId); }
-  if (drawId && drawId !== 'all') { baseQuery += ` AND draw_id = $${idx++}`; params.push(drawId); }
-  if (period === 'today') baseQuery += ` AND date >= CURRENT_DATE`;
-  else if (period === 'yesterday') baseQuery += ` AND date >= CURRENT_DATE - INTERVAL '1 day' AND date < CURRENT_DATE`;
-  else if (period === 'week') baseQuery += ` AND date >= DATE_TRUNC('week', CURRENT_DATE)`;
-  else if (period === 'month') baseQuery += ` AND date >= DATE_TRUNC('month', CURRENT_DATE)`;
-  else if (period === 'custom' && fromDate && toDate) { baseQuery += ` AND date >= $${idx++} AND date <= $${idx++}`; params.push(fromDate, toDate); }
-  if (gainLoss === 'gain') baseQuery += ` AND win_amount > 0`;
-  else if (gainLoss === 'loss') baseQuery += ` AND (win_amount = 0 OR win_amount IS NULL)`;
+  if (supervisorId && supervisorId !== 'all') { baseQuery += ` AND t.agent_id IN (SELECT id FROM users WHERE supervisor_id = $${idx++})`; params.push(supervisorId); }
+  if (agentId && agentId !== 'all') { baseQuery += ` AND t.agent_id = $${idx++}`; params.push(agentId); }
+  if (drawId && drawId !== 'all') { baseQuery += ` AND t.draw_id = $${idx++}`; params.push(drawId); }
+  { const p = buildPeriodCondition('t', params, idx); baseQuery += ` ${p.cond}`; idx = p.nextIdx; }
+  if (gainLoss === 'gain') baseQuery += ` AND t.win_amount > 0`;
+  else if (gainLoss === 'loss') baseQuery += ` AND (t.win_amount = 0 OR t.win_amount IS NULL)`;
   const summaryRes = await pool.query(baseQuery, params);
   const summary = summaryRes.rows[0];
+
+  // --- Détail par tirage : même logique, avec commission ---
   let detailQuery = `
-    SELECT d.id as draw_id, d.name as draw_name, COUNT(t.id) as tickets, COALESCE(SUM(t.total_amount),0) as bets, COALESCE(SUM(t.win_amount),0) as wins, COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as result
-    FROM tickets t JOIN draws d ON t.draw_id = d.id WHERE t.owner_id = $1
+    SELECT d.id as draw_id, d.name as draw_name, COUNT(t.id) as tickets, COALESCE(SUM(t.total_amount),0) as bets, COALESCE(SUM(t.win_amount),0) as wins,
+           COALESCE(SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as commission,
+           COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100),0) as result
+    FROM tickets t JOIN draws d ON t.draw_id = d.id LEFT JOIN users u ON t.agent_id = u.id
+    WHERE t.owner_id = $1
   `;
   const detailParams = [ownerId];
   let didx = 2;
   if (supervisorId && supervisorId !== 'all') { detailQuery += ` AND t.agent_id IN (SELECT id FROM users WHERE supervisor_id = $${didx++})`; detailParams.push(supervisorId); }
   if (agentId && agentId !== 'all') { detailQuery += ` AND t.agent_id = $${didx++}`; detailParams.push(agentId); }
   if (drawId && drawId !== 'all') { detailQuery += ` AND t.draw_id = $${didx++}`; detailParams.push(drawId); }
-  if (period === 'today') detailQuery += ` AND t.date >= CURRENT_DATE`;
-  else if (period === 'yesterday') detailQuery += ` AND t.date >= CURRENT_DATE - INTERVAL '1 day' AND t.date < CURRENT_DATE`;
-  else if (period === 'week') detailQuery += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
-  else if (period === 'month') detailQuery += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
-  else if (period === 'custom' && fromDate && toDate) { detailQuery += ` AND t.date >= $${didx++} AND t.date <= $${didx++}`; detailParams.push(fromDate, toDate); }
+  { const p = buildPeriodCondition('t', detailParams, didx); detailQuery += ` ${p.cond}`; didx = p.nextIdx; }
   if (gainLoss === 'gain') detailQuery += ` AND t.win_amount > 0`;
   else if (gainLoss === 'loss') detailQuery += ` AND (t.win_amount = 0 OR t.win_amount IS NULL)`;
   detailQuery += ` GROUP BY d.id, d.name ORDER BY d.name`;
   const detailRes = await pool.query(detailQuery, detailParams);
+
+  // --- Nombre d'agents en gain / en perte, sur la MÊME période que le reste,
+  // net de commission comme le solde affiché à l'agent ---
+  const glParams = [ownerId];
+  const glp = buildPeriodCondition('t', glParams, 2);
   const gainLossCount = await pool.query(
     `SELECT COUNT(CASE WHEN net_result > 0 THEN 1 END) as gain_count, COUNT(CASE WHEN net_result < 0 THEN 1 END) as loss_count
-     FROM (SELECT u.id, COALESCE(SUM(t.win_amount)-SUM(t.total_amount),0) as net_result
-           FROM users u LEFT JOIN tickets t ON u.id = t.agent_id ${period === 'today' ? 'AND DATE(t.date) = CURRENT_DATE' : ''}
+     FROM (SELECT u.id,
+                  COALESCE(SUM(t.win_amount) - SUM(t.total_amount) - SUM(t.total_amount * COALESCE(u.commission_percentage,0) / 100), 0) as net_result
+           FROM users u LEFT JOIN tickets t ON u.id = t.agent_id ${glp.cond}
            WHERE u.owner_id = $1 AND u.role = 'agent' GROUP BY u.id) sub`,
-    [ownerId]
+    glParams
   );
+
   res.json({
     summary: {
       total_tickets: parseInt(summary.tickets),
       total_bets: parseFloat(summary.bets),
       total_wins: parseFloat(summary.wins),
+      total_commission: parseFloat(summary.commission),
       net_result: parseFloat(summary.result),
       gain_count: parseInt(gainLossCount.rows[0].gain_count),
       loss_count: parseInt(gainLossCount.rows[0].loss_count)
     },
-    detail: detailRes.rows
+    detail: detailRes.rows.map(r => ({
+      draw_id: r.draw_id,
+      draw_name: r.draw_name,
+      tickets: parseInt(r.tickets),
+      bets: parseFloat(r.bets),
+      wins: parseFloat(r.wins),
+      commission: parseFloat(r.commission),
+      result: parseFloat(r.result)
+    }))
   });
 });
 

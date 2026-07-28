@@ -548,13 +548,13 @@
             let agentsHtml = '';
             if (data.agents_gain_loss.length === 0) agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
             else {
-                agentsHtml = '<div class="table-responsive"><table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Résultat pour la maison</th><th>Statut</th></tr></thead><tbody>';
+                agentsHtml = '<div class="table-responsive"><table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Commission</th><th>Solde net agent</th><th>Statut</th></tr></thead><tbody>';
                 data.agents_gain_loss.forEach(a => {
-                    const netResult = parseFloat(a.total_bets) - parseFloat(a.total_wins);
+                    const netResult = parseFloat(a.net_result || 0);
                     const netClass = netResult >= 0 ? 'profit' : 'loss';
                     const statusIcon = netResult >= 0 ? '✅' : '❌';
                     const statusText = netResult >= 0 ? 'Gagnant' : 'Perdant';
-                    agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
+                    agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td>${parseFloat(a.commission || 0).toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
                 });
                 agentsHtml += '</tbody></table></div>';
             }
@@ -1118,10 +1118,10 @@
         html += `<div class="stat-card"><div style="font-size:2rem;">${s.loss_count}</div><div>Agents en perte</div></div>`;
         html += `</div>`;
         if (report.detail && report.detail.length > 0) {
-            html += `<h3>Détail</h3><div class="list-container"><div class="table-responsive"><table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Résultat</th></tr></thead><tbody>`;
+            html += `<h3>Détail</h3><div class="list-container"><div class="table-responsive"><table><thead><tr><th>Nom</th><th>Tickets</th><th>Mises</th><th>Gains</th><th>Commission</th><th>Résultat net</th></tr></thead><tbody>`;
             report.detail.forEach(d => {
-                const result = parseFloat(d.result || d.wins - d.bets);
-                html += `<tr><td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td><td>${d.tickets}</td><td>${parseFloat(d.bets).toLocaleString()} G</td><td>${parseFloat(d.wins).toLocaleString()} G</td><td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td></tr>`;
+                const result = parseFloat(d.result !== undefined ? d.result : d.wins - d.bets);
+                html += `<tr><td>${d.draw_name || d.agent_name || d.draw_id || d.agent_id}</td><td>${d.tickets}</td><td>${parseFloat(d.bets).toLocaleString()} G</td><td>${parseFloat(d.wins).toLocaleString()} G</td><td>${parseFloat(d.commission || 0).toLocaleString()} G</td><td style="color:${result >= 0 ? '#00f190' : '#ff4d4d'};">${result.toLocaleString()} G</td></tr>`;
             });
             html += `</tbody></table></div></div>`;
         }
