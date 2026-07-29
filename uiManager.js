@@ -18,6 +18,26 @@ APP_STATE.agentCommission = (() => {
     return saved ? parseFloat(saved) : 0;
 })();
 
+// ==================== Horloge serveur (indépendante de l'appareil) ====================
+// On calcule un décalage (offset) entre l'heure du serveur et celle de
+// l'appareil une seule fois, puis on l'applique à Date.now() pour obtenir
+// une heure "de référence" toujours fiable, sans redemander le serveur à
+// chaque calcul. Si l'appareil est mal réglé (mauvaise heure ou mauvais
+// fuseau), ça n'affecte plus les rapports "aujourd'hui/hier/semaine".
+window.SERVER_TIME_OFFSET_MS = 0;
+async function syncServerTime() {
+    try {
+        const serverNow = await APIService.getServerTime();
+        window.SERVER_TIME_OFFSET_MS = serverNow.getTime() - Date.now();
+    } catch (e) {
+        console.error('Impossible de synchroniser l\'heure serveur, repli sur l\'horloge locale:', e);
+        window.SERVER_TIME_OFFSET_MS = 0;
+    }
+}
+function getServerNow() {
+    return new Date(Date.now() + (window.SERVER_TIME_OFFSET_MS || 0));
+}
+
 // ---------- Détection Android WebView ----------
 function isAndroidWebView() {
     return /Android/i.test(navigator.userAgent) && typeof window.AndroidPrint !== 'undefined';
@@ -120,7 +140,7 @@ async function fetchTicketsWithFilters(filters) {
 // ==================== FILTRAGE AVEC FUSEAU HORAIRE CORRECT ====================
 function filterTicketsByDate(tickets, filters) {
     const tz = 'America/Port-au-Prince';
-    const now = new Date();
+    const now = getServerNow(); // heure du serveur, pas celle de l'appareil
     const formatter = new Intl.DateTimeFormat('fr-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
     const todayStr = formatter.format(now);
     const yesterday = new Date(now);
@@ -176,7 +196,8 @@ function switchTab(tabName) {
         case 'winners':
             screenId = 'winners-screen';
             document.querySelector('.nav-item:nth-child(4)').classList.add('active');
-            loadWinners();
+            setupWinnersFilterBar();
+            loadWinners(window.winnersFilterState.period);
             break;
     }
     if (screenId) document.getElementById(screenId).classList.add('active');
@@ -496,6 +517,7 @@ function reprintTicket(ticketId) {
 // ==================== RAPPORTS (version avec commission et filtre date) ====================
 async function loadReports() {
     try {
+        await syncServerTime();
         initReportFilters();
 
         // Créer l'affichage du pourcentage agent s'il n'existe pas
@@ -708,9 +730,37 @@ body { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold
     printHTMLContent(html, `Rapò ${selectedDraw}`);
 }
 
-async function loadWinners() {
+// ==================== Filtre "Tikè Genyen yo" (période + recherche) ====================
+window.winnersFilterState = window.winnersFilterState || { period: 'all', search: '' };
+let winnersFilterBarWired = false;
+function setupWinnersFilterBar() {
+    if (winnersFilterBarWired) return; // n'attache les écouteurs qu'une seule fois
+    const applyBtn = document.getElementById('winners-filter-apply');
+    const resetBtn = document.getElementById('winners-filter-reset');
+    const periodSel = document.getElementById('winners-filter-period');
+    const searchInput = document.getElementById('winners-filter-search');
+    if (!applyBtn || !resetBtn || !periodSel || !searchInput) return; // pas encore dans le DOM
+    winnersFilterBarWired = true;
+
+    applyBtn.addEventListener('click', () => {
+        window.winnersFilterState.period = periodSel.value;
+        window.winnersFilterState.search = searchInput.value.trim();
+        loadWinners(window.winnersFilterState.period);
+    });
+    resetBtn.addEventListener('click', () => {
+        periodSel.value = 'all';
+        searchInput.value = '';
+        window.winnersFilterState = { period: 'all', search: '' };
+        loadWinners('all');
+    });
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') applyBtn.click();
+    });
+}
+
+async function loadWinners(period = 'all') {
     try {
-        await APIService.getWinningTickets();
+        await APIService.getWinningTickets(period);
         await APIService.getWinningResults();
         updateWinnersDisplay();
     } catch (error) {
@@ -724,7 +774,16 @@ async function loadWinners() {
 function updateWinnersDisplay() {
     const container = document.getElementById('winners-container');
     if (!container) return;
-    const winningTickets = APP_STATE.winningTickets || [];
+    let winningTickets = APP_STATE.winningTickets || [];
+    const search = (window.winnersFilterState && window.winnersFilterState.search || '').toLowerCase();
+    if (search) {
+        winningTickets = winningTickets.filter(t => {
+            const id = String(t.ticket_id || t.id || '').toLowerCase();
+            const drawName = String(t.draw_name || t.drawName || '').toLowerCase();
+            const winningNumber = String(t.winning_number || t.winningNumber || '').toLowerCase();
+            return id.includes(search) || drawName.includes(search) || winningNumber.includes(search);
+        });
+    }
     const winningResults = APP_STATE.winningResults || [];
     if (winningTickets.length === 0) {
         container.innerHTML = '<div class="empty-msg">Pa gen tikè genyen pou kounye a</div>';

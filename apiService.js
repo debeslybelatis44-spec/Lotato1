@@ -1,5 +1,22 @@
 // apiService.js
 const APIService = {
+    // Renvoie l'heure du SERVEUR (jamais celle de l'appareil), utilisée pour
+    // que les rapports (aujourd'hui/hier/semaine) soient calculés de façon
+    // fiable même si l'horloge du téléphone est mal réglée.
+    async getServerTime() {
+        try {
+            const response = await fetch(`${API_CONFIG.BASE_URL}/api/server-time`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+            });
+            if (!response.ok) throw new Error('Erreur réseau');
+            const data = await response.json();
+            return data.serverDateTime ? new Date(data.serverDateTime) : new Date();
+        } catch (error) {
+            console.error('Erreur récupération heure serveur, repli sur horloge locale:', error);
+            return new Date();
+        }
+    },
+
     async saveTicket(ticket) {
         try {
             const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {
@@ -76,10 +93,10 @@ const APIService = {
         }
     },
 
-    async getWinningTickets() {
+    async getWinningTickets(period = 'all') {
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_WINNERS}?agentId=${APP_STATE.agentId}`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_WINNERS}?agentId=${APP_STATE.agentId}&period=${encodeURIComponent(period)}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

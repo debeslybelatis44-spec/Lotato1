@@ -865,6 +865,19 @@ app.post('/api/winners/pay/:ticketId', authenticate, requireRole('agent'), async
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// Heure/date du serveur — permet aux applications (agent, owner...) de
+// calculer "aujourd'hui / hier / cette semaine" à partir de l'horloge du
+// SERVEUR plutôt que de celle de l'appareil, qui peut être mal réglée.
+app.get('/api/server-time', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT NOW() as now, CURRENT_DATE as today");
+    res.json({
+      serverDateTime: result.rows[0].now,
+      serverDate: result.rows[0].today
+    });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 app.get('/api/reports', authenticate, async (req, res) => {
   if (req.user.role !== 'agent') return res.status(403).json({ error: 'Accès réservé aux agents' });
   const agentId = req.user.id;
@@ -1021,6 +1034,7 @@ app.get('/api/agent/reports', authenticate, async (req, res) => {
 app.get('/api/winners', authenticate, async (req, res) => {
   const user = req.user;
   const ownerId = user.ownerId;
+  const { period } = req.query;
   let query = 'SELECT * FROM tickets WHERE owner_id = $1 AND win_amount > 0';
   const params = [ownerId];
   let idx = 2;
@@ -1045,7 +1059,16 @@ app.get('/api/winners', authenticate, async (req, res) => {
       params.push(agentId);
     }
   }
-  query += ' ORDER BY date DESC LIMIT 20';
+  // Filtre de période — basé sur l'horloge du SERVEUR (CURRENT_DATE), jamais
+  // sur l'appareil. "all" ou absent = pas de filtre (comportement précédent).
+  if (period === 'today') query += ` AND DATE(date) = CURRENT_DATE`;
+  else if (period === 'yesterday') query += ` AND DATE(date) = CURRENT_DATE - INTERVAL '1 day'`;
+  else if (period === 'week') query += ` AND date >= CURRENT_DATE - INTERVAL '7 days'`;
+  else if (period === 'month') query += ` AND date >= DATE_TRUNC('month', CURRENT_DATE)`;
+  query += ' ORDER BY date DESC';
+  // Sans filtre de période, on garde une limite pour éviter de tout charger ;
+  // avec un filtre explicite, l'utilisateur veut voir tout ce qui correspond.
+  if (!period || period === 'all') query += ' LIMIT 20';
   try {
     const result = await pool.query(query, params);
     res.json({ winners: result.rows });
