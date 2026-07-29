@@ -152,7 +152,8 @@
             <div class="stat-card"><div style="font-size:2rem;" id="sales-today">0 G</div><div>Ventes totales (aujourd'hui)</div></div>
             <div class="stat-card"><div style="font-size:2rem;" id="total-tickets-today">0</div><div>Tickets vendus (aujourd'hui)</div></div>
             <div class="stat-card"><div style="font-size:2rem;" id="total-wins-today">0 G</div><div>Gains totaux (aujourd'hui)</div></div>
-            <div class="stat-card"><div style="font-size:2rem;" id="balance-today">0 G</div><div>Résultat net du jour (misé - gagné)</div></div>
+            <div class="stat-card"><div style="font-size:2rem;" id="balance-today-no-comm">0 G</div><div>Résultat sans % agent (aujourd'hui)</div></div>
+            <div class="stat-card"><div style="font-size:2rem;" id="balance-today">0 G</div><div>Résultat net avec % agent (aujourd'hui)</div></div>
         </div>
         <div class="section-title"><i class="fas fa-chart-line"></i> Progression des limites (aujourd'hui)</div>
         <div class="list-container" id="limits-progress-container" style="max-height:300px;"><p>Chargement...</p></div>
@@ -503,9 +504,15 @@
                 const stats = reportData.summary || {};
                 document.getElementById('total-tickets-today').innerHTML = (stats.total_tickets || 0).toLocaleString();
                 document.getElementById('total-wins-today').innerHTML = `${(stats.total_wins || 0).toLocaleString()} G`;
-                const netResult = stats.net_result || 0;
+                const netResult = stats.net_result || 0; // déjà net de commission
+                const totalCommission = stats.total_commission || 0;
+                const netResultNoComm = netResult + totalCommission; // ventes - gains, sans déduire la commission
                 const balanceEl = document.getElementById('balance-today');
+                const balanceNoCommEl = document.getElementById('balance-today-no-comm');
                 balanceEl.innerHTML = `${Math.abs(netResult).toLocaleString()} G`;
+                balanceEl.style.color = netResult >= 0 ? '#00f190' : '#ff4d4d';
+                balanceNoCommEl.innerHTML = `${Math.abs(netResultNoComm).toLocaleString()} G`;
+                balanceNoCommEl.style.color = netResultNoComm >= 0 ? '#00f190' : '#ff4d4d';
                 const messageDiv = document.getElementById('daily-profit-message');
                 if (netResult > 0) {
                     balanceEl.style.color = '#00f190';
@@ -548,13 +555,15 @@
             let agentsHtml = '';
             if (data.agents_gain_loss.length === 0) agentsHtml = '<p>Aucun agent avec gain/perte aujourd\'hui</p>';
             else {
-                agentsHtml = '<div class="table-responsive"><table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Commission</th><th>Solde net agent</th><th>Statut</th></tr></thead><tbody>';
+                agentsHtml = '<div class="table-responsive"><table><thead><tr><th>Agent</th><th>Ventes (Mises)</th><th>Gains payés</th><th>Commission</th><th>Solde sans %</th><th>Solde avec %</th><th>Statut</th></tr></thead><tbody>';
                 data.agents_gain_loss.forEach(a => {
                     const netResult = parseFloat(a.net_result || 0);
+                    const commission = parseFloat(a.commission || 0);
+                    const netResultNoComm = netResult + commission;
                     const netClass = netResult >= 0 ? 'profit' : 'loss';
                     const statusIcon = netResult >= 0 ? '✅' : '❌';
                     const statusText = netResult >= 0 ? 'Gagnant' : 'Perdant';
-                    agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td>${parseFloat(a.commission || 0).toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
+                    agentsHtml += `<tr><td>${a.name}</td><td>${parseFloat(a.total_bets).toLocaleString()} G</td><td>${parseFloat(a.total_wins).toLocaleString()} G</td><td>${commission.toLocaleString()} G</td><td style="color:${netResultNoComm >= 0 ? '#00f190' : '#ff4d4d'};">${netResultNoComm.toLocaleString()} G</td><td class="${netClass}">${netResult.toLocaleString()} G</td><td><span class="${netResult >= 0 ? 'badge-success' : 'badge-danger'}">${statusIcon} ${statusText}</span></td></tr>`;
                 });
                 agentsHtml += '</tbody></table></div>';
             }

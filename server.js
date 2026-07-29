@@ -1798,7 +1798,7 @@ app.get('/api/owner/tickets', authenticate, requireRole('owner'), async (req, re
   if (drawId && drawId !== 'all') { query += ` AND t.draw_id = $${idx++}`; params.push(drawId); }
   if (period === 'today') query += ` AND DATE(t.date) = CURRENT_DATE`;
   else if (period === 'yesterday') query += ` AND DATE(t.date) = CURRENT_DATE - INTERVAL '1 day'`;
-  else if (period === 'week') query += ` AND t.date >= DATE_TRUNC('week', CURRENT_DATE)`;
+  else if (period === 'week') query += ` AND t.date >= CURRENT_DATE - INTERVAL '7 days'`;
   else if (period === 'month') query += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
   else if (period === 'custom' && fromDate && toDate) { query += ` AND DATE(t.date) BETWEEN $${idx++} AND $${idx++}`; params.push(fromDate, toDate); }
   if (gain === 'win') query += ` AND t.win_amount > 0`;
