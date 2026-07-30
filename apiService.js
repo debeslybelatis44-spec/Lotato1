@@ -1,4 +1,22 @@
 // apiService.js
+
+// ==================== Identifiant d'appareil stable (indépendant du réseau) ====================
+// Contrairement à une empreinte IP+navigateur (qui change à chaque bascule
+// wifi/données mobiles), cet identifiant est généré une seule fois puis
+// stocké sur le téléphone — il reste donc identique tant que l'app n'est
+// pas désinstallée, quel que soit le réseau utilisé. À inclure dans le
+// corps de la requête de login sous la clé "deviceId".
+function getOrCreateDeviceId() {
+    const KEY = 'app_device_id';
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+        id = 'dev-' + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2)));
+        localStorage.setItem(KEY, id);
+    }
+    return id;
+}
+window.getOrCreateDeviceId = getOrCreateDeviceId;
+
 const APIService = {
     // Renvoie l'heure du SERVEUR (jamais celle de l'appareil), utilisée pour
     // que les rapports (aujourd'hui/hier/semaine) soient calculés de façon

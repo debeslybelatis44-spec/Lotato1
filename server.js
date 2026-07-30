@@ -71,6 +71,8 @@ async function ensureTables() {
   // Verrouillage par appareil : un compte ne peut être connecté que sur un
   // seul appareil à la fois (device_id envoyé par l'app native au login).
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id VARCHAR(255)`);
+  // Le owner a droit à 2 appareils (au lieu d'un seul) — voir logique de login.
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id_2 VARCHAR(255)`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS draws (
         id SERIAL PRIMARY KEY,
@@ -288,6 +290,16 @@ const authenticate = async (req, res, next) => {
   const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    // Le token reste valide 7 jours, mais un compte bloqué par l'admin
+    // doit être coupé immédiatement — donc on revérifie en base à chaque
+    // requête, pas seulement au login. Ne concerne que owner/agent/
+    // superviseur (les seuls rôles qu'un admin peut bloquer).
+    if (decoded.role === 'owner' || decoded.role === 'agent' || decoded.role === 'supervisor') {
+      const check = await pool.query('SELECT blocked FROM users WHERE id = $1', [decoded.id]);
+      if (check.rows.length === 0 || check.rows[0].blocked) {
+        return res.status(403).json({ error: 'Ce compte a été bloqué. Contactez votre responsable.' });
+      }
+    }
     req.user = decoded;
     next();
   } catch (err) {
@@ -340,23 +352,46 @@ app.post('/api/auth/login', async (req, res) => {
   const { username, password, role, deviceId } = req.body;
   try {
     const result = await pool.query(
-      'SELECT id, name, username, password, role, owner_id, commission_percentage, device_id FROM users WHERE username = $1 AND role = $2',
+      'SELECT id, name, username, password, role, owner_id, commission_percentage, device_id, device_id_2, blocked FROM users WHERE username = $1 AND role = $2',
       [username, role]
     );
     if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
-
-    // Verrouillage par appareil : un compte ne peut être utilisé que sur un
-    // seul appareil (identifiant réel pour la nouvelle app, empreinte
-    // IP+User-Agent de secours pour une ancienne version).
-    const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);
-    if (user.device_id && user.device_id !== effectiveDeviceId) {
-      return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre responsable pour le réinitialiser.' });
+    if (user.blocked) {
+      return res.status(403).json({ error: 'Ce compte a été bloqué. Contactez votre responsable.' });
     }
-    if (!user.device_id) {
-      await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [effectiveDeviceId, user.id]);
+
+    const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);
+
+    if (user.role === 'owner') {
+      // Le owner a droit à 2 appareils simultanés.
+      const slots = [user.device_id, user.device_id_2];
+      if (!slots.includes(effectiveDeviceId)) {
+        if (!user.device_id) {
+          await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [effectiveDeviceId, user.id]);
+        } else if (!user.device_id_2) {
+          await pool.query('UPDATE users SET device_id_2 = $1 WHERE id = $2', [effectiveDeviceId, user.id]);
+        } else {
+          return res.status(403).json({ error: 'Ce compte est déjà utilisé sur 2 appareils. Contactez le support pour en réinitialiser un.' });
+        }
+      }
+    } else {
+      // Agent / superviseur : verrouillage par appareil UNIQUEMENT si l'app
+      // envoie un vrai deviceId (stable, stocké sur le téléphone). Si l'app
+      // n'en envoie pas (ancienne version), on laisse passer sans vérifier
+      // ni enregistrer — plus de blocage sur une simple empreinte IP, qui
+      // changeait trop souvent et empêchait des agents légitimes de se
+      // connecter.
+      if (deviceId) {
+        if (user.device_id && user.device_id !== deviceId) {
+          return res.status(403).json({ error: 'Ce compte est déjà utilisé sur un autre appareil. Contactez votre responsable pour le réinitialiser.' });
+        }
+        if (!user.device_id) {
+          await pool.query('UPDATE users SET device_id = $1 WHERE id = $2', [deviceId, user.id]);
+        }
+      }
     }
 
     const payload = {
@@ -2201,7 +2236,7 @@ app.put('/api/superadmin/owners/:id/block', authenticate, requireSuperAdmin, asy
 app.post('/api/superadmin/reset-device', authenticate, requireSuperAdmin, async (req, res) => {
   const { userId } = req.body;
   try {
-    const result = await pool.query('UPDATE users SET device_id = NULL WHERE id = $1 RETURNING id', [userId]);
+    const result = await pool.query('UPDATE users SET device_id = NULL, device_id_2 = NULL WHERE id = $1 RETURNING id', [userId]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Erreur mise à jour' }); }
