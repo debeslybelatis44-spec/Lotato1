@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const compression = require('compression');
+const helmet = require('helmet');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
@@ -14,6 +16,11 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
+app.use(compression()); // Compresse toutes les réponses (JSON, HTML...) — réduit fortement les données consommées côté agent/owner
+// En-têtes de sécurité HTTP. CSP désactivée volontairement : la politique
+// stricte par défaut de helmet bloquerait le chargement de ressources
+// externes (ex: icônes/CDN) utilisées par owner.html/superadmin.html/agent1.html.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -219,6 +226,17 @@ async function ensureTables() {
   await pool.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS player_id INTEGER`).catch(() => {});
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_owner_date ON tickets(owner_id, date)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_agent_date ON tickets(agent_id, date)`);
+  // Anti brute-force : verrouillage progressif après 5 tentatives échouées.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS login_lockouts (
+      identifier VARCHAR(255) NOT NULL,
+      role VARCHAR(50) NOT NULL,
+      failed_count INTEGER DEFAULT 0,
+      lockout_level INTEGER DEFAULT 0,
+      locked_until TIMESTAMP,
+      PRIMARY KEY (identifier, role)
+    )
+  `);
   console.log('✅ Tables vérifiées/créées');
 }
 
@@ -348,17 +366,95 @@ function getEffectiveDeviceId(req, deviceId) {
   return 'legacy:' + hash;
 }
 
+// ==================== Anti brute-force (verrouillage progressif) ====================
+// Après 5 tentatives de connexion échouées sur un même compte : verrouillage
+// temporaire, dont la durée augmente à chaque récidive : 5 min → 2h → 8h →
+// 10h → 24h (puis reste à 24h pour toute nouvelle récidive).
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_DURATIONS_SEC = [5 * 60, 2 * 3600, 8 * 3600, 10 * 3600, 24 * 3600];
+
+function formatLockoutRemaining(lockedUntil) {
+  const ms = new Date(lockedUntil).getTime() - Date.now();
+  if (ms <= 0) return null;
+  const minutes = Math.ceil(ms / 60000);
+  if (minutes < 60) return `${minutes} minute(s)`;
+  const hours = Math.ceil(minutes / 60);
+  return `${hours} heure(s)`;
+}
+
+// Renvoie la date de déverrouillage si le compte est actuellement verrouillé,
+// sinon null. N'incrémente rien — lecture seule.
+async function checkLoginLockout(identifier, role) {
+  const r = await pool.query(
+    'SELECT locked_until FROM login_lockouts WHERE identifier = $1 AND role = $2',
+    [identifier, role]
+  );
+  if (r.rows.length === 0) return null;
+  const lockedUntil = r.rows[0].locked_until;
+  if (lockedUntil && new Date(lockedUntil) > new Date()) return lockedUntil;
+  return null;
+}
+
+// À appeler après un mot de passe / identifiant incorrect.
+async function registerFailedLogin(identifier, role) {
+  const r = await pool.query(
+    'SELECT failed_count, lockout_level FROM login_lockouts WHERE identifier = $1 AND role = $2',
+    [identifier, role]
+  );
+  if (r.rows.length === 0) {
+    await pool.query(
+      'INSERT INTO login_lockouts (identifier, role, failed_count, lockout_level) VALUES ($1, $2, 1, 0)',
+      [identifier, role]
+    );
+    return;
+  }
+  const failedCount = r.rows[0].failed_count + 1;
+  const lockoutLevel = r.rows[0].lockout_level;
+  if (failedCount >= LOGIN_MAX_ATTEMPTS) {
+    const durationSec = LOGIN_LOCKOUT_DURATIONS_SEC[Math.min(lockoutLevel, LOGIN_LOCKOUT_DURATIONS_SEC.length - 1)];
+    await pool.query(
+      `UPDATE login_lockouts SET failed_count = 0, lockout_level = $1, locked_until = NOW() + ($2 * INTERVAL '1 second')
+       WHERE identifier = $3 AND role = $4`,
+      [lockoutLevel + 1, durationSec, identifier, role]
+    );
+  } else {
+    await pool.query(
+      'UPDATE login_lockouts SET failed_count = $1 WHERE identifier = $2 AND role = $3',
+      [failedCount, identifier, role]
+    );
+  }
+}
+
+// À appeler après une connexion réussie — repart de zéro.
+async function clearLoginLockout(identifier, role) {
+  await pool.query(
+    'UPDATE login_lockouts SET failed_count = 0, lockout_level = 0, locked_until = NULL WHERE identifier = $1 AND role = $2',
+    [identifier, role]
+  );
+}
+
 app.post('/api/auth/login', async (req, res) => {
   const { username, password, role, deviceId } = req.body;
   try {
+    const lockedUntil = await checkLoginLockout(username, role);
+    if (lockedUntil) {
+      return res.status(429).json({ error: `Trop de tentatives échouées. Compte verrouillé encore ${formatLockoutRemaining(lockedUntil)}.` });
+    }
     const result = await pool.query(
       'SELECT id, name, username, password, role, owner_id, commission_percentage, device_id, device_id_2, blocked FROM users WHERE username = $1 AND role = $2',
       [username, role]
     );
-    if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
+    if (result.rows.length === 0) {
+      await registerFailedLogin(username, role);
+      return res.status(401).json({ error: 'Identifiants incorrects' });
+    }
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+    if (!valid) {
+      await registerFailedLogin(username, role);
+      return res.status(401).json({ error: 'Identifiants incorrects' });
+    }
+    await clearLoginLockout(username, role);
     if (user.blocked) {
       return res.status(403).json({ error: 'Ce compte a été bloqué. Contactez votre responsable.' });
     }
@@ -432,14 +528,25 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/superadmin-login', async (req, res) => {
   const { username, password, deviceId } = req.body;
   try {
+    const lockedUntil = await checkLoginLockout(username, 'superadmin');
+    if (lockedUntil) {
+      return res.status(429).json({ error: `Trop de tentatives échouées. Compte verrouillé encore ${formatLockoutRemaining(lockedUntil)}.` });
+    }
     const result = await pool.query(
       'SELECT id, name, username, password, role, device_id FROM users WHERE username = $1 AND role = $2',
       [username, 'superadmin']
     );
-    if (result.rows.length === 0) return res.status(401).json({ error: 'Identifiants incorrects' });
+    if (result.rows.length === 0) {
+      await registerFailedLogin(username, 'superadmin');
+      return res.status(401).json({ error: 'Identifiants incorrects' });
+    }
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+    if (!valid) {
+      await registerFailedLogin(username, 'superadmin');
+      return res.status(401).json({ error: 'Identifiants incorrects' });
+    }
+    await clearLoginLockout(username, 'superadmin');
 
     // Le superadmin est le rôle le plus élevé : personne au-dessus ne peut
     // réinitialiser son appareil s'il se retrouve bloqué. Pas de
@@ -533,19 +640,26 @@ app.post('/api/auth/player/login', async (req, res) => {
   }
 
   try {
+    const lockedUntil = await checkLoginLockout(phone, 'player');
+    if (lockedUntil) {
+      return res.status(429).json({ error: `Trop de tentatives échouées. Compte verrouillé encore ${formatLockoutRemaining(lockedUntil)}.` });
+    }
     const result = await pool.query(
       'SELECT id, name, phone, password, balance, owner_id, device_id FROM players WHERE phone = $1',
       [phone]
     );
     if (result.rows.length === 0) {
+      await registerFailedLogin(phone, 'player');
       return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
     }
 
     const player = result.rows[0];
     const valid = await bcrypt.compare(password, player.password);
     if (!valid) {
+      await registerFailedLogin(phone, 'player');
       return res.status(401).json({ error: 'Téléphone ou mot de passe incorrect' });
     }
+    await clearLoginLockout(phone, 'player');
 
     const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);
     if (player.device_id && player.device_id !== effectiveDeviceId) {
