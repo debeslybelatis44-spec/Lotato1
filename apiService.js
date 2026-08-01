@@ -17,13 +17,22 @@ function getOrCreateDeviceId() {
 }
 window.getOrCreateDeviceId = getOrCreateDeviceId;
 
+// Dérive le préfixe d'API réel (ex: "/api") à partir d'un endpoint DÉJÀ
+// défini dans config.js et confirmé fonctionnel (GET_TICKETS = "/api/tickets"
+// ou équivalent) — au lieu de deviner "API_CONFIG.BASE_URL + '/api/...'" à la
+// main, ce qui casse si BASE_URL contient déjà "/api" ou pas.
+function getApiPrefix() {
+    const known = API_CONFIG.ENDPOINTS.GET_TICKETS || '';
+    return known.replace(/\/tickets$/, '');
+}
+
 const APIService = {
     // Renvoie l'heure du SERVEUR (jamais celle de l'appareil), utilisée pour
     // que les rapports (aujourd'hui/hier/semaine) soient calculés de façon
     // fiable même si l'horloge du téléphone est mal réglée.
     async getServerTime() {
         try {
-            const response = await fetch(`${API_CONFIG.BASE_URL}/api/server-time`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${getApiPrefix()}/server-time`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
             });
             if (!response.ok) throw new Error('Erreur réseau');
@@ -48,7 +57,7 @@ const APIService = {
                 if (filters.toDate) params.set('toDate', filters.toDate);
             }
             if (filters.drawId && filters.drawId !== 'all') params.set('drawId', filters.drawId);
-            const response = await fetch(`${API_CONFIG.BASE_URL}/api/agent/reports?${params.toString()}`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${getApiPrefix()}/agent/reports?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Erreur réseau');

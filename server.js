@@ -811,10 +811,13 @@ if (now.isSameOrAfter(blockFrom)) {
     const drawLimitsMap = new Map(drawLimitsRes.rows.map(r => [r.number, parseFloat(r.limit_amount)]));
 
     const settingsRes = await pool.query('SELECT limits FROM lottery_settings WHERE owner_id = $1', [ownerId]);
-    let gameLimits = { lotto3: 0, lotto4: 0, lotto5: 0, mariage: 0 };
+    let gameLimits = { lotto3: 0, lotto4: 0, lotto5: 0, mariage: 0, mariageMaxCount: 0 };
+    let dailyLimits = { lotto3: 0, lotto4: 0, lotto5: 0, mariage: 0 };
     if (settingsRes.rows.length > 0 && settingsRes.rows[0].limits) {
       const raw = settingsRes.rows[0].limits;
-      gameLimits = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      gameLimits = { ...gameLimits, ...parsed };
+      if (parsed.daily) dailyLimits = { ...dailyLimits, ...parsed.daily };
     }
 
     const numbersWithGlobalLimit = new Set();
@@ -890,13 +893,14 @@ if (now.isSameOrAfter(blockFrom)) {
     }
 
     const totalsByGame = {};
+    let mariageCountInTicket = 0;
     for (const bet of bets) {
       const game = bet.game || bet.specialType;
       let category = null;
       if (game === 'lotto3' || game === 'auto_lotto3') category = 'lotto3';
       else if (game === 'lotto4' || game === 'auto_lotto4') category = 'lotto4';
       else if (game === 'lotto5' || game === 'auto_lotto5') category = 'lotto5';
-      else if (game === 'mariage' || game === 'auto_marriage') category = 'mariage';
+      else if (game === 'mariage' || game === 'auto_marriage') { category = 'mariage'; mariageCountInTicket++; }
       if (category) {
         const amount = parseFloat(bet.amount) || 0;
         totalsByGame[category] = (totalsByGame[category] || 0) + amount;
@@ -906,6 +910,45 @@ if (now.isSameOrAfter(blockFrom)) {
       const limit = gameLimits[category] || 0;
       if (limit > 0 && total > limit) {
         return res.status(403).json({ error: `Limite de mise pour ${category} dépassée (max ${limit} Gdes par ticket)` });
+      }
+    }
+
+    // Nombre maximum de mariages dans UN SEUL ticket.
+    if (gameLimits.mariageMaxCount > 0 && mariageCountInTicket > gameLimits.mariageMaxCount) {
+      return res.status(403).json({ error: `Maximum ${gameLimits.mariageMaxCount} mariage(s) par ticket (${mariageCountInTicket} demandés)` });
+    }
+
+    // Plafond quotidien cumulé (tous agents/tickets confondus) par catégorie
+    // — se réinitialise automatiquement chaque jour puisqu'on ne compte que
+    // les tickets d'aujourd'hui (DATE(date) = CURRENT_DATE).
+    const categoriesWithDailyLimit = Object.entries(dailyLimits).filter(([, v]) => v > 0).map(([k]) => k);
+    if (categoriesWithDailyLimit.length > 0) {
+      const dailyTotalsRes = await pool.query(`
+        SELECT
+          CASE
+            WHEN COALESCE(bet->>'game', bet->>'specialType') IN ('lotto3','auto_lotto3') THEN 'lotto3'
+            WHEN COALESCE(bet->>'game', bet->>'specialType') IN ('lotto4','auto_lotto4') THEN 'lotto4'
+            WHEN COALESCE(bet->>'game', bet->>'specialType') IN ('lotto5','auto_lotto5') THEN 'lotto5'
+            WHEN COALESCE(bet->>'game', bet->>'specialType') IN ('mariage','auto_marriage') THEN 'mariage'
+          END as category,
+          COALESCE(SUM((bet->>'amount')::numeric), 0) as total
+        FROM tickets, jsonb_array_elements(bets::jsonb) as bet
+        WHERE owner_id = $1 AND DATE(date) = CURRENT_DATE
+        GROUP BY category
+      `, [ownerId]);
+      const dailyTotalsMap = {};
+      for (const row of dailyTotalsRes.rows) {
+        if (row.category) dailyTotalsMap[row.category] = parseFloat(row.total) || 0;
+      }
+      for (const category of categoriesWithDailyLimit) {
+        const requested = totalsByGame[category] || 0;
+        if (requested === 0) continue; // ce ticket ne joue pas cette catégorie
+        const already = dailyTotalsMap[category] || 0;
+        const limit = dailyLimits[category];
+        if (already + requested > limit) {
+          const remaining = Math.max(0, limit - already);
+          return res.status(403).json({ error: `Plafond quotidien ${category} atteint (limite ${limit} G/jour, déjà ${already} G joué aujourd'hui, reste ${remaining} G disponible)` });
+        }
       }
     }
 

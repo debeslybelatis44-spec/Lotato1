@@ -329,6 +329,14 @@
             <div class="form-group"><label>Limite Lotto 4 (montant max par ticket)</label><input type="number" id="limit-lotto4" value="0" min="0" step="1"><small>0 = illimité</small></div>
             <div class="form-group"><label>Limite Lotto 5 (montant max par ticket)</label><input type="number" id="limit-lotto5" value="0" min="0" step="1"><small>0 = illimité</small></div>
             <div class="form-group"><label>Limite Mariage (montant max par ticket)</label><input type="number" id="limit-mariage" value="0" min="0" step="1"><small>0 = illimité</small></div>
+            <div class="form-group"><label>Nombre max de mariages par ticket</label><input type="number" id="limit-mariage-count" value="0" min="0" step="1"><small>0 = illimité</small></div>
+        </div>
+        <div class="section-title"><i class="fas fa-calendar-day"></i> Plafonds quotidiens (tous agents/tickets confondus, remis à zéro chaque jour)</div>
+        <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+            <div class="form-group"><label>Plafond Lotto 3 / jour</label><input type="number" id="daily-limit-lotto3" value="0" min="0" step="1"><small>0 = illimité</small></div>
+            <div class="form-group"><label>Plafond Lotto 4 / jour</label><input type="number" id="daily-limit-lotto4" value="0" min="0" step="1"><small>0 = illimité</small></div>
+            <div class="form-group"><label>Plafond Lotto 5 / jour</label><input type="number" id="daily-limit-lotto5" value="0" min="0" step="1"><small>0 = illimité</small></div>
+            <div class="form-group"><label>Plafond Mariage / jour</label><input type="number" id="daily-limit-mariage" value="0" min="0" step="1"><small>0 = illimité</small></div>
         </div>
         <div style="display:flex; gap:10px; margin-top:20px;"><button class="btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Enregistrer les paramètres</button></div>
         <div id="settings-message" class="alert" style="display:none;"></div>
@@ -1457,6 +1465,12 @@
                     document.getElementById('limit-lotto4').value = data.limits.lotto4 || 0;
                     document.getElementById('limit-lotto5').value = data.limits.lotto5 || 0;
                     document.getElementById('limit-mariage').value = data.limits.mariage || 0;
+                    document.getElementById('limit-mariage-count').value = data.limits.mariageMaxCount || 0;
+                    const daily = data.limits.daily || {};
+                    document.getElementById('daily-limit-lotto3').value = daily.lotto3 || 0;
+                    document.getElementById('daily-limit-lotto4').value = daily.lotto4 || 0;
+                    document.getElementById('daily-limit-lotto5').value = daily.lotto5 || 0;
+                    document.getElementById('daily-limit-mariage').value = daily.mariage || 0;
                 }
             }
         } catch (e) { handleFetchError(e, 'loadSettings'); }
@@ -1481,7 +1495,14 @@
             lotto3: parseInt(document.getElementById('limit-lotto3').value) || 0,
             lotto4: parseInt(document.getElementById('limit-lotto4').value) || 0,
             lotto5: parseInt(document.getElementById('limit-lotto5').value) || 0,
-            mariage: parseInt(document.getElementById('limit-mariage').value) || 0
+            mariage: parseInt(document.getElementById('limit-mariage').value) || 0,
+            mariageMaxCount: parseInt(document.getElementById('limit-mariage-count').value) || 0,
+            daily: {
+                lotto3: parseInt(document.getElementById('daily-limit-lotto3').value) || 0,
+                lotto4: parseInt(document.getElementById('daily-limit-lotto4').value) || 0,
+                lotto5: parseInt(document.getElementById('daily-limit-lotto5').value) || 0,
+                mariage: parseInt(document.getElementById('daily-limit-mariage').value) || 0
+            }
         };
         let body, headers = { 'Authorization': `Bearer ${token}` };
         let url = `${API_URL}/api/owner/settings`;
