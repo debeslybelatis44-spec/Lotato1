@@ -972,6 +972,19 @@ app.get('/api/tickets', authenticate, async (req, res) => {
       params.push(agentId);
     }
   }
+  // Par défaut, seulement les 30 derniers jours — évite de retélécharger tout
+  // l'historique à chaque ouverture de l'app. "days=all" (ou un plus grand
+  // nombre) permet de remonter plus loin si besoin (bouton "charger plus ancien").
+  const daysParam = req.query.days;
+  if (daysParam && daysParam !== 'all') {
+    const days = parseInt(daysParam, 10);
+    if (!isNaN(days) && days > 0) {
+      query += ` AND date >= CURRENT_DATE - ($${idx++} * INTERVAL '1 day')`;
+      params.push(days);
+    }
+  } else if (!daysParam) {
+    query += ` AND date >= CURRENT_DATE - INTERVAL '30 days'`;
+  }
   query += ' ORDER BY date DESC';
   try {
     const result = await pool.query(query, params);

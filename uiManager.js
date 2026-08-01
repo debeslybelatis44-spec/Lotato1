@@ -116,10 +116,11 @@ function buildFullPrintHTML(contentHTML) {
 }
 
 // Fonction utilitaire pour récupérer les tickets depuis l'API
-async function fetchTickets() {
+async function fetchTickets(days) {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('Non authentifié');
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_TICKETS}`, {
+    const suffix = days ? `?days=${encodeURIComponent(days)}` : '';
+    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_TICKETS}${suffix}`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!response.ok) throw new Error('Erreur réseau');
@@ -331,11 +332,18 @@ function filterTickets(tickets, term) {
     });
 }
 
+// Fenêtre de chargement de l'historique, en jours. On commence à 30 jours ;
+// le bouton "Chaje pi ansyen" élargit progressivement (90 → 365 → tout),
+// pour éviter de retélécharger l'historique complet à chaque ouverture.
+const HISTORY_WINDOW_STEPS = [30, 90, 365, 'all'];
+window.historyWindowIndex = 0;
+
 async function loadHistory() {
     try {
+        window.historyWindowIndex = 0;
         const container = document.getElementById('history-container');
         container.innerHTML = '<div class="empty-msg">Chajman...</div>';
-        const tickets = await fetchTickets();
+        const tickets = await fetchTickets(HISTORY_WINDOW_STEPS[window.historyWindowIndex]);
         APP_STATE.ticketsHistory = tickets;
         initHistorySearchBar();
         renderHistory();
@@ -344,6 +352,22 @@ async function loadHistory() {
         document.getElementById('history-container').innerHTML = '<div class="empty-msg">Erè chajman istorik: ' + error.message + '</div>';
     }
 }
+
+async function loadOlderHistory() {
+    if (window.historyWindowIndex >= HISTORY_WINDOW_STEPS.length - 1) return;
+    window.historyWindowIndex++;
+    const btn = document.getElementById('load-older-history-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Chajman...'; }
+    try {
+        const tickets = await fetchTickets(HISTORY_WINDOW_STEPS[window.historyWindowIndex]);
+        APP_STATE.ticketsHistory = tickets;
+        renderHistory();
+    } catch (error) {
+        console.error('Erreur chargement historique (plus ancien):', error);
+        window.historyWindowIndex--; // on annule l'avancée si ça échoue
+    }
+}
+window.loadOlderHistory = loadOlderHistory;
 
 function renderHistory() {
     const container = document.getElementById('history-container');
@@ -356,6 +380,13 @@ function renderHistory() {
         container.innerHTML = '<div class="empty-msg">Pa gen tikè ki koresponn ak rechèch la</div>';
         return;
     }
+    const isMaxWindow = window.historyWindowIndex >= HISTORY_WINDOW_STEPS.length - 1;
+    const loadMoreHtml = isMaxWindow ? '' : `
+        <div style="text-align:center; padding:15px;">
+            <button id="load-older-history-btn" class="btn-small" onclick="loadOlderHistory()">
+                <i class="fas fa-history"></i> Chaje pi ansyen
+            </button>
+        </div>`;
     container.innerHTML = filteredTickets.map((ticket) => {
         const numericId = ticket.id;
         const displayId = ticket.ticket_id || ticket.id;
@@ -410,7 +441,7 @@ function renderHistory() {
                 </div>
             </div>
         `;
-    }).join('');
+    }).join('') + loadMoreHtml;
 }
 
 function deleteTicketFromCard(button) {
@@ -514,7 +545,9 @@ function reprintTicket(ticketId) {
     printHTMLContent(fullHTML, `Tikè #${ticketId}`);
 }
 
-// ==================== RAPPORTS (version avec commission et filtre date) ====================
+// ==================== RAPPORTS (calculés par le serveur — léger, cohérent avec owner) ====================
+window.currentAgentReport = { summary: {}, detail: [] };
+
 async function loadReports() {
     try {
         await syncServerTime();
@@ -533,29 +566,20 @@ async function loadReports() {
             }
         }
 
-        const allTickets = await fetchTickets();
-        APP_STATE.ticketsHistory = allTickets;
+        // Le calcul (mises, gains, commission, résultat net) est fait par le
+        // SERVEUR — on ne télécharge plus tout l'historique des tickets
+        // juste pour afficher des totaux. Résultat : identique à ce que
+        // voit le owner, et beaucoup plus léger en données.
+        const data = await APIService.getAgentReports(window.reportFilters);
+        window.currentAgentReport = data;
 
-        let filtered = filterTicketsByDate(allTickets, window.reportFilters);
-        if (window.reportFilters.drawId !== 'all') {
-            filtered = filtered.filter(t => t.draw_id == window.reportFilters.drawId || t.drawId == window.reportFilters.drawId);
-        }
-
-        let totalTickets = filtered.length;
-        let totalBets = 0, totalWins = 0;
-        for (const t of filtered) {
-            const amount = parseFloat(t.total_amount || t.totalAmount || t.amount || 0);
-            totalBets += amount;
-            if (t.checked || t.verified) {
-                const win = parseFloat(t.win_amount || t.winAmount || t.prize_amount || 0);
-                if (win > 0) totalWins += win;
-            }
-        }
-
-        const commissionPct = APP_STATE.agentCommission || 0;
-        const commissionAmount = totalBets * (commissionPct / 100);
-        const balance = totalBets - totalWins - commissionAmount;
+        const s = data.summary || {};
+        const totalTickets = s.total_tickets || 0;
+        const totalBets = s.total_bets || 0;
+        const totalWins = s.total_wins || 0;
+        const balance = s.net_result || 0; // déjà net de commission, calculé côté serveur
         const totalLoss = totalBets - totalWins;
+        const commissionPct = APP_STATE.agentCommission || 0;
 
         document.getElementById('total-tickets').textContent = totalTickets;
         document.getElementById('total-bets').textContent = totalBets.toLocaleString('fr-FR') + ' Gdes';
@@ -592,7 +616,7 @@ async function loadReports() {
                 drawSel.appendChild(opt);
             });
         }
-        await loadDrawReport(window.reportFilters.drawId);
+        loadDrawReport(window.reportFilters.drawId);
     } catch (err) {
         console.error('Erreur chargement rapports:', err);
         const fallback = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -606,26 +630,28 @@ async function loadReports() {
     }
 }
 
-async function loadDrawReport(drawId = null) {
+function loadDrawReport(drawId = null) {
     try {
         const selectedDrawId = drawId || document.getElementById('draw-report-selector').value;
         window.reportFilters.drawId = selectedDrawId;
-        const filteredTickets = filterTicketsByDate(APP_STATE.ticketsHistory, window.reportFilters);
-        const finalTickets = selectedDrawId === 'all' 
-            ? filteredTickets
-            : filteredTickets.filter(t => (t.draw_id === selectedDrawId || t.drawId === selectedDrawId));
-        let drawTotalTickets = finalTickets.length;
-        let drawTotalBets = 0, drawTotalWins = 0, drawTotalLoss = 0;
-        finalTickets.forEach(ticket => {
-            const ticketAmount = parseFloat(ticket.total_amount || ticket.totalAmount || ticket.amount || 0);
-            drawTotalBets += ticketAmount;
-            if (ticket.checked || ticket.verified) {
-                const winAmount = parseFloat(ticket.win_amount || ticket.winAmount || ticket.prize_amount || 0);
-                if (winAmount > 0) drawTotalWins += winAmount;
-                else drawTotalLoss += ticketAmount;
-            }
-        });
+
+        const report = window.currentAgentReport || { summary: {}, detail: [] };
+        let drawTotalTickets, drawTotalBets, drawTotalWins;
+
+        if (selectedDrawId === 'all') {
+            const s = report.summary || {};
+            drawTotalTickets = s.total_tickets || 0;
+            drawTotalBets = s.total_bets || 0;
+            drawTotalWins = s.total_wins || 0;
+        } else {
+            const entry = (report.detail || []).find(d => d.draw_id == selectedDrawId);
+            drawTotalTickets = entry ? entry.tickets : 0;
+            drawTotalBets = entry ? entry.bets : 0;
+            drawTotalWins = entry ? entry.wins : 0;
+        }
+        const drawTotalLoss = drawTotalBets - drawTotalWins;
         const drawProfit = drawTotalBets - drawTotalWins;
+
         document.getElementById('draw-report-card').style.display = 'block';
         document.getElementById('draw-total-tickets').textContent = drawTotalTickets;
         document.getElementById('draw-total-bets').textContent = drawTotalBets.toLocaleString('fr-FR') + ' Gdes';
@@ -651,20 +677,18 @@ function printReport() {
     const selectedDraw = drawSelector.options[drawSelector.selectedIndex].text;
     const selectedDrawId = drawSelector.value;
 
-    const filtered = filterTicketsByDate(APP_STATE.ticketsHistory, window.reportFilters);
-    const tickets = selectedDrawId === 'all' 
-        ? filtered
-        : filtered.filter(t => t.draw_id == selectedDrawId || t.drawId == selectedDrawId);
-
-    let totalTickets = tickets.length;
-    let totalBets = 0, totalWins = 0;
-    for (const t of tickets) {
-        const amount = parseFloat(t.total_amount || t.totalAmount || t.amount || 0);
-        totalBets += amount;
-        if (t.checked || t.verified) {
-            const win = parseFloat(t.win_amount || t.winAmount || t.prize_amount || 0);
-            if (win > 0) totalWins += win;
-        }
+    const report = window.currentAgentReport || { summary: {}, detail: [] };
+    let totalTickets, totalBets, totalWins;
+    if (selectedDrawId === 'all') {
+        const s = report.summary || {};
+        totalTickets = s.total_tickets || 0;
+        totalBets = s.total_bets || 0;
+        totalWins = s.total_wins || 0;
+    } else {
+        const entry = (report.detail || []).find(d => d.draw_id == selectedDrawId);
+        totalTickets = entry ? entry.tickets : 0;
+        totalBets = entry ? entry.bets : 0;
+        totalWins = entry ? entry.wins : 0;
     }
     const commissionPct = APP_STATE.agentCommission || 0;
     const commissionAmount = totalBets * (commissionPct / 100);

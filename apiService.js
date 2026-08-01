@@ -35,6 +35,30 @@ const APIService = {
         }
     },
 
+    // Rapport calculé par le SERVEUR (mises/gains/commission déjà agrégés,
+    // par période et par tirage) — remplace le téléchargement de tout
+    // l'historique des tickets pour juste afficher des totaux.
+    async getAgentReports(filters = {}) {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const params = new URLSearchParams();
+            if (filters.period) params.set('period', filters.period);
+            if (filters.period === 'custom') {
+                if (filters.fromDate) params.set('fromDate', filters.fromDate);
+                if (filters.toDate) params.set('toDate', filters.toDate);
+            }
+            if (filters.drawId && filters.drawId !== 'all') params.set('drawId', filters.drawId);
+            const response = await fetch(`${API_CONFIG.BASE_URL}/api/agent/reports?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Erreur réseau');
+            return await response.json();
+        } catch (error) {
+            console.error('Erreur récupération rapport agent:', error);
+            return { summary: { total_tickets: 0, total_bets: 0, total_wins: 0, total_commission: 0, net_result: 0 }, detail: [] };
+        }
+    },
+
     async saveTicket(ticket) {
         try {
             const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {
@@ -170,7 +194,24 @@ const APIService = {
         }
     },
 
+    // Nom, logo, adresse, téléphone du borlette : ça ne change presque
+    // jamais, donc on le garde en cache sur le téléphone (localStorage) et
+    // on ne redemande au serveur qu'une fois par jour, ou si le cache est
+    // vide. Les autres appels (immédiats) répondent instantanément sans
+    // réseau.
     async getLotteryConfig() {
+        const CACHE_KEY = 'lottery_config_cache';
+        const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
+        try {
+            const cachedRaw = localStorage.getItem(CACHE_KEY);
+            if (cachedRaw) {
+                const cached = JSON.parse(cachedRaw);
+                if (cached.data && (Date.now() - cached.savedAt) < CACHE_MAX_AGE_MS) {
+                    return cached.data; // encore frais, pas besoin de réseau
+                }
+            }
+        } catch (e) { /* cache corrompu, on ignore et on recharge */ }
+
         try {
             const token = localStorage.getItem('auth_token');
             const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.GET_LOTTERY_CONFIG}`, {
@@ -180,9 +221,21 @@ const APIService = {
             });
             if (!response.ok) throw new Error('Erreur réseau');
             const data = await response.json();
+            try {
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ data, savedAt: Date.now() }));
+            } catch (e) { /* stockage plein ou indisponible, pas grave */ }
             return data;
         } catch (error) {
             console.error('Erreur récupération configuration:', error);
+            // En cas d'échec réseau, on retombe sur un cache même périmé
+            // plutôt que de ne rien afficher du tout.
+            try {
+                const cachedRaw = localStorage.getItem(CACHE_KEY);
+                if (cachedRaw) {
+                    const cached = JSON.parse(cachedRaw);
+                    if (cached.data) return cached.data;
+                }
+            } catch (e) { /* rien à faire */ }
             return null;
         }
     },
