@@ -454,8 +454,11 @@ async function processFinalTicket() {
 
     } catch (err) {
         console.error(err);
-        alert(`❌ ${err.message}`);
+        // Ferme d'abord la fenêtre "Génération du ticket en cours..." —
+        // sinon elle reste au premier plan et cache l'alerte d'erreur qui
+        // s'affiche dans l'onglet principal, en arrière-plan.
         if (printWindow && !printWindow.closed) printWindow.close();
+        alert(`❌ ${err.message}`);
     }
 }
 
