@@ -2,6 +2,33 @@
 // cartManager.js - Version finale avec fusion multi-tirage et impression pro
 // ============================================================================
 
+// ---------- Message à l'écran (remplace alert() natif) ----------
+// Sur certains WebView Android, alert() ne fait rien du tout si le code natif
+// n'implémente pas onJsAlert() — le message ne s'affiche jamais, même si le
+// JS s'exécute correctement. Cette popup est du HTML/CSS pur injecté dans la
+// page : elle s'affiche toujours, quel que soit l'environnement.
+function showAppMessage(message, isError = true) {
+    const existing = document.getElementById('app-message-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'app-message-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:400px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);';
+    box.innerHTML = `
+        <div style="font-size:40px;margin-bottom:12px;">${isError ? '❌' : '✅'}</div>
+        <div style="font-size:16px;color:#222;margin-bottom:20px;white-space:pre-line;">${message}</div>
+        <button id="app-message-ok-btn" style="background:${isError ? '#dc3545' : '#28a745'};color:#fff;border:none;padding:12px 30px;border-radius:8px;font-size:16px;font-weight:bold;">OK</button>
+    `;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    document.getElementById('app-message-ok-btn').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+window.showAppMessage = showAppMessage;
+
 // ---------- Utilitaire date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
@@ -163,7 +190,7 @@ var CartManager = {
 
     addBet() {
         if (APP_STATE.isDrawBlocked) {
-            alert("Tiraj sa a ap rantre nan 3 minit.");
+            showAppMessage("Tiraj sa a ap rantre nan 3 minit.", true);
             return;
         }
 
@@ -171,7 +198,7 @@ var CartManager = {
         const amtInput = document.getElementById('amt-input');
         const amt = parseFloat(amtInput.value);
         if (isNaN(amt) || amt <= 0) {
-            alert("Montan pa valid");
+            showAppMessage("Montan pa valid", true);
             return;
         }
 
@@ -187,7 +214,7 @@ var CartManager = {
                 case 'auto_lotto5': autoBets = GameEngine.generateAutoLotto5Bets(amt); break;
             }
             if (autoBets.length === 0) {
-                alert("Pa gen ase nimevo nan panye pou jenere " + game);
+                showAppMessage("Pa gen ase nimevo nan panye pou jenere " + game, true);
                 return;
             }
 
@@ -200,13 +227,13 @@ var CartManager = {
                     if (!check.success) errors.push(check.message);
                 }
             }
-            if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+            if (errors.length > 0) { showAppMessage("Limites dépassées :\n" + errors.join("\n"), true); return; }
 
             for (const drawId of draws) {
                 for (const bet of autoBets) {
                     const number = bet.cleanNumber || bet.number;
                     if (isNumberBlocked(number, drawId)) {
-                        alert(`❌ Nimewo ${number} bloke pou tiraj ${drawId}`);
+                        showAppMessage(`Nimewo ${number} bloke pou tiraj ${drawId}`, true);
                         return;
                     }
                 }
@@ -239,12 +266,12 @@ var CartManager = {
                     if (!check.success) errors.push(check.message);
                 }
             }
-            if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+            if (errors.length > 0) { showAppMessage("Limites dépassées :\n" + errors.join("\n"), true); return; }
 
             for (const drawId of draws) {
                 for (const num of numbers) {
                     if (isNumberBlocked(num, drawId)) {
-                        alert(`❌ Nimewo ${num} bloke pou tiraj ${drawId}`);
+                        showAppMessage(`Nimewo ${num} bloke pou tiraj ${drawId}`, true);
                         return;
                     }
                 }
@@ -269,7 +296,7 @@ var CartManager = {
         }
 
         let num = numInput.value.trim();
-        if (!GameEngine.validateEntry(game, num)) { alert("Nimewo pa valid"); return; }
+        if (!GameEngine.validateEntry(game, num)) { showAppMessage("Nimewo pa valid", true); return; }
         num = GameEngine.getCleanNumber(num);
 
         const draws = APP_STATE.multiDrawMode ? APP_STATE.selectedDraws : [APP_STATE.selectedDraw];
@@ -278,11 +305,11 @@ var CartManager = {
             const check = checkNumberLimit(num, drawId, amt);
             if (!check.success) errors.push(check.message);
         }
-        if (errors.length > 0) { alert("❌ Limites dépassées :\n" + errors.join("\n")); return; }
+        if (errors.length > 0) { showAppMessage("Limites dépassées :\n" + errors.join("\n"), true); return; }
 
         for (const drawId of draws) {
             if (isNumberBlocked(num, drawId)) {
-                alert(`❌ Nimewo ${num} bloke pou tiraj ${drawId}`);
+                showAppMessage(`Nimewo ${num} bloke pou tiraj ${drawId}`, true);
                 return;
             }
         }
@@ -376,7 +403,7 @@ function isAndroidWebView() {
 // ---------- Impression et fusion multi-tirage ----------
 async function processFinalTicket() {
     if (!APP_STATE.currentCart.length) {
-        alert("Panye vid");
+        showAppMessage("Panye vid", true);
         return;
     }
 
@@ -390,7 +417,7 @@ async function processFinalTicket() {
     if (!isAndroidWebView()) {
         printWindow = window.open('', '_blank', 'width=500,height=700');
         if (!printWindow) {
-            alert("Autorize popups pou enprime.");
+            showAppMessage("Autorize popups pou enprime.", true);
             return;
         }
         printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px;text-align:center;">Génération du ticket en cours...</p></body></html>');
@@ -450,7 +477,7 @@ async function processFinalTicket() {
 
         APP_STATE.currentCart = [];
         CartManager.renderCart();
-        alert("✅ Tikè sove & enprime");
+        showAppMessage("Tikè sove & enprime", false);
 
     } catch (err) {
         console.error(err);
@@ -458,7 +485,7 @@ async function processFinalTicket() {
         // sinon elle reste au premier plan et cache l'alerte d'erreur qui
         // s'affiche dans l'onglet principal, en arrière-plan.
         if (printWindow && !printWindow.closed) printWindow.close();
-        alert(`❌ ${err.message}`);
+        showAppMessage(err.message, true);
     }
 }
 
