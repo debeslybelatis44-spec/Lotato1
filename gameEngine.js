@@ -380,6 +380,18 @@ function selectGame(game) {
     if (game === 'lotto4' || game === 'auto_lotto4') {
         lotto4Options.classList.add('visible');
         lotto5Options.classList.remove('visible');
+
+        // Une seule option active par défaut (Opsyon 1) — sinon, avec la
+        // transposition automatique (2 numéros), 3 options actives créent 6
+        // paris au lieu de 2. On force cet état à chaque sélection, pour ne
+        // pas dépendre de ce que main.js a initialisé.
+        APP_STATE.lotto4Options = [true, false, false];
+        document.querySelectorAll('#lotto4-options .option-chip').forEach((chip, idx) => {
+            const isActive = idx === 0;
+            chip.classList.toggle('active', isActive);
+            const checkbox = chip.querySelector('input[type="checkbox"]');
+            if (checkbox) checkbox.checked = isActive;
+        });
     } else if (game === 'lotto5' || game === 'auto_lotto5') {
         lotto5Options.classList.add('visible');
         lotto4Options.classList.remove('visible');
