@@ -79,15 +79,20 @@
                         <i class="fas fa-check-circle"></i>
                         <label for="opt1-4">Opsyon 1</label>
                     </div>
-                    <div class="option-chip" data-option="2" onclick="toggleLottoOption(4, 2)">
-                        <input type="checkbox" id="opt2-4">
+                    <div class="option-chip active" data-option="2" onclick="toggleLottoOption(4, 2)">
+                        <input type="checkbox" id="opt2-4" checked>
                         <i class="fas fa-check-circle"></i>
                         <label for="opt2-4">Opsyon 2</label>
                     </div>
-                    <div class="option-chip" data-option="3" onclick="toggleLottoOption(4, 3)">
-                        <input type="checkbox" id="opt3-4">
+                    <div class="option-chip active" data-option="3" onclick="toggleLottoOption(4, 3)">
+                        <input type="checkbox" id="opt3-4" checked>
                         <i class="fas fa-check-circle"></i>
                         <label for="opt3-4">Opsyon 3</label>
+                    </div>
+                    <div class="option-chip" id="lotto4-transpose-chip" data-option="transpose" onclick="toggleLottoTranspose(4)" title="Ajoute aussi 0945 si w tape 4509">
+                        <input type="checkbox" id="opt-transpose-4">
+                        <i class="fas fa-random"></i>
+                        <label for="opt-transpose-4">Transpoze</label>
                     </div>
                 </div>
 
@@ -318,7 +323,6 @@
         </nav>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="config.js"></script>
     <script src="drawManager.js"></script>
     <script src="gameEngine.js"></script>
