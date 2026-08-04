@@ -29,6 +29,170 @@ function showAppMessage(message, isError = true) {
 }
 window.showAppMessage = showAppMessage;
 
+// ---------- Choix Impression / WhatsApp / Les deux ----------
+function showTicketDeliveryChoice() {
+    return new Promise((resolve) => {
+        const existing = document.getElementById('app-message-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'app-message-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);';
+        box.innerHTML = `
+            <div style="font-size:36px;margin-bottom:10px;">🎫</div>
+            <div style="font-size:16px;color:#222;margin-bottom:20px;">Tikè kreye avèk siksè ! Kijan ou vle voye l ?</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button id="choice-print" style="background:#0d6efd;color:#fff;border:none;padding:14px;border-radius:8px;font-size:16px;font-weight:bold;"><i class="fas fa-print"></i> Enprime</button>
+                <button id="choice-whatsapp" style="background:#25D366;color:#fff;border:none;padding:14px;border-radius:8px;font-size:16px;font-weight:bold;"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                <button id="choice-both" style="background:#6c757d;color:#fff;border:none;padding:14px;border-radius:8px;font-size:16px;font-weight:bold;">Toude</button>
+            </div>
+        `;
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        const cleanup = (choice) => { overlay.remove(); resolve(choice); };
+        document.getElementById('choice-print').addEventListener('click', () => cleanup('print'));
+        document.getElementById('choice-whatsapp').addEventListener('click', () => cleanup('whatsapp'));
+        document.getElementById('choice-both').addEventListener('click', () => cleanup('both'));
+    });
+}
+
+// ---------- Demande du numéro WhatsApp du joueur (optionnel) ----------
+function askForPhoneNumber() {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.id = 'app-phone-prompt-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        const box = document.createElement('div');
+        box.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:340px;width:100%;text-align:center;';
+        box.innerHTML = `
+            <div style="font-size:16px;color:#222;margin-bottom:14px;">Nimewo WhatsApp jwè a (opsyonèl)</div>
+            <input id="phone-prompt-input" type="tel" placeholder="Ex: 50937xxxxxx" style="width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:16px;box-sizing:border-box;">
+            <div style="display:flex;gap:10px;">
+                <button id="phone-prompt-skip" style="flex:1;background:#6c757d;color:#fff;border:none;padding:12px;border-radius:8px;font-size:15px;">Pase</button>
+                <button id="phone-prompt-ok" style="flex:1;background:#25D366;color:#fff;border:none;padding:12px;border-radius:8px;font-size:15px;font-weight:bold;">OK</button>
+            </div>
+        `;
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        const input = document.getElementById('phone-prompt-input');
+        input.focus();
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+        document.getElementById('phone-prompt-ok').addEventListener('click', () => cleanup(input.value.trim()));
+        document.getElementById('phone-prompt-skip').addEventListener('click', () => cleanup(''));
+    });
+}
+
+// ---------- Génération de l'image du ticket (identique visuellement à l'impression) ----------
+// Important : on utilise le HTML COMPLET (avec son <style>), rendu dans un
+// iframe isolé — pas juste le contenu brut dans un <div>, sinon aucun style
+// ne s'applique et l'image capturée est vide. On attend aussi le chargement
+// du logo avant la capture.
+async function generateTicketImageBlob(aggregatedTicket) {
+    if (typeof html2canvas === 'undefined') {
+        console.error('html2canvas non chargé');
+        return null;
+    }
+    const innerHtml = generateAggregatedTicketHTML(aggregatedTicket);
+    const fullHtml = buildTicketPrintHTML(innerHtml);
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:340px;height:700px;border:none;';
+    document.body.appendChild(iframe);
+
+    try {
+        iframe.contentDocument.open();
+        iframe.contentDocument.write(fullHtml);
+        iframe.contentDocument.close();
+
+        // Laisse le temps au DOM/CSS de se poser, puis attend les images (logo)
+        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise(resolve => {
+            const images = iframe.contentDocument.images;
+            if (!images || images.length === 0) return resolve();
+            let remaining = images.length;
+            const done = () => { remaining--; if (remaining <= 0) resolve(); };
+            Array.from(images).forEach(img => {
+                if (img.complete) done();
+                else { img.onload = done; img.onerror = done; }
+            });
+            setTimeout(resolve, 2000); // filet de sécurité si une image bloque
+        });
+
+        const canvas = await html2canvas(iframe.contentDocument.body, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true
+        });
+        return await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    } catch (e) {
+        console.error('Erreur génération image ticket:', e);
+        return null;
+    } finally {
+        document.body.removeChild(iframe);
+    }
+}
+
+// ---------- Partage du ticket (image) via WhatsApp ----------
+async function shareTicketViaWhatsApp(aggregatedTicket) {
+    const phone = await askForPhoneNumber();
+    const blob = await generateTicketImageBlob(aggregatedTicket);
+    if (!blob) {
+        showAppMessage("Erè pandan kreyasyon imaj tikè a", true);
+        return;
+    }
+    const fileName = `tike-${aggregatedTicket.ticket_id}.png`;
+    const file = new File([blob], fileName, { type: 'image/png' });
+
+    // Un numéro a été saisi : on télécharge l'image et on ouvre DIRECTEMENT
+    // la conversation WhatsApp de ce numéro (pas le sélecteur général),
+    // pour que l'envoi soit ciblé automatiquement. WhatsApp Click-to-Chat ne
+    // permet pas de joindre un fichier automatiquement via un simple lien —
+    // l'agent doit juste appuyer une fois sur 📎 pour joindre l'image déjà
+    // téléchargée (WhatsApp l'affiche généralement en premier dans la galerie).
+    if (phone) {
+        downloadBlob(blob, fileName);
+        const waText = encodeURIComponent(`Tikè #${aggregatedTicket.ticket_id}`);
+        window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${waText}`, '_blank');
+        showAppMessage("Imaj tikè a telechaje & WhatsApp louvri sou nimewo a — peze 📎 pou jwenn imaj la epi voye l.", false);
+        return;
+    }
+
+    // Aucun numéro fourni : on essaie le partage natif (choix de contact/app)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+            await navigator.share({
+                files: [file],
+                title: 'Tikè Lotato',
+                text: `Tikè #${aggregatedTicket.ticket_id}`
+            });
+            return;
+        } catch (e) {
+            if (e.name === 'AbortError') return; // agent a annulé volontairement
+            console.error('Erreur navigator.share:', e);
+        }
+    }
+
+    // Repli : partage natif indisponible sur cet appareil/navigateur.
+    downloadBlob(blob, fileName);
+    window.open(`https://wa.me/?text=${encodeURIComponent(`Tikè #${aggregatedTicket.ticket_id}`)}`, '_blank');
+    showAppMessage("Imaj tikè a telechaje. WhatsApp louvri — jwenn imaj la nan telechajman epi voye l manyèlman.", false);
+}
+
+function downloadBlob(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 // ---------- Utilitaire date ----------
 function normalizeDateString(dateStr) {
     if (!dateStr) return null;
@@ -413,17 +577,9 @@ async function processFinalTicket() {
         betsByDraw[b.drawId].push(b);
     });
 
-    let printWindow = null;
-    if (!isAndroidWebView()) {
-        printWindow = window.open('', '_blank', 'width=500,height=700');
-        if (!printWindow) {
-            showAppMessage("Autorize popups pou enprime.", true);
-            return;
-        }
-        printWindow.document.write('<html><head><title>Chargement...</title></head><body><p style="font-size:20px;text-align:center;">Génération du ticket en cours...</p></body></html>');
-        printWindow.document.close();
-    }
-
+    // On n'ouvre PLUS de fenêtre popup ici — elle passait devant la fenêtre
+    // de choix (Enprime/WhatsApp) et la cachait. On ne l'ouvrira que si
+    // l'agent choisit réellement "Enprime", juste après son clic.
     const savedTickets = [];
 
     try {
@@ -467,24 +623,38 @@ async function processFinalTicket() {
 
         // Construction du ticket unique agrégé
         const aggregatedTicket = buildAggregatedTicket(savedTickets, betsByDraw);
-        if (isAndroidWebView()) {
-            const ticketHTML = generateAggregatedTicketHTML(aggregatedTicket);
-            const fullHTML = buildTicketPrintHTML(ticketHTML);  // ← renommé
-            window.AndroidPrint.printHTML(fullHTML);
-        } else {
-            printAggregatedTicket(aggregatedTicket, printWindow);
-        }
 
         APP_STATE.currentCart = [];
         CartManager.renderCart();
-        showAppMessage("Tikè sove & enprime", false);
+
+        const choice = await showTicketDeliveryChoice();
+
+        if (choice === 'print' || choice === 'both') {
+            if (isAndroidWebView()) {
+                const ticketHTML = generateAggregatedTicketHTML(aggregatedTicket);
+                const fullHTML = buildTicketPrintHTML(ticketHTML);
+                window.AndroidPrint.printHTML(fullHTML);
+            } else {
+                // Ouverture du popup ICI, juste après le clic sur "Enprime"
+                // dans la fenêtre de choix — reste assez proche du geste de
+                // l'utilisateur pour ne pas être bloqué par le navigateur.
+                const printWindow = window.open('', '_blank', 'width=500,height=700');
+                if (!printWindow) {
+                    showAppMessage("Autorize popups pou enprime.", true);
+                } else {
+                    printAggregatedTicket(aggregatedTicket, printWindow);
+                }
+            }
+        }
+
+        if (choice === 'whatsapp' || choice === 'both') {
+            await shareTicketViaWhatsApp(aggregatedTicket);
+        }
+
+        showAppMessage("Tikè sove" + (choice === 'print' || choice === 'both' ? " & enprime" : "") + (choice === 'whatsapp' || choice === 'both' ? " & voye sou WhatsApp" : ""), false);
 
     } catch (err) {
         console.error(err);
-        // Ferme d'abord la fenêtre "Génération du ticket en cours..." —
-        // sinon elle reste au premier plan et cache l'alerte d'erreur qui
-        // s'affiche dans l'onglet principal, en arrière-plan.
-        if (printWindow && !printWindow.closed) printWindow.close();
         showAppMessage(err.message, true);
     }
 }
