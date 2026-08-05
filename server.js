@@ -311,11 +311,24 @@ const authenticate = async (req, res, next) => {
     // Le token reste valide 7 jours, mais un compte bloqué par l'admin
     // doit être coupé immédiatement — donc on revérifie en base à chaque
     // requête, pas seulement au login. Ne concerne que owner/agent/
-    // superviseur (les seuls rôles qu'un admin peut bloquer).
-    if (decoded.role === 'owner' || decoded.role === 'agent' || decoded.role === 'supervisor') {
+    // superviseur (les seuls rôles qu'un admin peut bloquer). Pour
+    // agent/superviseur, on vérifie AUSSI le statut du propriétaire : si le
+    // owner est bloqué par le superadmin, ses agents/superviseurs ne
+    // doivent plus pouvoir travailler non plus.
+    if (decoded.role === 'owner') {
       const check = await pool.query('SELECT blocked FROM users WHERE id = $1', [decoded.id]);
       if (check.rows.length === 0 || check.rows[0].blocked) {
         return res.status(403).json({ error: 'Ce compte a été bloqué. Contactez votre responsable.' });
+      }
+    } else if (decoded.role === 'agent' || decoded.role === 'supervisor') {
+      const check = await pool.query(
+        `SELECT u.blocked as self_blocked, o.blocked as owner_blocked
+         FROM users u LEFT JOIN users o ON u.owner_id = o.id
+         WHERE u.id = $1`,
+        [decoded.id]
+      );
+      if (check.rows.length === 0 || check.rows[0].self_blocked || check.rows[0].owner_blocked) {
+        return res.status(403).json({ error: 'Ce compte est temporairement suspendu. Contactez le support.' });
       }
     }
     req.user = decoded;
@@ -457,6 +470,14 @@ app.post('/api/auth/login', async (req, res) => {
     await clearLoginLockout(username, role);
     if (user.blocked) {
       return res.status(403).json({ error: 'Ce compte a été bloqué. Contactez votre responsable.' });
+    }
+    // Un agent/superviseur dont le PROPRIÉTAIRE est bloqué ne doit pas non
+    // plus pouvoir se connecter, même si son propre compte n'est pas bloqué.
+    if ((user.role === 'agent' || user.role === 'supervisor') && user.owner_id) {
+      const ownerCheck = await pool.query('SELECT blocked FROM users WHERE id = $1', [user.owner_id]);
+      if (ownerCheck.rows.length > 0 && ownerCheck.rows[0].blocked) {
+        return res.status(403).json({ error: 'Ce compte est temporairement suspendu. Contactez le support.' });
+      }
     }
 
     const effectiveDeviceId = getEffectiveDeviceId(req, deviceId);

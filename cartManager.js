@@ -565,11 +565,20 @@ function isAndroidWebView() {
 }
 
 // ---------- Impression et fusion multi-tirage ----------
+// Empêche processFinalTicket() de tourner deux fois en même temps (double
+// clic, tap répété sur réseau lent) — sinon le même ticket peut se
+// retrouver enregistré plusieurs fois en base.
+let isProcessingTicket = false;
+
 async function processFinalTicket() {
+    if (isProcessingTicket) {
+        return; // une soumission est déjà en cours, on ignore ce clic supplémentaire
+    }
     if (!APP_STATE.currentCart.length) {
         showAppMessage("Panye vid", true);
         return;
     }
+    isProcessingTicket = true;
 
     const betsByDraw = {};
     APP_STATE.currentCart.forEach(b => {
@@ -626,6 +635,7 @@ async function processFinalTicket() {
 
         APP_STATE.currentCart = [];
         CartManager.renderCart();
+        isProcessingTicket = false; // la sauvegarde est terminée, un nouveau ticket peut démarrer
 
         const choice = await showTicketDeliveryChoice();
 
@@ -655,6 +665,7 @@ async function processFinalTicket() {
 
     } catch (err) {
         console.error(err);
+        isProcessingTicket = false;
         showAppMessage(err.message, true);
     }
 }
