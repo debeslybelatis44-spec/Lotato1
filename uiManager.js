@@ -937,6 +937,53 @@ async function loadLotteryConfig() {
     } catch (error) { console.error('❌ Erreur chargement configuration:', error); }
 }
 
+// ---------- Message du propriétaire (bannière temporaire) ----------
+async function loadOwnerAgentMessage() {
+    try {
+        const data = await APIService.getAgentMessage();
+        const banner = document.getElementById('owner-agent-message-banner');
+        const textEl = document.getElementById('owner-agent-message-text');
+        if (!banner || !textEl) return;
+
+        const dismissedKey = 'dismissed_owner_message';
+        if (data.message) {
+            // Évite de réafficher le même message si l'agent l'a déjà fermé
+            const dismissed = sessionStorage.getItem(dismissedKey);
+            if (dismissed === data.message) {
+                banner.style.display = 'none';
+                return;
+            }
+            textEl.textContent = data.message;
+            banner.style.display = 'flex';
+        } else {
+            banner.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Erreur chargement message owner:', error);
+    }
+}
+
+function setupOwnerAgentMessageBanner() {
+    const closeBtn = document.getElementById('owner-agent-message-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            const banner = document.getElementById('owner-agent-message-banner');
+            const textEl = document.getElementById('owner-agent-message-text');
+            if (textEl) sessionStorage.setItem('dismissed_owner_message', textEl.textContent);
+            if (banner) banner.style.display = 'none';
+        });
+    }
+    loadOwnerAgentMessage();
+    // Revérifie périodiquement (nouveau message envoyé, ou expiration)
+    setInterval(loadOwnerAgentMessage, 5 * 60 * 1000);
+}
+window.setupOwnerAgentMessageBanner = setupOwnerAgentMessageBanner;
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupOwnerAgentMessageBanner);
+} else {
+    setupOwnerAgentMessageBanner();
+}
+
 function logout() {
     if (!confirm('Èske ou sèten ou vle dekonekte?')) return;
     const token = localStorage.getItem('auth_token');

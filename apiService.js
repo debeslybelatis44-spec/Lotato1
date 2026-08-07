@@ -68,6 +68,21 @@ const APIService = {
         }
     },
 
+    // Message actif envoyé par le propriétaire (affiché pendant une durée choisie)
+    async getAgentMessage() {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_CONFIG.BASE_URL}${getApiPrefix()}/agent/message`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Erreur réseau');
+            return await response.json();
+        } catch (error) {
+            console.error('Erreur récupération message owner:', error);
+            return { message: null };
+        }
+    },
+
     async saveTicket(ticket) {
         try {
             const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SAVE_TICKET}`, {

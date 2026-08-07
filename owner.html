@@ -340,6 +340,23 @@
         </div>
         <div style="display:flex; gap:10px; margin-top:20px;"><button class="btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Enregistrer les paramètres</button></div>
         <div id="settings-message" class="alert" style="display:none;"></div>
+
+        <div class="section-title"><i class="fas fa-bullhorn"></i> Message pour vos agents/superviseurs</div>
+        <div class="form-grid">
+            <div class="form-group" style="grid-column:1/-1;"><label>Message</label><textarea id="agent-message-text" rows="3" placeholder="Ex: Tirage retardé de 15 minutes aujourd'hui"></textarea></div>
+            <div class="form-group"><label>Durée d'affichage</label>
+                <select id="agent-message-duration">
+                    <option value="10">10 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60" selected>1 heure</option>
+                    <option value="180">3 heures</option>
+                    <option value="480">8 heures</option>
+                    <option value="1440">24 heures</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:end;"><button class="btn-primary" onclick="sendAgentMessage()"><i class="fas fa-paper-plane"></i> Envoyer aux agents</button></div>
+        </div>
+        <div id="agent-message-status" class="alert" style="display:none;"></div>
     </div>
 
     <!-- RÉGLAGES AVANCÉS -->
@@ -1523,6 +1540,27 @@
             if (res.ok) { showMessage('settings-message', '✅ Paramètres enregistrés', true); loadSettings(); }
             else showMessage('settings-message', '❌ Erreur lors de l\'enregistrement', false);
         } catch (e) { handleFetchError(e, 'saveSettings'); showMessage('settings-message', '❌ Erreur réseau', false); }
+    }
+
+    async function sendAgentMessage() {
+        const token = localStorage.getItem('auth_token');
+        const message = document.getElementById('agent-message-text').value.trim();
+        const durationMinutes = document.getElementById('agent-message-duration').value;
+        if (!message) { showMessage('agent-message-status', 'Veuillez écrire un message', false); return; }
+        try {
+            const res = await fetch(`${API_URL}/api/owner/agent-message`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, durationMinutes })
+            });
+            if (res.ok) {
+                showMessage('agent-message-status', '✅ Message envoyé à vos agents', true);
+                document.getElementById('agent-message-text').value = '';
+            } else {
+                const data = await res.json().catch(() => ({}));
+                showMessage('agent-message-status', '❌ ' + (data.error || 'Erreur lors de l\'envoi'), false);
+            }
+        } catch (e) { handleFetchError(e, 'sendAgentMessage'); showMessage('agent-message-status', '❌ Erreur réseau', false); }
     }
 
     document.getElementById('config-logo-file').addEventListener('change', function(e) {

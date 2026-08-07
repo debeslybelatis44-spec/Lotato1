@@ -154,6 +154,17 @@ async function ensureTables() {
         expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '10 minutes'
     )
   `);
+  // Messages du propriétaire vers SES agents/superviseurs (distinct de
+  // owner_messages, qui est superadmin -> owner). Durée choisie par le owner.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_messages (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        expires_at TIMESTAMP NOT NULL
+    )
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS global_number_limits (
         owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -1458,6 +1469,38 @@ app.get('/api/owner/messages', authenticate, requireRole('owner'), async (req, r
   try {
     const result = await pool.query(`SELECT message FROM owner_messages WHERE owner_id = $1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`, [ownerId]);
     res.json({ message: result.rows[0]?.message || null });
+  } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// Message du propriétaire vers ses agents/superviseurs, affiché pendant une
+// durée choisie par le owner (en minutes).
+app.post('/api/owner/agent-message', authenticate, requireRole('owner'), async (req, res) => {
+  const ownerId = req.user.id;
+  const { message, durationMinutes } = req.body;
+  if (!message || !message.trim()) return res.status(400).json({ error: 'Message requis' });
+  const minutes = parseInt(durationMinutes, 10);
+  if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Durée invalide' });
+  try {
+    await pool.query(
+      `INSERT INTO agent_messages (owner_id, message, created_at, expires_at) VALUES ($1, $2, NOW(), NOW() + ($3 * INTERVAL '1 minute'))`,
+      [ownerId, message.trim(), minutes]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Erreur envoi message' }); }
+});
+
+// Le message actif du owner, consulté par ses agents/superviseurs.
+app.get('/api/agent/message', authenticate, async (req, res) => {
+  if (req.user.role !== 'agent' && req.user.role !== 'supervisor') {
+    return res.status(403).json({ error: 'Accès réservé aux agents/superviseurs' });
+  }
+  const ownerId = req.user.ownerId;
+  try {
+    const result = await pool.query(
+      `SELECT message, expires_at FROM agent_messages WHERE owner_id = $1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`,
+      [ownerId]
+    );
+    res.json({ message: result.rows[0]?.message || null, expiresAt: result.rows[0]?.expires_at || null });
   } catch (err) { res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
